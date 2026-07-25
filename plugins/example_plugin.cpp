@@ -10,10 +10,7 @@ namespace task_graph {
 
 class ExamplePluginTask : public IPluginTask {
 public:
-    ExamplePluginTask(std::string id, int value, const TaskConfig& config = TaskConfig()) 
-        : id_(std::move(id)), value_(value), config_(config) {}
-
-    const std::string& id() const override { return id_; }
+    using IPluginTask::IPluginTask;
     
     const std::string& type() const override { 
         static std::string type = "example_plugin_task";
@@ -21,30 +18,15 @@ public:
     }
     
     TaskResult execute(IExecutionContext& ctx) override {
-        std::string key = id_ + "_output";
-        ctx.set_value(key, value_ * 2);
-        return TaskResult{.status = TaskStatus::COMPLETED, .value = value_};
+        std::string key = id() + "_output";
+        ctx.set_value(key, 42);
+        return TaskResult{.status = TaskStatus::COMPLETED, .value = 42};
     }
-    
-    const TaskConfig& config() const override {
-        return config_;
-    }
-
-    CheckResult check_input(const std::vector<std::any>& inputs) const override {
-        return CheckResult(true);
-    }
-
-private:
-    std::string id_;
-    int value_;
-    TaskConfig config_;
 };
 
 class DataProcessorTask : public IPluginTask {
 public:
-    DataProcessorTask(const TaskConfig& config = TaskConfig()) : id_("data_processor"), config_(config) {}
-    
-    const std::string& id() const override { return id_; }
+    using IPluginTask::IPluginTask;
     
     const std::string& type() const override { 
         static std::string type = "data_processor";
@@ -60,18 +42,6 @@ public:
         }
         return TaskResult{.status = TaskStatus::FAILED};
     }
-    
-    const TaskConfig& config() const override {
-        return config_;
-    }
-
-    CheckResult check_input(const std::vector<std::any>& inputs) const override {
-        return CheckResult(true);
-    }
-
-private:
-    std::string id_;
-    TaskConfig config_;
 };
 
 static PluginInfo plugin_info = {
@@ -83,17 +53,17 @@ static PluginInfo plugin_info = {
 extern "C" TG_EXPORT bool register_plugin() {
     PluginRegistry::instance().register_task(
         "example_task_1",
-        [](const std::string& id, const TaskConfig& config) { return std::make_shared<ExamplePluginTask>(id, 10, config); }
+        [](const std::string& id, const TaskConfig& config) { return std::make_shared<ExamplePluginTask>(id, config); }
     );
     
     PluginRegistry::instance().register_task(
         "example_task_2",
-        [](const std::string& id, const TaskConfig& config) { return std::make_shared<ExamplePluginTask>(id, 20, config); }
+        [](const std::string& id, const TaskConfig& config) { return std::make_shared<ExamplePluginTask>(id, config); }
     );
     
     PluginRegistry::instance().register_task(
         "data_processor",
-        [](const std::string& id, const TaskConfig& config) { return std::make_shared<DataProcessorTask>(config); }
+        [](const std::string& id, const TaskConfig& config) { return std::make_shared<DataProcessorTask>(id, config); }
     );
     
     return true;

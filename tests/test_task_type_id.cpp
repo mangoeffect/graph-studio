@@ -10,10 +10,8 @@
 
 class TestPluginTask : public task_graph::IPluginTask {
 public:
-    TestPluginTask(const std::string& id, const task_graph::TaskConfig& config = task_graph::TaskConfig()) 
-        : id_(id), config_(config) {}
+    using task_graph::IPluginTask::IPluginTask;
     
-    const std::string& id() const override { return id_; }
     const std::string& type() const override { 
         static const std::string type = "test_plugin_type";
         return type; 
@@ -22,18 +20,6 @@ public:
     task_graph::TaskResult execute(task_graph::IExecutionContext& ctx) override {
         return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED};
     }
-    
-    const task_graph::TaskConfig& config() const override {
-        return config_;
-    }
-    
-    task_graph::CheckResult check_input(const std::vector<std::any>& inputs) const override {
-        return task_graph::CheckResult(true);
-    }
-    
-private:
-    std::string id_;
-    task_graph::TaskConfig config_;
 };
 
 bool test_unique_task_id() {

@@ -7,9 +7,7 @@
 
 class SumTask : public task_graph::IPluginTask {
 public:
-    SumTask(const std::string& id) : id_(id) {}
-    
-    const std::string& id() const override { return id_; }
+    using task_graph::IPluginTask::IPluginTask;
     
     const std::string& type() const override { return type_; }
     
@@ -20,11 +18,6 @@ public:
             return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = *a + *b};
         }
         return task_graph::TaskResult{.status = task_graph::TaskStatus::FAILED};
-    }
-    
-    const task_graph::TaskConfig& config() const override {
-        static task_graph::TaskConfig cfg;
-        return cfg;
     }
     
     task_graph::CheckResult check_input(const std::vector<std::any>& inputs) const override {
@@ -47,7 +40,6 @@ public:
     }
     
 private:
-    std::string id_;
     static const std::string type_;
 };
 

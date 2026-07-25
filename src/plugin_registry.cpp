@@ -14,24 +14,6 @@ std::string generate_unique_id(const std::string& task_type) {
     return ss.str();
 }
 
-class TaskWithUniqueId : public IPluginTask {
-public:
-    TaskWithUniqueId(PluginTaskPtr delegate, const std::string& unique_id)
-        : delegate_(std::move(delegate)), instance_id_(unique_id) {}
-    
-    const std::string& id() const override { return instance_id_; }
-    const std::string& type() const override { return delegate_->type(); }
-    TaskResult execute(IExecutionContext& ctx) override { return delegate_->execute(ctx); }
-    const TaskConfig& config() const override { return delegate_->config(); }
-    CheckResult check_input(const std::vector<std::any>& inputs) const override {
-        return delegate_->check_input(inputs);
-    }
-    
-private:
-    PluginTaskPtr delegate_;
-    std::string instance_id_;
-};
-
 }
 
 PluginRegistry::PluginRegistry() = default;
@@ -64,14 +46,7 @@ PluginTaskPtr PluginRegistry::create_task(const std::string& task_type) const {
     auto it = task_creators_.find(task_type);
     if (it != task_creators_.end()) {
         std::string unique_id = generate_unique_id(task_type);
-        auto task = it->second(unique_id, TaskConfig{});
-        if (task) {
-            if (task->id() != unique_id) {
-                return std::make_shared<TaskWithUniqueId>(std::move(task), unique_id);
-            }
-            return task;
-        }
-        return task;
+        return it->second(unique_id, TaskConfig{});
     }
     return nullptr;
 }
@@ -81,14 +56,7 @@ PluginTaskPtr PluginRegistry::create_task(const std::string& task_type, const Ta
     auto it = task_creators_.find(task_type);
     if (it != task_creators_.end()) {
         std::string unique_id = generate_unique_id(task_type);
-        auto task = it->second(unique_id, config);
-        if (task) {
-            if (task->id() != unique_id) {
-                return std::make_shared<TaskWithUniqueId>(std::move(task), unique_id);
-            }
-            return task;
-        }
-        return task;
+        return it->second(unique_id, config);
     }
     return nullptr;
 }
@@ -97,14 +65,7 @@ PluginTaskPtr PluginRegistry::create_task(const std::string& task_id, const std:
     std::lock_guard<std::mutex> lock(mutex_);
     auto it = task_creators_.find(task_type);
     if (it != task_creators_.end()) {
-        auto task = it->second(task_id, config);
-        if (task) {
-            if (task->id() != task_id) {
-                return std::make_shared<TaskWithUniqueId>(std::move(task), task_id);
-            }
-            return task;
-        }
-        return task;
+        return it->second(task_id, config);
     }
     return nullptr;
 }

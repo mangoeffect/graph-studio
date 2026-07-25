@@ -7,10 +7,12 @@
 namespace task_graph {
 
 Task::Task(std::string id, TaskFunction func, TaskConfig config)
-    : id_(std::move(id)), type_(id_), func_(std::move(func)), config_(std::move(config)) {}
+    : IPluginTask(std::move(id), std::move(config)), func_(std::move(func)) {
+    type_ = this->id();
+}
 
 Task::Task(std::string id, std::string type, TaskFunction func, TaskConfig config)
-    : id_(std::move(id)), type_(std::move(type)), func_(std::move(func)), config_(std::move(config)) {}
+    : IPluginTask(std::move(id), std::move(config)), type_(std::move(type)), func_(std::move(func)) {}
 
 CheckResult Task::check_input(const std::vector<std::any>& inputs) const {
     return CheckResult(true);
@@ -20,21 +22,21 @@ TaskResult Task::execute(IExecutionContext& ctx) {
     TaskResult result;
     auto start_time = std::chrono::high_resolution_clock::now();
 
-    TG_LOG_INFO("Starting execution of task '" + id_ + "'");
-    TG_LOG_DEBUG("Task '" + id_ + "' priority: " + std::to_string(static_cast<int>(config_.priority)) +
-                 ", max_retries: " + std::to_string(config_.max_retries) +
-                 ", timeout: " + std::to_string(config_.timeout.count()) + "ms");
+    TG_LOG_INFO("Starting execution of task '" + id() + "'");
+    TG_LOG_DEBUG("Task '" + id() + "' priority: " + std::to_string(static_cast<int>(config().priority)) +
+                 ", max_retries: " + std::to_string(config().max_retries) +
+                 ", timeout: " + std::to_string(config().timeout.count()) + "ms");
 
     try {
         result = func_(ctx);
     } catch (const std::exception& e) {
         result.status = TaskStatus::FAILED;
         result.exception = std::current_exception();
-        TG_LOG_ERROR("Task '" + id_ + "' failed with exception: " + e.what());
+        TG_LOG_ERROR("Task '" + id() + "' failed with exception: " + e.what());
     } catch (...) {
         result.status = TaskStatus::FAILED;
         result.exception = std::current_exception();
-        TG_LOG_ERROR("Task '" + id_ + "' failed with unknown exception");
+        TG_LOG_ERROR("Task '" + id() + "' failed with unknown exception");
     }
 
     auto end_time = std::chrono::high_resolution_clock::now();
@@ -42,7 +44,7 @@ TaskResult Task::execute(IExecutionContext& ctx) {
 
     auto duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(result.duration).count();
     std::stringstream ss;
-    ss << "Task '" << id_ << "' completed with status ";
+    ss << "Task '" << id() << "' completed with status ";
     
     switch (result.status) {
         case TaskStatus::COMPLETED:

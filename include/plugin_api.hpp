@@ -188,13 +188,23 @@ using ExecutionContextPtr = std::shared_ptr<IExecutionContext>;
 
 class IPluginTask {
 public:
+    IPluginTask(const std::string& id, const TaskConfig& config = TaskConfig())
+        : id_(id), config_(config) {}
+    
     virtual ~IPluginTask() noexcept = default;
-    virtual const std::string& id() const = 0;
+    
+    const std::string& id() const { return id_; }
     virtual const std::string& type() const = 0;
     virtual TaskResult execute(IExecutionContext& ctx) = 0;
-    virtual const TaskConfig& config() const = 0;
+    const TaskConfig& config() const { return config_; }
     
-    virtual CheckResult check_input(const std::vector<std::any>& inputs) const = 0;
+    virtual CheckResult check_input(const std::vector<std::any>& inputs) const {
+        return CheckResult(true);
+    }
+
+protected:
+    std::string id_;
+    TaskConfig config_;
 };
 
 using PluginTaskPtr = std::shared_ptr<IPluginTask>;
