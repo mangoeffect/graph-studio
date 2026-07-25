@@ -1,0 +1,33 @@
+﻿#include <task_graph/context.hpp>
+
+namespace task_graph {
+
+void ExecutionContext::set_result(const TaskId& task_id, const TaskResult& result) {
+    std::unique_lock<std::shared_mutex> lock(results_mutex_);
+    results_[task_id] = result;
+}
+
+std::optional<TaskResult> ExecutionContext::get_result(const TaskId& task_id) const {
+    std::shared_lock<std::shared_mutex> lock(results_mutex_);
+    auto it = results_.find(task_id);
+    if (it != results_.end()) {
+        return it->second;
+    }
+    return std::nullopt;
+}
+
+void ExecutionContext::set_value(const std::string& key, std::any value) {
+    std::unique_lock<std::shared_mutex> lock(values_mutex_);
+    values_[key] = std::move(value);
+}
+
+std::optional<std::any> ExecutionContext::get_value(const std::string& key) const {
+    std::shared_lock<std::shared_mutex> lock(values_mutex_);
+    auto it = values_.find(key);
+    if (it != values_.end()) {
+        return it->second;
+    }
+    return std::nullopt;
+}
+
+}
