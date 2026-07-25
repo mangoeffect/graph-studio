@@ -9,6 +9,7 @@
 #include <optional>
 #include <chrono>
 #include <mutex>
+#include <shared_mutex>
 
 #ifdef _WIN32
 #if defined(TASK_GRAPH_BUILD)
@@ -33,42 +34,22 @@ enum class LogLevel {
     FATAL = 5
 };
 
-class TG_EXPORT Logger {
-public:
-    static Logger& instance();
+extern "C" {
+    TG_EXPORT void tg_log(LogLevel level, const char* msg, const char* file = "", int line = 0);
+    TG_EXPORT void tg_set_log_level(LogLevel level);
+    TG_EXPORT LogLevel tg_get_log_level();
+}
 
-    void set_level(LogLevel level);
-    LogLevel get_level() const;
+inline void tg_log(LogLevel level, const std::string& msg, const char* file = "", int line = 0) {
+    tg_log(level, msg.c_str(), file, line);
+}
 
-    void trace(const std::string& msg, const char* file = "", int line = 0);
-    void debug(const std::string& msg, const char* file = "", int line = 0);
-    void info(const std::string& msg, const char* file = "", int line = 0);
-    void warn(const std::string& msg, const char* file = "", int line = 0);
-    void error(const std::string& msg, const char* file = "", int line = 0);
-    void fatal(const std::string& msg, const char* file = "", int line = 0);
-
-    bool is_enabled(LogLevel level) const;
-
-private:
-    Logger();
-    ~Logger();
-    Logger(const Logger&) = delete;
-    Logger& operator=(const Logger&) = delete;
-
-    void log(LogLevel level, const std::string& msg, const char* file, int line);
-    std::string get_level_name(LogLevel level) const;
-    std::string get_timestamp() const;
-
-    mutable std::mutex mutex_;
-    LogLevel level_{LogLevel::INFO};
-};
-
-#define TG_LOG_TRACE(msg) do { if (task_graph::Logger::instance().is_enabled(task_graph::LogLevel::TRACE)) task_graph::Logger::instance().trace(msg, __FILE__, __LINE__); } while(0)
-#define TG_LOG_DEBUG(msg) do { if (task_graph::Logger::instance().is_enabled(task_graph::LogLevel::DEBUG)) task_graph::Logger::instance().debug(msg, __FILE__, __LINE__); } while(0)
-#define TG_LOG_INFO(msg) do { if (task_graph::Logger::instance().is_enabled(task_graph::LogLevel::INFO)) task_graph::Logger::instance().info(msg, __FILE__, __LINE__); } while(0)
-#define TG_LOG_WARN(msg) do { if (task_graph::Logger::instance().is_enabled(task_graph::LogLevel::WARN)) task_graph::Logger::instance().warn(msg, __FILE__, __LINE__); } while(0)
-#define TG_LOG_ERROR(msg) do { if (task_graph::Logger::instance().is_enabled(task_graph::LogLevel::ERROR)) task_graph::Logger::instance().error(msg, __FILE__, __LINE__); } while(0)
-#define TG_LOG_FATAL(msg) do { if (task_graph::Logger::instance().is_enabled(task_graph::LogLevel::FATAL)) task_graph::Logger::instance().fatal(msg, __FILE__, __LINE__); } while(0)
+#define TG_LOG_TRACE(msg) do { task_graph::tg_log(task_graph::LogLevel::TRACE, msg, __FILE__, __LINE__); } while(0)
+#define TG_LOG_DEBUG(msg) do { task_graph::tg_log(task_graph::LogLevel::DEBUG, msg, __FILE__, __LINE__); } while(0)
+#define TG_LOG_INFO(msg) do { task_graph::tg_log(task_graph::LogLevel::INFO, msg, __FILE__, __LINE__); } while(0)
+#define TG_LOG_WARN(msg) do { task_graph::tg_log(task_graph::LogLevel::WARN, msg, __FILE__, __LINE__); } while(0)
+#define TG_LOG_ERROR(msg) do { task_graph::tg_log(task_graph::LogLevel::ERROR, msg, __FILE__, __LINE__); } while(0)
+#define TG_LOG_FATAL(msg) do { task_graph::tg_log(task_graph::LogLevel::FATAL, msg, __FILE__, __LINE__); } while(0)
 
 enum class TaskStatus {
     PENDING,
@@ -113,6 +94,15 @@ public:
 
     virtual void set_value(const std::string& key, std::any value) = 0;
     virtual std::optional<std::any> get_value(const std::string& key) const = 0;
+
+    virtual void log(LogLevel level, const std::string& msg) = 0;
+
+    void trace(const std::string& msg) { log(LogLevel::TRACE, msg); }
+    void debug(const std::string& msg) { log(LogLevel::DEBUG, msg); }
+    void info(const std::string& msg) { log(LogLevel::INFO, msg); }
+    void warn(const std::string& msg) { log(LogLevel::WARN, msg); }
+    void error(const std::string& msg) { log(LogLevel::ERROR, msg); }
+    void fatal(const std::string& msg) { log(LogLevel::FATAL, msg); }
 
     template<typename T>
     std::optional<T> get(const std::string& key) const {

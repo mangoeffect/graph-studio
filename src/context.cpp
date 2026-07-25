@@ -1,6 +1,11 @@
 ﻿#include <execution_context.hpp>
+#include <plugin_api.hpp>
 
 namespace task_graph {
+
+void ExecutionContext::log(LogLevel level, const std::string& msg) {
+    tg_log(level, msg.c_str());
+}
 
 void ExecutionContext::set_result(const TaskId& task_id, const TaskResult& result) {
     std::unique_lock lock(results_mutex_);

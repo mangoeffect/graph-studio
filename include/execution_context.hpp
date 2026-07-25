@@ -17,6 +17,8 @@ public:
     void set_value(const std::string& key, std::any value) override;
     std::optional<std::any> get_value(const std::string& key) const override;
 
+    void log(LogLevel level, const std::string& msg) override;
+
 private:
     mutable std::shared_mutex results_mutex_;
     std::unordered_map<TaskId, TaskResult> results_;

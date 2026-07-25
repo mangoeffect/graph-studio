@@ -57,107 +57,103 @@ namespace {
         return "";
 #endif
     }
-}
 
-Logger::Logger() {}
-
-Logger::~Logger() {}
-
-Logger& Logger::instance() {
-    static Logger instance;
-    return instance;
-}
-
-void Logger::set_level(LogLevel level) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    level_ = level;
-}
-
-LogLevel Logger::get_level() const {
-    std::lock_guard<std::mutex> lock(mutex_);
-    return level_;
-}
-
-bool Logger::is_enabled(LogLevel level) const {
-    return level >= level_;
-}
-
-std::string Logger::get_level_name(LogLevel level) const {
-    switch (level) {
-        case LogLevel::TRACE: return "TRACE";
-        case LogLevel::DEBUG: return "DEBUG";
-        case LogLevel::INFO:  return "INFO";
-        case LogLevel::WARN:  return "WARN";
-        case LogLevel::ERROR: return "ERROR";
-        case LogLevel::FATAL: return "FATAL";
-        default:              return "UNKNOWN";
+    std::string get_level_name(LogLevel level) {
+        switch (level) {
+            case LogLevel::TRACE: return "TRACE";
+            case LogLevel::DEBUG: return "DEBUG";
+            case LogLevel::INFO:  return "INFO";
+            case LogLevel::WARN:  return "WARN";
+            case LogLevel::ERROR: return "ERROR";
+            case LogLevel::FATAL: return "FATAL";
+            default:              return "UNKNOWN";
+        }
     }
-}
 
-std::string Logger::get_timestamp() const {
-    auto now = std::chrono::system_clock::now();
-    auto time_t = std::chrono::system_clock::to_time_t(now);
-    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-        now.time_since_epoch()) % 1000;
-    
-    std::stringstream ss;
-    ss << std::put_time(std::localtime(&time_t), "%Y-%m-%d %H:%M:%S");
-    ss << "." << std::setfill('0') << std::setw(3) << ms.count();
-    return ss.str();
-}
-
-void Logger::log(LogLevel level, const std::string& msg, const char* file, int line) {
-    if (!is_enabled(level)) return;
-
-    std::lock_guard<std::mutex> lock(mutex_);
-    
-    std::stringstream ss;
-    ss << "[" << get_timestamp() << "] ";
-    ss << "[" << std::setw(5) << get_level_name(level) << "] ";
-    
-    std::string thread_name = get_thread_name();
-    std::string thread_id = get_thread_id();
-    if (!thread_name.empty()) {
-        ss << "[" << thread_name << "/" << thread_id << "] ";
-    } else {
-        ss << "[T/" << thread_id << "] ";
+    std::string get_timestamp() {
+        auto now = std::chrono::system_clock::now();
+        auto time_t = std::chrono::system_clock::to_time_t(now);
+        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+            now.time_since_epoch()) % 1000;
+        
+        std::stringstream ss;
+        ss << std::put_time(std::localtime(&time_t), "%Y-%m-%d %H:%M:%S");
+        ss << "." << std::setfill('0') << std::setw(3) << ms.count();
+        return ss.str();
     }
-    
-    std::string filename = get_filename(file);
-    if (!filename.empty() && line > 0) {
-        ss << "[" << filename << ":" << line << "] ";
-    } else if (!filename.empty()) {
-        ss << "[" << filename << "] ";
-    }
-    
-    ss << msg << std::endl;
 
-    std::cout << ss.str();
-    std::cout.flush();
+    class LoggerImpl {
+    public:
+        static LoggerImpl& instance() {
+            static LoggerImpl instance;
+            return instance;
+        }
+
+        void set_level(LogLevel level) {
+            std::lock_guard<std::mutex> lock(mutex_);
+            level_ = level;
+        }
+
+        LogLevel get_level() const {
+            std::lock_guard<std::mutex> lock(mutex_);
+            return level_;
+        }
+
+        bool is_enabled(LogLevel level) const {
+            return level >= level_;
+        }
+
+        void log(LogLevel level, const std::string& msg, const char* file, int line) {
+            if (!is_enabled(level)) return;
+
+            std::lock_guard<std::mutex> lock(mutex_);
+            
+            std::stringstream ss;
+            ss << "[" << get_timestamp() << "] ";
+            ss << "[" << std::setw(5) << get_level_name(level) << "] ";
+            
+            std::string thread_name = get_thread_name();
+            std::string thread_id = get_thread_id();
+            if (!thread_name.empty()) {
+                ss << "[" << thread_name << "/" << thread_id << "] ";
+            } else {
+                ss << "[T/" << thread_id << "] ";
+            }
+            
+            std::string filename = get_filename(file);
+            if (!filename.empty() && line > 0) {
+                ss << "[" << filename << ":" << line << "] ";
+            } else if (!filename.empty()) {
+                ss << "[" << filename << "] ";
+            }
+            
+            ss << msg << std::endl;
+
+            std::cout << ss.str();
+            std::cout.flush();
+        }
+
+    private:
+        LoggerImpl() {}
+        ~LoggerImpl() {}
+        LoggerImpl(const LoggerImpl&) = delete;
+        LoggerImpl& operator=(const LoggerImpl&) = delete;
+
+        mutable std::mutex mutex_;
+        LogLevel level_{LogLevel::INFO};
+    };
 }
 
-void Logger::trace(const std::string& msg, const char* file, int line) {
-    log(LogLevel::TRACE, msg, file, line);
+extern "C" TG_EXPORT void tg_log(LogLevel level, const char* msg, const char* file, int line) {
+    LoggerImpl::instance().log(level, msg, file, line);
 }
 
-void Logger::debug(const std::string& msg, const char* file, int line) {
-    log(LogLevel::DEBUG, msg, file, line);
+extern "C" TG_EXPORT void tg_set_log_level(LogLevel level) {
+    LoggerImpl::instance().set_level(level);
 }
 
-void Logger::info(const std::string& msg, const char* file, int line) {
-    log(LogLevel::INFO, msg, file, line);
-}
-
-void Logger::warn(const std::string& msg, const char* file, int line) {
-    log(LogLevel::WARN, msg, file, line);
-}
-
-void Logger::error(const std::string& msg, const char* file, int line) {
-    log(LogLevel::ERROR, msg, file, line);
-}
-
-void Logger::fatal(const std::string& msg, const char* file, int line) {
-    log(LogLevel::FATAL, msg, file, line);
+extern "C" TG_EXPORT LogLevel tg_get_log_level() {
+    return LoggerImpl::instance().get_level();
 }
 
 }

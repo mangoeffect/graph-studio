@@ -6,14 +6,14 @@
 bool test_logger_basic() {
     std::cout << "Test: Logger basic functionality... ";
     
-    task_graph::Logger::instance().set_level(task_graph::LogLevel::DEBUG);
+    task_graph::tg_set_log_level(task_graph::LogLevel::DEBUG);
     
-    task_graph::Logger::instance().trace("This is a TRACE message");
-    task_graph::Logger::instance().debug("This is a DEBUG message");
-    task_graph::Logger::instance().info("This is an INFO message");
-    task_graph::Logger::instance().warn("This is a WARN message");
-    task_graph::Logger::instance().error("This is an ERROR message");
-    task_graph::Logger::instance().fatal("This is a FATAL message");
+    task_graph::tg_log(task_graph::LogLevel::TRACE, "This is a TRACE message");
+    task_graph::tg_log(task_graph::LogLevel::DEBUG, "This is a DEBUG message");
+    task_graph::tg_log(task_graph::LogLevel::INFO, "This is an INFO message");
+    task_graph::tg_log(task_graph::LogLevel::WARN, "This is a WARN message");
+    task_graph::tg_log(task_graph::LogLevel::ERROR, "This is an ERROR message");
+    task_graph::tg_log(task_graph::LogLevel::FATAL, "This is a FATAL message");
     
     std::cout << "PASSED" << std::endl;
     return true;
@@ -22,16 +22,16 @@ bool test_logger_basic() {
 bool test_logger_level_filter() {
     std::cout << "Test: Logger level filtering... ";
     
-    task_graph::Logger::instance().set_level(task_graph::LogLevel::WARN);
+    task_graph::tg_set_log_level(task_graph::LogLevel::WARN);
     
-    task_graph::Logger::instance().trace("Should NOT be visible");
-    task_graph::Logger::instance().debug("Should NOT be visible");
-    task_graph::Logger::instance().info("Should NOT be visible");
-    task_graph::Logger::instance().warn("Should be visible - WARN");
-    task_graph::Logger::instance().error("Should be visible - ERROR");
-    task_graph::Logger::instance().fatal("Should be visible - FATAL");
+    task_graph::tg_log(task_graph::LogLevel::TRACE, "Should NOT be visible");
+    task_graph::tg_log(task_graph::LogLevel::DEBUG, "Should NOT be visible");
+    task_graph::tg_log(task_graph::LogLevel::INFO, "Should NOT be visible");
+    task_graph::tg_log(task_graph::LogLevel::WARN, "Should be visible - WARN");
+    task_graph::tg_log(task_graph::LogLevel::ERROR, "Should be visible - ERROR");
+    task_graph::tg_log(task_graph::LogLevel::FATAL, "Should be visible - FATAL");
     
-    task_graph::Logger::instance().set_level(task_graph::LogLevel::DEBUG);
+    task_graph::tg_set_log_level(task_graph::LogLevel::DEBUG);
     
     std::cout << "PASSED" << std::endl;
     return true;
@@ -98,7 +98,7 @@ bool test_executor_logging() {
 }
 
 int main() {
-    task_graph::Logger::instance().set_level(task_graph::LogLevel::DEBUG);
+    task_graph::tg_set_log_level(task_graph::LogLevel::DEBUG);
     
     std::cout << "=== Logger Tests ===\n" << std::endl;
     
