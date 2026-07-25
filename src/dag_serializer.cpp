@@ -92,11 +92,41 @@ DAG DAGSerializer::deserialize(const nlohmann::json& j) {
         bool is_plugin_task = PluginRegistry::instance().has_task(type);
         
         if (is_plugin_task) {
-            if (id == type) {
-                dag.add_plugin_task(type);
-            } else {
-                dag.add_plugin_task(id, type);
+            TaskConfig config;
+            
+            if (task_json.contains("priority")) {
+                config.priority = static_cast<TaskPriority>(task_json["priority"].get<int>());
             }
+            if (task_json.contains("max_retries")) {
+                config.max_retries = task_json["max_retries"].get<size_t>();
+            }
+            if (task_json.contains("timeout_ms")) {
+                config.timeout = std::chrono::milliseconds(task_json["timeout_ms"].get<int>());
+            }
+            if (task_json.contains("skip_on_fail")) {
+                config.skip_on_fail = task_json["skip_on_fail"].get<bool>();
+            }
+            if (task_json.contains("dependencies")) {
+                const auto& deps_json = task_json["dependencies"];
+                for (const auto& dep : deps_json) {
+                    config.dependencies.push_back(dep.get<std::string>());
+                }
+            }
+            
+            if (task_json.contains("params")) {
+                const auto& params_json = task_json["params"];
+                for (const auto& [key, value] : params_json.get<nlohmann::json::object_t>()) {
+                    if (value.is_number_integer()) {
+                        config.params.set_int(key, static_cast<int>(value.get<int64_t>()));
+                    } else if (value.is_number_float()) {
+                        config.params.set_float(key, static_cast<float>(value.get<double>()));
+                    } else if (value.is_string()) {
+                        config.params.set_string(key, value.get<std::string>());
+                    }
+                }
+            }
+            
+            dag.add_plugin_task(id, type, config);
         } else {
             TaskConfig config;
             if (task_json.contains("priority")) {

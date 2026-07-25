@@ -249,6 +249,263 @@ bool test_image_data_passing() {
     return success;
 }
 
+bool test_filter_with_params() {
+    std::cout << "Test: Filter with custom params (kernel_size)... ";
+    
+    task_graph::DAG dag;
+    
+    auto input_task = std::make_shared<task_graph::Task>("input_image", [](task_graph::IExecutionContext& ctx) {
+        cv::Mat mat = cv::Mat::ones(100, 100, CV_8UC3) * 200;
+        task_graph::Image img = task_graph::Image::from_mat(mat);
+        return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = img};
+    });
+    dag.add_task(input_task);
+    
+    task_graph::TaskConfig blur_config;
+    blur_config.params.set_int("kernel_size", 9);
+    
+    auto blur_task = std::make_shared<task_graph::Task>(
+        "custom_blur",
+        "blur_filter",
+        [](task_graph::IExecutionContext& ctx) {
+            auto img_opt = ctx.template get_result_value<task_graph::Image>("input_image");
+            if (!img_opt) {
+                return task_graph::TaskResult{.status = task_graph::TaskStatus::FAILED};
+            }
+            
+            int kernel_size = ctx.get_param_int("kernel_size").value_or(5);
+            if (kernel_size % 2 == 0) kernel_size++;
+            if (kernel_size < 1) kernel_size = 1;
+            
+            cv::Mat mat = img_opt->to_mat();
+            cv::Mat result;
+            cv::blur(mat, result, cv::Size(kernel_size, kernel_size));
+            
+            task_graph::Image output = task_graph::Image::from_mat(result);
+            return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = output};
+        },
+        blur_config
+    );
+    dag.add_task(blur_task);
+    
+    dag.add_dependency("input_image", "custom_blur");
+    
+    task_graph::DAGExecutor executor;
+    executor.execute(dag).wait();
+    
+    auto results = executor.get_results();
+    
+    bool success = results["input_image"].is_success() && 
+                   results["custom_blur"].is_success();
+    
+    std::cout << (success ? "PASSED" : "FAILED") << std::endl;
+    return success;
+}
+
+bool test_gaussian_blur_with_params() {
+    std::cout << "Test: GaussianBlur with kernel_size and sigma params... ";
+    
+    task_graph::DAG dag;
+    
+    auto input_task = std::make_shared<task_graph::Task>("input_image", [](task_graph::IExecutionContext& ctx) {
+        cv::Mat mat = cv::Mat::ones(100, 100, CV_8UC3) * 200;
+        task_graph::Image img = task_graph::Image::from_mat(mat);
+        return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = img};
+    });
+    dag.add_task(input_task);
+    
+    task_graph::TaskConfig gaussian_config;
+    gaussian_config.params.set_int("kernel_size", 7);
+    gaussian_config.params.set_float("sigma", 2.0f);
+    
+    auto gaussian_task = std::make_shared<task_graph::Task>(
+        "gaussian_custom",
+        "gaussian_blur_filter",
+        [](task_graph::IExecutionContext& ctx) {
+            auto img_opt = ctx.template get_result_value<task_graph::Image>("input_image");
+            if (!img_opt) {
+                return task_graph::TaskResult{.status = task_graph::TaskStatus::FAILED};
+            }
+            
+            int kernel_size = ctx.get_param_int("kernel_size").value_or(5);
+            if (kernel_size % 2 == 0) kernel_size++;
+            if (kernel_size < 1) kernel_size = 1;
+            
+            double sigma = ctx.get_param_float("sigma").value_or(0.0);
+            
+            cv::Mat mat = img_opt->to_mat();
+            cv::Mat result;
+            cv::GaussianBlur(mat, result, cv::Size(kernel_size, kernel_size), sigma);
+            
+            task_graph::Image output = task_graph::Image::from_mat(result);
+            return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = output};
+        },
+        gaussian_config
+    );
+    dag.add_task(gaussian_task);
+    
+    dag.add_dependency("input_image", "gaussian_custom");
+    
+    task_graph::DAGExecutor executor;
+    executor.execute(dag).wait();
+    
+    auto results = executor.get_results();
+    
+    bool success = results["input_image"].is_success() && 
+                   results["gaussian_custom"].is_success();
+    
+    std::cout << (success ? "PASSED" : "FAILED") << std::endl;
+    return success;
+}
+
+bool test_cascade_with_params() {
+    std::cout << "Test: Cascade filters with params... ";
+    
+    task_graph::DAG dag;
+    
+    auto input_task = std::make_shared<task_graph::Task>("input_image", [](task_graph::IExecutionContext& ctx) {
+        cv::Mat mat = cv::Mat::ones(100, 100, CV_8UC3) * 200;
+        task_graph::Image img = task_graph::Image::from_mat(mat);
+        return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = img};
+    });
+    dag.add_task(input_task);
+    
+    task_graph::TaskConfig gaussian_config;
+    gaussian_config.params.set_int("kernel_size", 5);
+    gaussian_config.params.set_float("sigma", 1.5f);
+    
+    auto gaussian_task = std::make_shared<task_graph::Task>(
+        "gaussian_stage",
+        "gaussian_blur_filter",
+        [](task_graph::IExecutionContext& ctx) {
+            auto img_opt = ctx.template get_result_value<task_graph::Image>("input_image");
+            if (!img_opt) {
+                return task_graph::TaskResult{.status = task_graph::TaskStatus::FAILED};
+            }
+            
+            int kernel_size = ctx.get_param_int("kernel_size").value_or(5);
+            if (kernel_size % 2 == 0) kernel_size++;
+            if (kernel_size < 1) kernel_size = 1;
+            
+            double sigma = ctx.get_param_float("sigma").value_or(0.0);
+            
+            cv::Mat mat = img_opt->to_mat();
+            cv::Mat result;
+            cv::GaussianBlur(mat, result, cv::Size(kernel_size, kernel_size), sigma);
+            
+            task_graph::Image output = task_graph::Image::from_mat(result);
+            return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = output};
+        },
+        gaussian_config
+    );
+    dag.add_task(gaussian_task);
+    
+    task_graph::TaskConfig sobel_config;
+    sobel_config.params.set_int("kernel_size", 5);
+    
+    auto sobel_task = std::make_shared<task_graph::Task>(
+        "sobel_stage",
+        "sobel_filter",
+        [](task_graph::IExecutionContext& ctx) {
+            auto img_opt = ctx.template get_result_value<task_graph::Image>("gaussian_stage");
+            if (!img_opt) {
+                return task_graph::TaskResult{.status = task_graph::TaskStatus::FAILED};
+            }
+            
+            int kernel_size = ctx.get_param_int("kernel_size").value_or(3);
+            if (kernel_size % 2 == 0) kernel_size++;
+            if (kernel_size < 1) kernel_size = 1;
+            if (kernel_size > 7) kernel_size = 7;
+            
+            cv::Mat mat = img_opt->to_mat();
+            cv::Mat gray, grad_x, grad_y, abs_grad_x, abs_grad_y, result;
+            
+            cv::cvtColor(mat, gray, cv::COLOR_BGR2GRAY);
+            cv::Sobel(gray, grad_x, CV_16S, 1, 0, kernel_size);
+            cv::Sobel(gray, grad_y, CV_16S, 0, 1, kernel_size);
+            
+            cv::convertScaleAbs(grad_x, abs_grad_x);
+            cv::convertScaleAbs(grad_y, abs_grad_y);
+            
+            cv::addWeighted(abs_grad_x, 0.5, abs_grad_y, 0.5, 0, result);
+            
+            task_graph::Image output = task_graph::Image::from_mat(result);
+            return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = output};
+        },
+        sobel_config
+    );
+    dag.add_task(sobel_task);
+    
+    dag.add_dependency("input_image", "gaussian_stage");
+    dag.add_dependency("gaussian_stage", "sobel_stage");
+    
+    task_graph::DAGExecutor executor;
+    executor.execute(dag).wait();
+    
+    auto results = executor.get_results();
+    
+    bool success = results["input_image"].is_success() && 
+                   results["gaussian_stage"].is_success() &&
+                   results["sobel_stage"].is_success();
+    
+    std::cout << (success ? "PASSED" : "FAILED") << std::endl;
+    return success;
+}
+
+bool test_params_from_json() {
+    std::cout << "Test: Filter params from JSON... ";
+    
+    std::string json_str = R"(
+        {
+            "version": "1.0",
+            "tasks": [
+                {"id": "input_image"},
+                {
+                    "id": "param_blur",
+                    "type": "blur_filter",
+                    "params": {
+                        "kernel_size": 9
+                    }
+                },
+                {
+                    "id": "param_sobel",
+                    "type": "sobel_filter",
+                    "params": {
+                        "kernel_size": 5,
+                        "dx": 1,
+                        "dy": 1
+                    }
+                }
+            ],
+            "edges": [
+                {"from": "input_image", "to": "param_blur"},
+                {"from": "param_blur", "to": "param_sobel"}
+            ]
+        }
+    )";
+    
+    task_graph::DAG dag = task_graph::DAGSerializer::from_string(json_str);
+    
+    auto input_task = std::make_shared<task_graph::Task>("input_image", [](task_graph::IExecutionContext& ctx) {
+        cv::Mat mat = cv::Mat::ones(100, 100, CV_8UC3) * 200;
+        task_graph::Image img = task_graph::Image::from_mat(mat);
+        return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = img};
+    });
+    dag.replace_task("input_image", input_task);
+    
+    task_graph::DAGExecutor executor;
+    executor.execute(dag).wait();
+    
+    auto results = executor.get_results();
+    
+    bool success = results["input_image"].is_success() && 
+                   results["param_blur"].is_success() &&
+                   results["param_sobel"].is_success();
+    
+    std::cout << (success ? "PASSED" : "FAILED") << std::endl;
+    return success;
+}
+
 int main() {
     std::vector<bool> results;
     
@@ -259,6 +516,10 @@ int main() {
     results.push_back(test_same_type_multiple_instances());
     results.push_back(test_filter_with_custom_ids());
     results.push_back(test_image_data_passing());
+    results.push_back(test_filter_with_params());
+    results.push_back(test_gaussian_blur_with_params());
+    results.push_back(test_cascade_with_params());
+    results.push_back(test_params_from_json());
     
     std::cout << "\n--- Summary ---" << std::endl;
     int passed = std::count(results.begin(), results.end(), true);

@@ -8,15 +8,15 @@
 
 class TestPluginTask : public task_graph::IPluginTask {
 public:
-    TestPluginTask() : id_("test_task"), type_("test_task") {}
+    TestPluginTask(const task_graph::TaskConfig& config = task_graph::TaskConfig()) 
+        : id_("test_task"), type_("test_task"), config_(config) {}
     const std::string& id() const override { return id_; }
     const std::string& type() const override { return type_; }
     task_graph::TaskResult execute(task_graph::IExecutionContext&) override {
         return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED};
     }
     const task_graph::TaskConfig& config() const override {
-        static task_graph::TaskConfig cfg;
-        return cfg;
+        return config_;
     }
     task_graph::CheckResult check_input(const std::vector<std::any>& inputs) const override {
         return task_graph::CheckResult(true);
@@ -24,6 +24,7 @@ public:
 private:
     std::string id_;
     std::string type_;
+    task_graph::TaskConfig config_;
 };
 
 bool test_plugin_registry() {
@@ -31,7 +32,7 @@ bool test_plugin_registry() {
 
     auto& registry = task_graph::PluginRegistry::instance();
     
-    registry.register_task("test_task", []() {
+    registry.register_task("test_task", [](const task_graph::TaskConfig&) {
         return std::make_shared<TestPluginTask>();
     });
 
@@ -101,8 +102,8 @@ bool test_dag_with_plugin_tasks() {
 
     task_graph::DAG dag;
     
-    dag.add_plugin_task("example_task_1");
-    dag.add_plugin_task("data_processor");
+    dag.add_plugin_task("example_task_1", "example_task_1");
+    dag.add_plugin_task("data_processor", "data_processor");
     dag.add_dependency("example_task_1", "data_processor");
 
     task_graph::DAGExecutor executor;

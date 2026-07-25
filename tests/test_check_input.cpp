@@ -11,6 +11,8 @@ public:
     
     const std::string& id() const override { return id_; }
     
+    const std::string& type() const override { return type_; }
+    
     task_graph::TaskResult execute(task_graph::IExecutionContext& ctx) override {
         auto a = ctx.get<int>("input_a");
         auto b = ctx.get<int>("input_b");
@@ -46,7 +48,10 @@ public:
     
 private:
     std::string id_;
+    static const std::string type_;
 };
+
+const std::string SumTask::type_ = "sum_task";
 
 bool test_check_input_success() {
     std::cout << "Test: check_input success case... ";

@@ -44,7 +44,7 @@ PluginRegistry& PluginRegistry::instance() {
 }
 
 void PluginRegistry::register_task(const std::string& task_type,
-                                   std::function<PluginTaskPtr()> creator) {
+                                   std::function<PluginTaskPtr(const TaskConfig&)> creator) {
     std::lock_guard<std::mutex> lock(mutex_);
     task_creators_[task_type] = std::move(creator);
 }
@@ -63,7 +63,20 @@ PluginTaskPtr PluginRegistry::create_task(const std::string& task_type) const {
     std::lock_guard<std::mutex> lock(mutex_);
     auto it = task_creators_.find(task_type);
     if (it != task_creators_.end()) {
-        auto task = it->second();
+        auto task = it->second(TaskConfig{});
+        if (task) {
+            return std::make_shared<TaskWithUniqueId>(std::move(task));
+        }
+        return task;
+    }
+    return nullptr;
+}
+
+PluginTaskPtr PluginRegistry::create_task(const std::string& task_type, const TaskConfig& config) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = task_creators_.find(task_type);
+    if (it != task_creators_.end()) {
+        auto task = it->second(config);
         if (task) {
             return std::make_shared<TaskWithUniqueId>(std::move(task));
         }

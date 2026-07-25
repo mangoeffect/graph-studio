@@ -188,7 +188,7 @@ using ExecutionContextPtr = std::shared_ptr<IExecutionContext>;
 
 class IPluginTask {
 public:
-    virtual ~IPluginTask() = default;
+    virtual ~IPluginTask() noexcept = default;
     virtual const std::string& id() const = 0;
     virtual const std::string& type() const = 0;
     virtual TaskResult execute(IExecutionContext& ctx) = 0;
@@ -204,13 +204,14 @@ public:
     virtual ~IPluginRegistry() = default;
 
     virtual void register_task(const std::string& task_type,
-                               std::function<PluginTaskPtr()> creator) = 0;
+                               std::function<PluginTaskPtr(const TaskConfig&)> creator) = 0;
 
     virtual void unregister_task(const std::string& task_type) = 0;
 
     virtual bool has_task(const std::string& task_type) const = 0;
 
     virtual PluginTaskPtr create_task(const std::string& task_type) const = 0;
+    virtual PluginTaskPtr create_task(const std::string& task_type, const TaskConfig& config) const = 0;
 
     virtual std::vector<std::string> available_tasks() const = 0;
 };
@@ -220,13 +221,14 @@ public:
     static PluginRegistry& instance();
 
     void register_task(const std::string& task_type,
-                       std::function<PluginTaskPtr()> creator) override;
+                       std::function<PluginTaskPtr(const TaskConfig&)> creator) override;
 
     void unregister_task(const std::string& task_type) override;
 
     bool has_task(const std::string& task_type) const override;
 
     PluginTaskPtr create_task(const std::string& task_type) const override;
+    PluginTaskPtr create_task(const std::string& task_type, const TaskConfig& config) const override;
 
     std::vector<std::string> available_tasks() const override;
 
@@ -236,7 +238,7 @@ private:
     PluginRegistry(const PluginRegistry&) = delete;
     PluginRegistry& operator=(const PluginRegistry&) = delete;
 
-    std::unordered_map<std::string, std::function<PluginTaskPtr()>> task_creators_;
+    std::unordered_map<std::string, std::function<PluginTaskPtr(const TaskConfig&)>> task_creators_;
     mutable std::mutex mutex_;
 };
 

@@ -24,11 +24,13 @@ public:
     void add_task(const std::string& id, TaskPtr task);
     void add_plugin_task(const std::string& task_type);
     void add_plugin_task(const std::string& task_id, const std::string& task_type);
+    void add_plugin_task(const std::string& task_id, const std::string& task_type, const TaskConfig& config);
     void add_dependency(const TaskId& from, const TaskId& to);
     void add_dependencies(const TaskId& from, const std::vector<TaskId>& tos);
 
     bool has_task(const TaskId& id) const;
     TaskPtr get_task(const TaskId& id) const;
+    void replace_task(const std::string& id, TaskPtr task);
 
     const std::unordered_map<TaskId, TaskPtr>& tasks() const { return tasks_; }
     const std::unordered_map<TaskId, std::unordered_set<TaskId>>& adjacency() const { return adjacency_; }
