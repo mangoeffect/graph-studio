@@ -93,7 +93,7 @@ std::vector<std::string> PluginLoader::loaded_plugins() const {
 }
 
 bool PluginLoader::is_loaded(const std::string& name) const {
-    return handles_.contains(name);
+    return handles_.find(name) != handles_.end();
 }
 
 }

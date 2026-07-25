@@ -15,7 +15,7 @@ bool test_basic_dag() {
 
     auto task_a = std::make_shared<task_graph::Task>(
         "A",
-        [&](task_graph::ExecutionContext& ctx) {
+        [&](task_graph::IExecutionContext& ctx) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
             counter++;
             return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = 1};
@@ -24,7 +24,7 @@ bool test_basic_dag() {
 
     auto task_b = std::make_shared<task_graph::Task>(
         "B",
-        [&](task_graph::ExecutionContext& ctx) {
+        [&](task_graph::IExecutionContext& ctx) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
             counter++;
             return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = 2};
@@ -33,7 +33,7 @@ bool test_basic_dag() {
 
     auto task_c = std::make_shared<task_graph::Task>(
         "C",
-        [&](task_graph::ExecutionContext& ctx) {
+        [&](task_graph::IExecutionContext& ctx) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
             counter++;
             return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = 3};
@@ -63,14 +63,14 @@ bool test_cycle_detection() {
 
     auto task_a = std::make_shared<task_graph::Task>(
         "A",
-        [](task_graph::ExecutionContext& ctx) {
+        [](task_graph::IExecutionContext& ctx) {
             return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED};
         }
     );
 
     auto task_b = std::make_shared<task_graph::Task>(
         "B",
-        [](task_graph::ExecutionContext& ctx) {
+        [](task_graph::IExecutionContext& ctx) {
             return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED};
         }
     );
@@ -98,7 +98,7 @@ bool test_parallel_execution() {
 
     auto task_a = std::make_shared<task_graph::Task>(
         "A",
-        [&](task_graph::ExecutionContext& ctx) {
+        [&](task_graph::IExecutionContext& ctx) {
             int count = parallel_count.fetch_add(1);
             {
                 std::lock_guard<std::mutex> lock(mtx);
@@ -114,7 +114,7 @@ bool test_parallel_execution() {
 
     auto task_b = std::make_shared<task_graph::Task>(
         "B",
-        [&](task_graph::ExecutionContext& ctx) {
+        [&](task_graph::IExecutionContext& ctx) {
             int count = parallel_count.fetch_add(1);
             {
                 std::lock_guard<std::mutex> lock(mtx);
@@ -130,7 +130,7 @@ bool test_parallel_execution() {
 
     auto task_c = std::make_shared<task_graph::Task>(
         "C",
-        [&](task_graph::ExecutionContext& ctx) {
+        [&](task_graph::IExecutionContext& ctx) {
             int count = parallel_count.fetch_add(1);
             {
                 std::lock_guard<std::mutex> lock(mtx);
@@ -164,7 +164,7 @@ bool test_data_passing() {
 
     auto task_a = std::make_shared<task_graph::Task>(
         "A",
-        [](task_graph::ExecutionContext& ctx) {
+        [](task_graph::IExecutionContext& ctx) {
             ctx.set_value("shared_key", 42);
             return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = 10};
         }
@@ -172,7 +172,7 @@ bool test_data_passing() {
 
     auto task_b = std::make_shared<task_graph::Task>(
         "B",
-        [](task_graph::ExecutionContext& ctx) {
+        [](task_graph::IExecutionContext& ctx) {
             auto value = ctx.get<int>("shared_key");
             if (value && *value == 42) {
                 return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = *value * 2};

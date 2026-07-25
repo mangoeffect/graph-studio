@@ -13,7 +13,7 @@ public:
 
     const std::string& id() const override { return id_; }
     
-    TaskResult execute(ExecutionContext& ctx) override {
+    TaskResult execute(IExecutionContext& ctx) override {
         std::string key = id_ + "_output";
         ctx.set_value(key, value_ * 2);
         return TaskResult{.status = TaskStatus::COMPLETED, .value = value_};
@@ -35,7 +35,7 @@ public:
     
     const std::string& id() const override { return id_; }
     
-    TaskResult execute(ExecutionContext& ctx) override {
+    TaskResult execute(IExecutionContext& ctx) override {
         auto input = ctx.get<int>("input_data");
         if (input) {
             int result = *input * 10;

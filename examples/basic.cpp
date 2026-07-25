@@ -9,7 +9,7 @@ int main() {
 
     auto task_fetch = std::make_shared<task_graph::Task>(
         "fetch_data",
-        [](task_graph::ExecutionContext& ctx) {
+        [](task_graph::IExecutionContext& ctx) {
             std::cout << "[fetch_data] Fetching data from database...\n";
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
             ctx.set_value("raw_data", std::string("user_123_data"));
@@ -19,7 +19,7 @@ int main() {
 
     auto task_process = std::make_shared<task_graph::Task>(
         "process_data",
-        [](task_graph::ExecutionContext& ctx) {
+        [](task_graph::IExecutionContext& ctx) {
             std::cout << "[process_data] Processing data...\n";
             auto data = ctx.get<std::string>("raw_data");
             if (data) {
@@ -32,7 +32,7 @@ int main() {
 
     auto task_save = std::make_shared<task_graph::Task>(
         "save_result",
-        [](task_graph::ExecutionContext& ctx) {
+        [](task_graph::IExecutionContext& ctx) {
             std::cout << "[save_result] Saving result...\n";
             auto data = ctx.get<std::string>("processed_data");
             if (data) {

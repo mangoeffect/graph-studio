@@ -8,7 +8,7 @@ namespace task_graph {
 Task::Task(std::string id, TaskFunction func, TaskConfig config)
     : id_(std::move(id)), func_(std::move(func)), config_(std::move(config)) {}
 
-TaskResult Task::execute(ExecutionContext& ctx) {
+TaskResult Task::execute(IExecutionContext& ctx) {
     TaskResult result;
     auto start_time = std::chrono::high_resolution_clock::now();
 

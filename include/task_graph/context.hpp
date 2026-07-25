@@ -1,9 +1,7 @@
 ﻿#pragma once
 
-#include <plugin_api.hpp>
+#include <execution_context.hpp>
 
 namespace task_graph {
-
-using ExecutionContextPtr = std::shared_ptr<ExecutionContext>;
 
 }

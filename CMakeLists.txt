@@ -24,6 +24,7 @@ add_library(task_graph SHARED
     src/executor.cpp
     src/context.cpp
     src/plugin.cpp
+    src/plugin_registry.cpp
     src/dag_serializer.cpp
     src/logger.cpp
 )

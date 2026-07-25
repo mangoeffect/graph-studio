@@ -32,7 +32,7 @@ void DAG::add_plugin_task(const std::string& task_id) {
 
     auto task = std::make_shared<Task>(
         plugin_task->id(),
-        [plugin_task](ExecutionContext& ctx) {
+        [plugin_task](IExecutionContext& ctx) {
             return plugin_task->execute(ctx);
         },
         plugin_task->config()

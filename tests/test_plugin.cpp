@@ -9,7 +9,7 @@ class TestPluginTask : public task_graph::IPluginTask {
 public:
     TestPluginTask() : id_("test_task") {}
     const std::string& id() const override { return id_; }
-    task_graph::TaskResult execute(task_graph::ExecutionContext&) override {
+    task_graph::TaskResult execute(task_graph::IExecutionContext&) override {
         return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED};
     }
     const task_graph::TaskConfig& config() const override {

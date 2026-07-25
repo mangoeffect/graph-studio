@@ -10,7 +10,7 @@ int main() {
 
     auto task_init = std::make_shared<task_graph::Task>(
         "init",
-        [](task_graph::ExecutionContext& ctx) {
+        [](task_graph::IExecutionContext& ctx) {
             std::cout << "[init] Initializing...\n";
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
             return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED};
@@ -19,7 +19,7 @@ int main() {
 
     auto task_health = std::make_shared<task_graph::Task>(
         "health_check",
-        [](task_graph::ExecutionContext& ctx) {
+        [](task_graph::IExecutionContext& ctx) {
             std::cout << "[health_check] Checking health...\n";
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
             ctx.set_value("health_score", 95);
@@ -29,7 +29,7 @@ int main() {
 
     auto task_analysis = std::make_shared<task_graph::Task>(
         "data_analysis",
-        [](task_graph::ExecutionContext& ctx) {
+        [](task_graph::IExecutionContext& ctx) {
             std::cout << "[data_analysis] Analyzing data...\n";
             std::this_thread::sleep_for(std::chrono::milliseconds(150));
             ctx.set_value("analysis_result", std::string("positive"));
@@ -39,7 +39,7 @@ int main() {
 
     auto task_report = std::make_shared<task_graph::Task>(
         "generate_report",
-        [](task_graph::ExecutionContext& ctx) {
+        [](task_graph::IExecutionContext& ctx) {
             std::cout << "[generate_report] Generating report...\n";
             auto health = ctx.get<int>("health_score");
             auto analysis = ctx.get<std::string>("analysis_result");

@@ -36,7 +36,7 @@ private:
     std::unordered_map<std::string, Handle> handles_;
 };
 
-using PluginRegistryPtr = std::shared_ptr<PluginRegistry>;
+using PluginRegistryPtr = std::shared_ptr<IPluginRegistry>;
 
 }
 

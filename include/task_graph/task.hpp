@@ -6,7 +6,7 @@
 
 namespace task_graph {
 
-using TaskFunction = std::function<TaskResult(ExecutionContext&)>;
+using TaskFunction = std::function<TaskResult(IExecutionContext&)>;
 
 class Task {
 public:
@@ -16,7 +16,7 @@ public:
     const TaskFunction& func() const { return func_; }
     const TaskConfig& config() const { return config_; }
 
-    TaskResult execute(ExecutionContext& ctx);
+    TaskResult execute(IExecutionContext& ctx);
 
 private:
     std::string id_;
