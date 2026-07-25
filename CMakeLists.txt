@@ -25,6 +25,14 @@ if(TASK_GRAPH_ENABLE_CUDA)
     add_definitions(-DTASK_GRAPH_ENABLE_CUDA)
 endif()
 
+option(TASK_GRAPH_ENABLE_OPENCV "Enable OpenCV support for image conversion" OFF)
+
+if(TASK_GRAPH_ENABLE_OPENCV)
+    find_package(OpenCV REQUIRED)
+    include_directories(${OpenCV_INCLUDE_DIRS})
+    add_definitions(-DTASK_GRAPH_ENABLE_OPENCV)
+endif()
+
 add_library(task_graph SHARED
     src/task.cpp
     src/dag.cpp
@@ -50,6 +58,10 @@ target_link_libraries(task_graph
     PUBLIC
         Threads::Threads
 )
+
+if(TASK_GRAPH_ENABLE_OPENCV)
+    target_link_libraries(task_graph PRIVATE ${OpenCV_LIBS})
+endif()
 
 if(UNIX AND NOT APPLE)
     target_link_libraries(task_graph
@@ -167,6 +179,18 @@ target_link_libraries(test_gpu_image
     PRIVATE
         task_graph
 )
+
+if(TASK_GRAPH_ENABLE_OPENCV)
+    add_executable(test_opencv_convert
+        tests/test_opencv_convert.cpp
+    )
+
+    target_link_libraries(test_opencv_convert
+        PRIVATE
+            task_graph
+            ${OpenCV_LIBS}
+    )
+endif()
 
 add_executable(example_basic
     examples/basic.cpp

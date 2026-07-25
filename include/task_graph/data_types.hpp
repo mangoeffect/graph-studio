@@ -7,6 +7,10 @@
 #include <optional>
 #include <typeinfo>
 
+#ifdef TASK_GRAPH_ENABLE_OPENCV
+#include <opencv2/opencv.hpp>
+#endif
+
 namespace task_graph {
 
 enum class PixelFormat {
@@ -84,6 +88,11 @@ struct Image {
     bool to_cpu();
     bool ensure_cpu();
     bool ensure_gpu();
+
+#ifdef TASK_GRAPH_ENABLE_OPENCV
+    static Image from_mat(const cv::Mat& mat);
+    cv::Mat to_mat() const;
+#endif
 };
 
 struct Coordinate2D {
