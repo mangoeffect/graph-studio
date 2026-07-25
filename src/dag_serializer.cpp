@@ -1,6 +1,8 @@
 ﻿#include <task_graph/dag_serializer.hpp>
 #include <task_graph/plugin.hpp>
 #include <stdexcept>
+#include <any>
+#include <typeinfo>
 
 namespace task_graph {
 
@@ -29,6 +31,20 @@ nlohmann::json DAGSerializer::serialize(const DAG& dag) {
             deps_json.push_back(dep);
         }
         task_json["dependencies"] = deps_json;
+        
+        nlohmann::json params_json = nlohmann::json::object();
+        for (const auto& [key, value] : config.params.params()) {
+            if (value.type() == typeid(int)) {
+                params_json[key] = static_cast<int>(std::any_cast<int>(value));
+            } else if (value.type() == typeid(float)) {
+                params_json[key] = static_cast<double>(std::any_cast<float>(value));
+            } else if (value.type() == typeid(std::string)) {
+                params_json[key] = std::any_cast<std::string>(value);
+            }
+        }
+        if (!params_json.empty()) {
+            task_json["params"] = params_json;
+        }
         
         j["tasks"].push_back(task_json);
     }
@@ -99,6 +115,19 @@ DAG DAGSerializer::deserialize(const nlohmann::json& j) {
                 const auto& deps_json = task_json["dependencies"];
                 for (const auto& dep : deps_json) {
                     config.dependencies.push_back(dep.get<std::string>());
+                }
+            }
+            
+            if (task_json.contains("params")) {
+                const auto& params_json = task_json["params"];
+                for (const auto& [key, value] : params_json.get<nlohmann::json::object_t>()) {
+                    if (value.is_number_integer()) {
+                        config.params.set_int(key, static_cast<int>(value.get<int64_t>()));
+                    } else if (value.is_number_float()) {
+                        config.params.set_float(key, static_cast<float>(value.get<double>()));
+                    } else if (value.is_string()) {
+                        config.params.set_string(key, value.get<std::string>());
+                    }
                 }
             }
             

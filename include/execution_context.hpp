@@ -26,6 +26,9 @@ public:
     void clear_result(const TaskId& task_id) override;
     void clear_all_results() override;
 
+    const TaskParams& params() const override { return params_; }
+    void set_params(const TaskParams& params) { params_ = params; }
+
 private:
     mutable std::shared_mutex results_mutex_;
     std::unordered_map<TaskId, TaskResult> results_;
@@ -35,6 +38,8 @@ private:
 
     mutable std::shared_mutex dependencies_mutex_;
     std::vector<TaskId> dependencies_;
+
+    TaskParams params_;
 };
 
 }

@@ -89,12 +89,32 @@ struct CheckResult {
 
 using TaskId = std::string;
 
+class TaskParams {
+public:
+    void set_int(const std::string& key, int value);
+    void set_float(const std::string& key, float value);
+    void set_string(const std::string& key, const std::string& value);
+    
+    std::optional<int> get_int(const std::string& key) const;
+    std::optional<float> get_float(const std::string& key) const;
+    std::optional<std::string> get_string(const std::string& key) const;
+    
+    bool has_param(const std::string& key) const;
+    void clear();
+    
+    const std::unordered_map<std::string, std::any>& params() const { return params_; }
+    
+private:
+    std::unordered_map<std::string, std::any> params_;
+};
+
 struct TaskConfig {
     TaskPriority priority{TaskPriority::NORMAL};
     size_t max_retries{0};
     std::chrono::milliseconds timeout{0};
     bool skip_on_fail{false};
     std::vector<TaskId> dependencies;
+    TaskParams params;
 };
 
 class IExecutionContext {
@@ -115,6 +135,8 @@ public:
 
     virtual void clear_result(const TaskId& task_id) = 0;
     virtual void clear_all_results() = 0;
+
+    virtual const TaskParams& params() const = 0;
 
     void trace(const std::string& msg) { log(LogLevel::TRACE, msg); }
     void debug(const std::string& msg) { log(LogLevel::DEBUG, msg); }
@@ -147,6 +169,18 @@ public:
         } catch (const std::bad_any_cast&) {
             return std::nullopt;
         }
+    }
+
+    std::optional<int> get_param_int(const std::string& key) const {
+        return params().get_int(key);
+    }
+
+    std::optional<float> get_param_float(const std::string& key) const {
+        return params().get_float(key);
+    }
+
+    std::optional<std::string> get_param_string(const std::string& key) const {
+        return params().get_string(key);
     }
 };
 

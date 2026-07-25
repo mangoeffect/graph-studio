@@ -154,6 +154,10 @@ void DAGExecutor::run(const DAG& dag) {
                 }
 
                 TG_LOG_DEBUG("Submitting task '" + tid + "' for execution");
+                auto exec_ctx = dynamic_cast<ExecutionContext*>(context_.get());
+                if (exec_ctx) {
+                    exec_ctx->set_params(task->config().params);
+                }
                 TaskResult result = task->execute(*context_);
 
                 {

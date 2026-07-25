@@ -47,6 +47,7 @@ add_library(task_graph SHARED
     src/data_types.cpp
     src/gpu_image_ops.cpp
     src/task_manager.cpp
+    src/task_params.cpp
 )
 
 target_include_directories(task_graph
@@ -287,6 +288,15 @@ add_executable(test_task_type_id
 )
 
 target_link_libraries(test_task_type_id
+    PRIVATE
+        task_graph
+)
+
+add_executable(test_task_params
+    tests/test_task_params.cpp
+)
+
+target_link_libraries(test_task_params
     PRIVATE
         task_graph
 )
