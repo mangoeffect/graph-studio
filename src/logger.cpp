@@ -5,11 +5,17 @@
 #include <iomanip>
 #include <thread>
 #include <mutex>
+#include <filesystem>
 
 namespace task_graph {
 
 namespace {
     thread_local std::stringstream thread_buffer_;
+
+    std::string get_filename(const char* path) {
+        if (!path || path[0] == '\0') return "";
+        return std::filesystem::path(path).filename().string();
+    }
 }
 
 Logger::Logger() {}
@@ -59,7 +65,7 @@ std::string Logger::get_timestamp() const {
     return ss.str();
 }
 
-void Logger::log(LogLevel level, const std::string& msg) {
+void Logger::log(LogLevel level, const std::string& msg, const char* file, int line) {
     if (!is_enabled(level)) return;
 
     std::lock_guard<std::mutex> lock(mutex_);
@@ -67,34 +73,42 @@ void Logger::log(LogLevel level, const std::string& msg) {
     std::stringstream ss;
     ss << "[" << get_timestamp() << "] ";
     ss << "[" << std::setw(5) << get_level_name(level) << "] ";
+    
+    std::string filename = get_filename(file);
+    if (!filename.empty() && line > 0) {
+        ss << "[" << filename << ":" << line << "] ";
+    } else if (!filename.empty()) {
+        ss << "[" << filename << "] ";
+    }
+    
     ss << msg << std::endl;
 
     std::cout << ss.str();
     std::cout.flush();
 }
 
-void Logger::trace(const std::string& msg) {
-    log(LogLevel::TRACE, msg);
+void Logger::trace(const std::string& msg, const char* file, int line) {
+    log(LogLevel::TRACE, msg, file, line);
 }
 
-void Logger::debug(const std::string& msg) {
-    log(LogLevel::DEBUG, msg);
+void Logger::debug(const std::string& msg, const char* file, int line) {
+    log(LogLevel::DEBUG, msg, file, line);
 }
 
-void Logger::info(const std::string& msg) {
-    log(LogLevel::INFO, msg);
+void Logger::info(const std::string& msg, const char* file, int line) {
+    log(LogLevel::INFO, msg, file, line);
 }
 
-void Logger::warn(const std::string& msg) {
-    log(LogLevel::WARN, msg);
+void Logger::warn(const std::string& msg, const char* file, int line) {
+    log(LogLevel::WARN, msg, file, line);
 }
 
-void Logger::error(const std::string& msg) {
-    log(LogLevel::ERROR, msg);
+void Logger::error(const std::string& msg, const char* file, int line) {
+    log(LogLevel::ERROR, msg, file, line);
 }
 
-void Logger::fatal(const std::string& msg) {
-    log(LogLevel::FATAL, msg);
+void Logger::fatal(const std::string& msg, const char* file, int line) {
+    log(LogLevel::FATAL, msg, file, line);
 }
 
 }

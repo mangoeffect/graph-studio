@@ -42,12 +42,12 @@ public:
     void set_level(LogLevel level);
     LogLevel get_level() const;
 
-    void trace(const std::string& msg);
-    void debug(const std::string& msg);
-    void info(const std::string& msg);
-    void warn(const std::string& msg);
-    void error(const std::string& msg);
-    void fatal(const std::string& msg);
+    void trace(const std::string& msg, const char* file = "", int line = 0);
+    void debug(const std::string& msg, const char* file = "", int line = 0);
+    void info(const std::string& msg, const char* file = "", int line = 0);
+    void warn(const std::string& msg, const char* file = "", int line = 0);
+    void error(const std::string& msg, const char* file = "", int line = 0);
+    void fatal(const std::string& msg, const char* file = "", int line = 0);
 
     bool is_enabled(LogLevel level) const;
 
@@ -58,7 +58,7 @@ private:
     Logger(const Logger&) = delete;
     Logger& operator=(const Logger&) = delete;
 
-    void log(LogLevel level, const std::string& msg);
+    void log(LogLevel level, const std::string& msg, const char* file, int line);
     std::string get_level_name(LogLevel level) const;
     std::string get_timestamp() const;
 
@@ -66,12 +66,12 @@ private:
     LogLevel level_{LogLevel::INFO};
 };
 
-#define TG_LOG_TRACE(msg) do { if (task_graph::Logger::instance().is_enabled(task_graph::LogLevel::TRACE)) task_graph::Logger::instance().trace(msg); } while(0)
-#define TG_LOG_DEBUG(msg) do { if (task_graph::Logger::instance().is_enabled(task_graph::LogLevel::DEBUG)) task_graph::Logger::instance().debug(msg); } while(0)
-#define TG_LOG_INFO(msg) do { if (task_graph::Logger::instance().is_enabled(task_graph::LogLevel::INFO)) task_graph::Logger::instance().info(msg); } while(0)
-#define TG_LOG_WARN(msg) do { if (task_graph::Logger::instance().is_enabled(task_graph::LogLevel::WARN)) task_graph::Logger::instance().warn(msg); } while(0)
-#define TG_LOG_ERROR(msg) do { if (task_graph::Logger::instance().is_enabled(task_graph::LogLevel::ERROR)) task_graph::Logger::instance().error(msg); } while(0)
-#define TG_LOG_FATAL(msg) do { if (task_graph::Logger::instance().is_enabled(task_graph::LogLevel::FATAL)) task_graph::Logger::instance().fatal(msg); } while(0)
+#define TG_LOG_TRACE(msg) do { if (task_graph::Logger::instance().is_enabled(task_graph::LogLevel::TRACE)) task_graph::Logger::instance().trace(msg, __FILE__, __LINE__); } while(0)
+#define TG_LOG_DEBUG(msg) do { if (task_graph::Logger::instance().is_enabled(task_graph::LogLevel::DEBUG)) task_graph::Logger::instance().debug(msg, __FILE__, __LINE__); } while(0)
+#define TG_LOG_INFO(msg) do { if (task_graph::Logger::instance().is_enabled(task_graph::LogLevel::INFO)) task_graph::Logger::instance().info(msg, __FILE__, __LINE__); } while(0)
+#define TG_LOG_WARN(msg) do { if (task_graph::Logger::instance().is_enabled(task_graph::LogLevel::WARN)) task_graph::Logger::instance().warn(msg, __FILE__, __LINE__); } while(0)
+#define TG_LOG_ERROR(msg) do { if (task_graph::Logger::instance().is_enabled(task_graph::LogLevel::ERROR)) task_graph::Logger::instance().error(msg, __FILE__, __LINE__); } while(0)
+#define TG_LOG_FATAL(msg) do { if (task_graph::Logger::instance().is_enabled(task_graph::LogLevel::FATAL)) task_graph::Logger::instance().fatal(msg, __FILE__, __LINE__); } while(0)
 
 enum class TaskStatus {
     PENDING,
