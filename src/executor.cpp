@@ -65,10 +65,14 @@ std::unordered_map<TaskId, TaskResult> DAGExecutor::get_results() const {
     return results_;
 }
 
+// DAG 执行核心：基于动态就绪队列的任务调度
+// 维护每个任务的剩余依赖计数，任务完成时递减下游依赖计数，归零即加入就绪队列
 void DAGExecutor::run(const DAG& dag) {
     try {
         TG_LOG_DEBUG("Initializing task dependencies tracking");
         
+        // remaining_dependencies：每个任务尚未完成的依赖数，归零表示可执行
+        // dependents：每个任务完成后需要通知的下游任务列表
         std::unordered_map<TaskId, std::atomic<size_t>> remaining_dependencies;
         std::unordered_map<TaskId, std::vector<TaskId>> dependents;
 
@@ -82,11 +86,13 @@ void DAGExecutor::run(const DAG& dag) {
             }
         }
 
+        // 就绪队列：存放所有依赖已满足、可立即执行的任务
         std::mutex queue_mutex;
         std::condition_variable queue_cv;
         std::queue<TaskId> ready_queue;
         std::atomic<size_t> completed_count{0};
 
+        // 初始化就绪队列：将所有入度为 0 的无依赖任务加入
         size_t initial_ready = 0;
         for (const auto& [task_id, degree] : remaining_dependencies) {
             if (degree == 0) {
@@ -99,6 +105,7 @@ void DAGExecutor::run(const DAG& dag) {
 
         std::vector<std::future<void>> futures;
 
+        // 任务提交闭包：封装单个任务的完整执行流程
         auto submit_task = [&](const TaskId& tid) {
             futures.push_back(thread_pool_->submit([this, &dag, tid, &remaining_dependencies, &dependents,
                                                    &queue_mutex, &queue_cv, &ready_queue, &completed_count]() {
@@ -122,12 +129,14 @@ void DAGExecutor::run(const DAG& dag) {
                 std::unordered_map<TaskId, TaskResult> input_results;
                 {
                     std::lock_guard<std::mutex> lock(results_mutex_);
+                    // 检查所有依赖任务是否已成功完成；任一未完成则当前任务失败
                     for (const auto& dep : deps) {
                         auto it = results_.find(dep);
                         if (it == results_.end() || it->second.status != TaskStatus::COMPLETED) {
                             TG_LOG_ERROR("Task '" + tid + "' dependency '" + dep + "' not completed");
                             results_[tid] = TaskResult{.status = TaskStatus::FAILED};
                             completed_count.fetch_add(1);
+                            // 即使任务失败也需通知下游，避免调度死锁
                             for (const TaskId& dependent : dependents[tid]) {
                                 size_t remaining = remaining_dependencies[dependent].fetch_sub(1);
                                 if (remaining == 1) {
@@ -142,6 +151,7 @@ void DAGExecutor::run(const DAG& dag) {
                     }
                 }
 
+                // 收集上游任务的输出作为当前任务的输入数据
                 std::vector<std::any> inputs;
                 for (const auto& [dep, result] : input_results) {
                     if (result.value.has_value()) {
@@ -151,6 +161,7 @@ void DAGExecutor::run(const DAG& dag) {
                     }
                 }
 
+                // 输入校验：检查数据数量与类型是否符合任务要求
                 CheckResult check_result = task->check_input(inputs);
                 if (!check_result.success) {
                     TG_LOG_ERROR("Task '" + tid + "' input check failed: " + check_result.error_message);
@@ -159,6 +170,7 @@ void DAGExecutor::run(const DAG& dag) {
                         results_[tid] = TaskResult{.status = TaskStatus::FAILED};
                     }
                     completed_count.fetch_add(1);
+                    // 校验失败同样需推进下游调度
                     for (const TaskId& dependent : dependents[tid]) {
                         size_t remaining = remaining_dependencies[dependent].fetch_sub(1);
                         if (remaining == 1) {
@@ -180,6 +192,7 @@ void DAGExecutor::run(const DAG& dag) {
                     results_[tid] = result;
                 }
 
+                // 关键调度节点：任务完成后递减下游依赖计数，归零则唤醒调度循环
                 for (const TaskId& dependent : dependents[tid]) {
                     size_t remaining = remaining_dependencies[dependent].fetch_sub(1);
                     if (remaining == 1) {
@@ -197,8 +210,10 @@ void DAGExecutor::run(const DAG& dag) {
 
         TG_LOG_DEBUG("Starting task scheduling loop");
 
+        // 主调度循环：持续运行直到所有任务完成或被取消
         while (completed_count < dag.num_tasks() && !cancelled_) {
             std::unique_lock<std::mutex> lock(queue_mutex);
+            // 阻塞等待：直到有任务就绪、全部完成或被取消
             queue_cv.wait(lock, [&]() {
                 return cancelled_ || !ready_queue.empty() || completed_count == dag.num_tasks();
             });
@@ -212,6 +227,7 @@ void DAGExecutor::run(const DAG& dag) {
                 break;
             }
 
+            // 批量取出当前所有就绪任务并提交到线程池并行执行
             while (!ready_queue.empty()) {
                 TaskId task_id = ready_queue.front();
                 ready_queue.pop();
