@@ -10,6 +10,7 @@
 #include <mutex>
 #include <shared_mutex>
 #include <chrono>
+#include <sstream>
 
 #ifdef _WIN32
 #if defined(TASK_GRAPH_BUILD)
@@ -24,6 +25,53 @@
 #endif
 
 namespace task_graph {
+
+enum class LogLevel {
+    TRACE = 0,
+    DEBUG = 1,
+    INFO = 2,
+    WARN = 3,
+    ERROR = 4,
+    FATAL = 5
+};
+
+class TG_EXPORT Logger {
+public:
+    static Logger& instance();
+
+    void set_level(LogLevel level);
+    LogLevel get_level() const;
+
+    void trace(const std::string& msg);
+    void debug(const std::string& msg);
+    void info(const std::string& msg);
+    void warn(const std::string& msg);
+    void error(const std::string& msg);
+    void fatal(const std::string& msg);
+
+    bool is_enabled(LogLevel level) const;
+
+private:
+    Logger();
+    ~Logger();
+
+    Logger(const Logger&) = delete;
+    Logger& operator=(const Logger&) = delete;
+
+    void log(LogLevel level, const std::string& msg);
+    std::string get_level_name(LogLevel level) const;
+    std::string get_timestamp() const;
+
+    mutable std::mutex mutex_;
+    LogLevel level_{LogLevel::INFO};
+};
+
+#define TG_LOG_TRACE(msg) do { if (task_graph::Logger::instance().is_enabled(task_graph::LogLevel::TRACE)) task_graph::Logger::instance().trace(msg); } while(0)
+#define TG_LOG_DEBUG(msg) do { if (task_graph::Logger::instance().is_enabled(task_graph::LogLevel::DEBUG)) task_graph::Logger::instance().debug(msg); } while(0)
+#define TG_LOG_INFO(msg) do { if (task_graph::Logger::instance().is_enabled(task_graph::LogLevel::INFO)) task_graph::Logger::instance().info(msg); } while(0)
+#define TG_LOG_WARN(msg) do { if (task_graph::Logger::instance().is_enabled(task_graph::LogLevel::WARN)) task_graph::Logger::instance().warn(msg); } while(0)
+#define TG_LOG_ERROR(msg) do { if (task_graph::Logger::instance().is_enabled(task_graph::LogLevel::ERROR)) task_graph::Logger::instance().error(msg); } while(0)
+#define TG_LOG_FATAL(msg) do { if (task_graph::Logger::instance().is_enabled(task_graph::LogLevel::FATAL)) task_graph::Logger::instance().fatal(msg); } while(0)
 
 enum class TaskStatus {
     PENDING,

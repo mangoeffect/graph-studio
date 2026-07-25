@@ -25,6 +25,7 @@ add_library(task_graph SHARED
     src/context.cpp
     src/plugin.cpp
     src/dag_serializer.cpp
+    src/logger.cpp
 )
 
 target_include_directories(task_graph
@@ -97,6 +98,15 @@ add_executable(test_json_debug
 )
 
 target_link_libraries(test_json_debug
+    PRIVATE
+        task_graph
+)
+
+add_executable(test_logger
+    tests/test_logger.cpp
+)
+
+target_link_libraries(test_logger
     PRIVATE
         task_graph
 )
