@@ -6,6 +6,14 @@
 #include <thread>
 #include <mutex>
 #include <filesystem>
+#include <sstream>
+
+#ifdef _WIN32
+#include <windows.h>
+#include <processthreadsapi.h>
+#else
+#include <pthread.h>
+#endif
 
 namespace task_graph {
 
@@ -15,6 +23,39 @@ namespace {
     std::string get_filename(const char* path) {
         if (!path || path[0] == '\0') return "";
         return std::filesystem::path(path).filename().string();
+    }
+
+    std::string get_thread_id() {
+        std::stringstream ss;
+#ifdef _WIN32
+        ss << GetCurrentThreadId();
+#elif __APPLE__
+        uint64_t tid;
+        pthread_threadid_np(NULL, &tid);
+        ss << tid;
+#else
+        ss << syscall(SYS_gettid);
+#endif
+        return ss.str();
+    }
+
+    std::string get_thread_name() {
+#ifdef _WIN32
+        char buffer[256];
+        DWORD result = GetThreadDescription(GetCurrentThread());
+        if (result != NULL) {
+            wcscpy_s(buffer, 256, result);
+            LocalFree(result);
+            return std::string(buffer);
+        }
+        return "";
+#else
+        char buffer[16];
+        if (pthread_getname_np(pthread_self(), buffer, sizeof(buffer)) == 0) {
+            return std::string(buffer);
+        }
+        return "";
+#endif
     }
 }
 
@@ -73,6 +114,14 @@ void Logger::log(LogLevel level, const std::string& msg, const char* file, int l
     std::stringstream ss;
     ss << "[" << get_timestamp() << "] ";
     ss << "[" << std::setw(5) << get_level_name(level) << "] ";
+    
+    std::string thread_name = get_thread_name();
+    std::string thread_id = get_thread_id();
+    if (!thread_name.empty()) {
+        ss << "[" << thread_name << "/" << thread_id << "] ";
+    } else {
+        ss << "[T/" << thread_id << "] ";
+    }
     
     std::string filename = get_filename(file);
     if (!filename.empty() && line > 0) {
