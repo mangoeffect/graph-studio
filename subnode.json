@@ -27,6 +27,22 @@
       "tasks": [
         "data_processor"
       ]
+    },
+    {
+      "name": "image_filtering",
+      "url": "./submodules/opencv/image_processing/image_filtering",
+      "ref": "main",
+      "type": "local",
+      "tasks": [
+        "blur_filter",
+        "gaussian_blur_filter",
+        "median_blur_filter",
+        "bilateral_filter",
+        "box_filter",
+        "sobel_filter",
+        "scharr_filter",
+        "laplacian_filter"
+      ]
     }
   ]
 }
