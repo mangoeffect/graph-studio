@@ -8,6 +8,7 @@
 #include <queue>
 #include <condition_variable>
 #include <vector>
+#include <any>
 
 namespace task_graph {
 
@@ -110,6 +111,45 @@ void DAGExecutor::run(const DAG& dag) {
                 TaskPtr task = dag.get_task(tid);
                 if (!task) {
                     TG_LOG_ERROR("Task '" + tid + "' not found in DAG");
+                    return;
+                }
+
+                const auto& deps = task->config().dependencies;
+                for (const auto& dep : deps) {
+                    auto dep_result = context_->get_result(dep);
+                    if (!dep_result || dep_result->status != TaskStatus::COMPLETED) {
+                        TG_LOG_ERROR("Task '" + tid + "' dependency '" + dep + "' not completed");
+                        {
+                            std::lock_guard<std::mutex> lock(results_mutex_);
+                            results_[tid] = TaskResult{.status = TaskStatus::FAILED};
+                        }
+                        context_->set_result(tid, TaskResult{.status = TaskStatus::FAILED});
+                        completed_count.fetch_add(1);
+                        queue_cv.notify_one();
+                        return;
+                    }
+                }
+
+                std::vector<std::any> inputs;
+                for (const auto& dep : deps) {
+                    auto dep_result = context_->get_result(dep);
+                    if (dep_result && dep_result->value.has_value()) {
+                        inputs.push_back(dep_result->value);
+                    } else {
+                        inputs.push_back(std::any());
+                    }
+                }
+
+                CheckResult check_result = task->check_input(inputs);
+                if (!check_result.success) {
+                    TG_LOG_ERROR("Task '" + tid + "' input check failed: " + check_result.error_message);
+                    {
+                        std::lock_guard<std::mutex> lock(results_mutex_);
+                        results_[tid] = TaskResult{.status = TaskStatus::FAILED};
+                    }
+                    context_->set_result(tid, TaskResult{.status = TaskStatus::FAILED});
+                    completed_count.fetch_add(1);
+                    queue_cv.notify_one();
                     return;
                 }
 

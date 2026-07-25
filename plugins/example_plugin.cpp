@@ -3,6 +3,8 @@
 #include <task_graph/context.hpp>
 #include <string>
 #include <memory>
+#include <vector>
+#include <any>
 
 namespace task_graph {
 
@@ -22,6 +24,10 @@ public:
     const TaskConfig& config() const override {
         static TaskConfig default_config;
         return default_config;
+    }
+
+    CheckResult check_input(const std::vector<std::any>& inputs) const override {
+        return CheckResult(true);
     }
 
 private:
@@ -48,6 +54,10 @@ public:
     const TaskConfig& config() const override {
         static TaskConfig default_config;
         return default_config;
+    }
+
+    CheckResult check_input(const std::vector<std::any>& inputs) const override {
+        return CheckResult(true);
     }
 
 private:

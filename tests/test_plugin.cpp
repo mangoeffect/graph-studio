@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <filesystem>
+#include <any>
 
 class TestPluginTask : public task_graph::IPluginTask {
 public:
@@ -15,6 +16,9 @@ public:
     const task_graph::TaskConfig& config() const override {
         static task_graph::TaskConfig cfg;
         return cfg;
+    }
+    task_graph::CheckResult check_input(const std::vector<std::any>& inputs) const override {
+        return task_graph::CheckResult(true);
     }
 private:
     std::string id_;

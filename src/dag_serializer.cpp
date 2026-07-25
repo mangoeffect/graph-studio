@@ -20,6 +20,12 @@ nlohmann::json DAGSerializer::serialize(const DAG& dag) {
         task_json["timeout_ms"] = config.timeout.count();
         task_json["skip_on_fail"] = config.skip_on_fail;
         
+        nlohmann::json deps_json = nlohmann::json::array();
+        for (const auto& dep : config.dependencies) {
+            deps_json.push_back(dep);
+        }
+        task_json["dependencies"] = deps_json;
+        
         j["tasks"].push_back(task_json);
     }
     
@@ -73,6 +79,12 @@ DAG DAGSerializer::deserialize(const nlohmann::json& j) {
             }
             if (task_json.contains("skip_on_fail")) {
                 config.skip_on_fail = task_json["skip_on_fail"].get<bool>();
+            }
+            if (task_json.contains("dependencies")) {
+                const auto& deps_json = task_json["dependencies"];
+                for (const auto& dep : deps_json) {
+                    config.dependencies.push_back(dep.get<std::string>());
+                }
             }
             
             auto task = std::make_shared<Task>(

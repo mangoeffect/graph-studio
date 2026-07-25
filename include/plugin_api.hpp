@@ -76,14 +76,24 @@ struct TaskResult {
     bool is_failed() const { return status == TaskStatus::FAILED; }
 };
 
+struct CheckResult {
+    bool success{false};
+    std::string error_message;
+
+    CheckResult() = default;
+    CheckResult(bool s) : success(s) {}
+    CheckResult(bool s, const std::string& msg) : success(s), error_message(msg) {}
+};
+
+using TaskId = std::string;
+
 struct TaskConfig {
     TaskPriority priority{TaskPriority::NORMAL};
     size_t max_retries{0};
     std::chrono::milliseconds timeout{0};
     bool skip_on_fail{false};
+    std::vector<TaskId> dependencies;
 };
-
-using TaskId = std::string;
 
 class IExecutionContext {
 public:
@@ -96,6 +106,13 @@ public:
     virtual std::optional<std::any> get_value(const std::string& key) const = 0;
 
     virtual void log(LogLevel level, const std::string& msg) = 0;
+
+    virtual void declare_dependency(const TaskId& task_id) = 0;
+    virtual bool validate_dependencies() const = 0;
+    virtual std::vector<TaskId> dependencies() const = 0;
+
+    virtual void clear_result(const TaskId& task_id) = 0;
+    virtual void clear_all_results() = 0;
 
     void trace(const std::string& msg) { log(LogLevel::TRACE, msg); }
     void debug(const std::string& msg) { log(LogLevel::DEBUG, msg); }
@@ -116,6 +133,19 @@ public:
             return std::nullopt;
         }
     }
+
+    template<typename T>
+    std::optional<T> get_result_value(const TaskId& task_id) const {
+        auto opt = get_result(task_id);
+        if (!opt || !opt->value.has_value()) {
+            return std::nullopt;
+        }
+        try {
+            return std::any_cast<T>(opt->value);
+        } catch (const std::bad_any_cast&) {
+            return std::nullopt;
+        }
+    }
 };
 
 using ExecutionContextPtr = std::shared_ptr<IExecutionContext>;
@@ -126,6 +156,8 @@ public:
     virtual const std::string& id() const = 0;
     virtual TaskResult execute(IExecutionContext& ctx) = 0;
     virtual const TaskConfig& config() const = 0;
+    
+    virtual CheckResult check_input(const std::vector<std::any>& inputs) const = 0;
 };
 
 using PluginTaskPtr = std::shared_ptr<IPluginTask>;

@@ -19,12 +19,22 @@ public:
 
     void log(LogLevel level, const std::string& msg) override;
 
+    void declare_dependency(const TaskId& task_id) override;
+    bool validate_dependencies() const override;
+    std::vector<TaskId> dependencies() const override;
+
+    void clear_result(const TaskId& task_id) override;
+    void clear_all_results() override;
+
 private:
     mutable std::shared_mutex results_mutex_;
     std::unordered_map<TaskId, TaskResult> results_;
 
     mutable std::shared_mutex values_mutex_;
     std::unordered_map<std::string, std::any> values_;
+
+    mutable std::shared_mutex dependencies_mutex_;
+    std::vector<TaskId> dependencies_;
 };
 
 }

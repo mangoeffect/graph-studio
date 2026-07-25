@@ -2,11 +2,16 @@
 #include <task_graph/context.hpp>
 #include <plugin_api.hpp>
 #include <sstream>
+#include <any>
 
 namespace task_graph {
 
 Task::Task(std::string id, TaskFunction func, TaskConfig config)
     : id_(std::move(id)), func_(std::move(func)), config_(std::move(config)) {}
+
+CheckResult Task::check_input(const std::vector<std::any>& inputs) const {
+    return CheckResult(true);
+}
 
 TaskResult Task::execute(IExecutionContext& ctx) {
     TaskResult result;

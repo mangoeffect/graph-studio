@@ -112,6 +112,33 @@ target_link_libraries(test_logger
         task_graph
 )
 
+add_executable(test_dependency_injection
+    tests/test_dependency_injection.cpp
+)
+
+target_link_libraries(test_dependency_injection
+    PRIVATE
+        task_graph
+)
+
+add_executable(test_check_input
+    tests/test_check_input.cpp
+)
+
+target_link_libraries(test_check_input
+    PRIVATE
+        task_graph
+)
+
+add_executable(test_check_input_json
+    tests/test_check_input_json.cpp
+)
+
+target_link_libraries(test_check_input_json
+    PRIVATE
+        task_graph
+)
+
 add_executable(example_basic
     examples/basic.cpp
 )
