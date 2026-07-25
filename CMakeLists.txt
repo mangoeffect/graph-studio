@@ -12,6 +12,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake" ${CMAKE_MODULE_PATH})
+
 find_package(Threads REQUIRED)
 
 add_library(task_graph SHARED
@@ -141,6 +143,33 @@ if(WIN32)
     )
 endif()
 
+include(Subnode)
+
+parse_subnode_json("${PROJECT_SOURCE_DIR}/subnode.json")
+
+foreach(submodule ${SUBMODULES})
+    add_subnode_module(${submodule})
+endforeach()
+
+add_executable(test_subnode
+    tests/test_subnode.cpp
+)
+
+target_link_libraries(test_subnode
+    PRIVATE
+        task_graph
+)
+
+foreach(submodule ${SUBMODULES})
+    if(TARGET ${submodule})
+        target_link_libraries(test_subnode
+            PRIVATE
+                ${submodule}
+        )
+    endif()
+endforeach()
+
 enable_testing()
 add_test(NAME test_dag COMMAND test_dag)
 add_test(NAME test_plugin COMMAND test_plugin)
+add_test(NAME test_subnode COMMAND test_subnode)
