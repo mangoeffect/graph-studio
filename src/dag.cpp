@@ -62,7 +62,7 @@ void DAG::add_plugin_task(const std::string& task_type) {
 void DAG::add_plugin_task(const std::string& task_id, const std::string& task_type) {
     TG_LOG_DEBUG("Adding plugin task instance '" + task_id + "' of type '" + task_type + "' to DAG");
     
-    auto plugin_task = PluginRegistry::instance().create_task(task_type);
+    auto plugin_task = PluginRegistry::instance().create_task(task_id, task_type, TaskConfig{});
     if (!plugin_task) {
         TG_LOG_ERROR("Plugin task type '" + task_type + "' not found in registry");
         throw std::runtime_error("Plugin task type '" + task_type + "' not found in registry");
@@ -84,7 +84,7 @@ void DAG::add_plugin_task(const std::string& task_id, const std::string& task_ty
 void DAG::add_plugin_task(const std::string& task_id, const std::string& task_type, const TaskConfig& config) {
     TG_LOG_DEBUG("Adding plugin task instance '" + task_id + "' of type '" + task_type + "' with config to DAG");
     
-    auto plugin_task = PluginRegistry::instance().create_task(task_type, config);
+    auto plugin_task = PluginRegistry::instance().create_task(task_id, task_type, config);
     if (!plugin_task) {
         TG_LOG_ERROR("Plugin task type '" + task_type + "' not found in registry");
         throw std::runtime_error("Plugin task type '" + task_type + "' not found in registry");

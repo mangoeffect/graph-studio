@@ -204,7 +204,7 @@ public:
     virtual ~IPluginRegistry() = default;
 
     virtual void register_task(const std::string& task_type,
-                               std::function<PluginTaskPtr(const TaskConfig&)> creator) = 0;
+                               std::function<PluginTaskPtr(const std::string&, const TaskConfig&)> creator) = 0;
 
     virtual void unregister_task(const std::string& task_type) = 0;
 
@@ -212,6 +212,7 @@ public:
 
     virtual PluginTaskPtr create_task(const std::string& task_type) const = 0;
     virtual PluginTaskPtr create_task(const std::string& task_type, const TaskConfig& config) const = 0;
+    virtual PluginTaskPtr create_task(const std::string& task_id, const std::string& task_type, const TaskConfig& config) const = 0;
 
     virtual std::vector<std::string> available_tasks() const = 0;
 };
@@ -221,7 +222,7 @@ public:
     static PluginRegistry& instance();
 
     void register_task(const std::string& task_type,
-                       std::function<PluginTaskPtr(const TaskConfig&)> creator) override;
+                       std::function<PluginTaskPtr(const std::string&, const TaskConfig&)> creator) override;
 
     void unregister_task(const std::string& task_type) override;
 
@@ -229,6 +230,7 @@ public:
 
     PluginTaskPtr create_task(const std::string& task_type) const override;
     PluginTaskPtr create_task(const std::string& task_type, const TaskConfig& config) const override;
+    PluginTaskPtr create_task(const std::string& task_id, const std::string& task_type, const TaskConfig& config) const override;
 
     std::vector<std::string> available_tasks() const override;
 
@@ -238,7 +240,7 @@ private:
     PluginRegistry(const PluginRegistry&) = delete;
     PluginRegistry& operator=(const PluginRegistry&) = delete;
 
-    std::unordered_map<std::string, std::function<PluginTaskPtr(const TaskConfig&)>> task_creators_;
+    std::unordered_map<std::string, std::function<PluginTaskPtr(const std::string&, const TaskConfig&)>> task_creators_;
     mutable std::mutex mutex_;
 };
 

@@ -8,10 +8,13 @@
 
 class TestPluginTask : public task_graph::IPluginTask {
 public:
-    TestPluginTask(const task_graph::TaskConfig& config = task_graph::TaskConfig()) 
-        : id_("test_task"), type_("test_task"), config_(config) {}
+    TestPluginTask(const std::string& id, const task_graph::TaskConfig& config = task_graph::TaskConfig()) 
+        : id_(id), config_(config) {}
     const std::string& id() const override { return id_; }
-    const std::string& type() const override { return type_; }
+    const std::string& type() const override { 
+        static const std::string type = "test_task";
+        return type; 
+    }
     task_graph::TaskResult execute(task_graph::IExecutionContext&) override {
         return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED};
     }
@@ -23,7 +26,6 @@ public:
     }
 private:
     std::string id_;
-    std::string type_;
     task_graph::TaskConfig config_;
 };
 
@@ -32,8 +34,8 @@ bool test_plugin_registry() {
 
     auto& registry = task_graph::PluginRegistry::instance();
     
-    registry.register_task("test_task", [](const task_graph::TaskConfig&) {
-        return std::make_shared<TestPluginTask>();
+    registry.register_task("test_task", [](const std::string& id, const task_graph::TaskConfig& config) {
+        return std::make_shared<TestPluginTask>(id, config);
     });
 
     bool has_task = registry.has_task("test_task");

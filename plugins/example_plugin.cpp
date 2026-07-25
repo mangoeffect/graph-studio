@@ -83,17 +83,17 @@ static PluginInfo plugin_info = {
 extern "C" TG_EXPORT bool register_plugin() {
     PluginRegistry::instance().register_task(
         "example_task_1",
-        [](const TaskConfig& config) { return std::make_shared<ExamplePluginTask>("example_task_1", 10, config); }
+        [](const std::string& id, const TaskConfig& config) { return std::make_shared<ExamplePluginTask>(id, 10, config); }
     );
     
     PluginRegistry::instance().register_task(
         "example_task_2",
-        [](const TaskConfig& config) { return std::make_shared<ExamplePluginTask>("example_task_2", 20, config); }
+        [](const std::string& id, const TaskConfig& config) { return std::make_shared<ExamplePluginTask>(id, 20, config); }
     );
     
     PluginRegistry::instance().register_task(
         "data_processor",
-        [](const TaskConfig& config) { return std::make_shared<DataProcessorTask>(config); }
+        [](const std::string& id, const TaskConfig& config) { return std::make_shared<DataProcessorTask>(config); }
     );
     
     return true;

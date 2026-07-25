@@ -16,8 +16,8 @@ std::string generate_unique_id(const std::string& task_type) {
 
 class TaskWithUniqueId : public IPluginTask {
 public:
-    TaskWithUniqueId(PluginTaskPtr delegate)
-        : delegate_(std::move(delegate)), instance_id_(generate_unique_id(delegate_->type())) {}
+    TaskWithUniqueId(PluginTaskPtr delegate, const std::string& unique_id)
+        : delegate_(std::move(delegate)), instance_id_(unique_id) {}
     
     const std::string& id() const override { return instance_id_; }
     const std::string& type() const override { return delegate_->type(); }
@@ -44,7 +44,7 @@ PluginRegistry& PluginRegistry::instance() {
 }
 
 void PluginRegistry::register_task(const std::string& task_type,
-                                   std::function<PluginTaskPtr(const TaskConfig&)> creator) {
+                                   std::function<PluginTaskPtr(const std::string&, const TaskConfig&)> creator) {
     std::lock_guard<std::mutex> lock(mutex_);
     task_creators_[task_type] = std::move(creator);
 }
@@ -63,9 +63,13 @@ PluginTaskPtr PluginRegistry::create_task(const std::string& task_type) const {
     std::lock_guard<std::mutex> lock(mutex_);
     auto it = task_creators_.find(task_type);
     if (it != task_creators_.end()) {
-        auto task = it->second(TaskConfig{});
+        std::string unique_id = generate_unique_id(task_type);
+        auto task = it->second(unique_id, TaskConfig{});
         if (task) {
-            return std::make_shared<TaskWithUniqueId>(std::move(task));
+            if (task->id() != unique_id) {
+                return std::make_shared<TaskWithUniqueId>(std::move(task), unique_id);
+            }
+            return task;
         }
         return task;
     }
@@ -76,9 +80,29 @@ PluginTaskPtr PluginRegistry::create_task(const std::string& task_type, const Ta
     std::lock_guard<std::mutex> lock(mutex_);
     auto it = task_creators_.find(task_type);
     if (it != task_creators_.end()) {
-        auto task = it->second(config);
+        std::string unique_id = generate_unique_id(task_type);
+        auto task = it->second(unique_id, config);
         if (task) {
-            return std::make_shared<TaskWithUniqueId>(std::move(task));
+            if (task->id() != unique_id) {
+                return std::make_shared<TaskWithUniqueId>(std::move(task), unique_id);
+            }
+            return task;
+        }
+        return task;
+    }
+    return nullptr;
+}
+
+PluginTaskPtr PluginRegistry::create_task(const std::string& task_id, const std::string& task_type, const TaskConfig& config) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = task_creators_.find(task_type);
+    if (it != task_creators_.end()) {
+        auto task = it->second(task_id, config);
+        if (task) {
+            if (task->id() != task_id) {
+                return std::make_shared<TaskWithUniqueId>(std::move(task), task_id);
+            }
+            return task;
         }
         return task;
     }

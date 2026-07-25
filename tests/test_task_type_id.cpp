@@ -10,11 +10,14 @@
 
 class TestPluginTask : public task_graph::IPluginTask {
 public:
-    TestPluginTask(const task_graph::TaskConfig& config = task_graph::TaskConfig()) 
-        : id_("test_plugin"), type_("test_plugin_type"), config_(config) {}
+    TestPluginTask(const std::string& id, const task_graph::TaskConfig& config = task_graph::TaskConfig()) 
+        : id_(id), config_(config) {}
     
     const std::string& id() const override { return id_; }
-    const std::string& type() const override { return type_; }
+    const std::string& type() const override { 
+        static const std::string type = "test_plugin_type";
+        return type; 
+    }
     
     task_graph::TaskResult execute(task_graph::IExecutionContext& ctx) override {
         return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED};
@@ -30,7 +33,6 @@ public:
     
 private:
     std::string id_;
-    std::string type_;
     task_graph::TaskConfig config_;
 };
 
@@ -39,7 +41,9 @@ bool test_unique_task_id() {
     
     task_graph::PluginRegistry::instance().register_task(
         "test_plugin_type",
-        [](const task_graph::TaskConfig&) { return std::make_shared<TestPluginTask>(); }
+        [](const std::string& id, const task_graph::TaskConfig& config) { 
+            return std::make_shared<TestPluginTask>(id, config); 
+        }
     );
     
     auto task1 = task_graph::PluginRegistry::instance().create_task("test_plugin_type");
@@ -65,8 +69,8 @@ bool test_task_manager() {
     
     task_graph::TaskManager manager;
     
-    auto task1 = std::make_shared<TestPluginTask>();
-    auto task2 = std::make_shared<TestPluginTask>();
+    auto task1 = std::make_shared<TestPluginTask>("test1");
+    auto task2 = std::make_shared<TestPluginTask>("test2");
     
     manager.add_task(task1);
     manager.add_task("custom_id", task2);
@@ -95,7 +99,9 @@ bool test_dag_multiple_same_type() {
     
     task_graph::PluginRegistry::instance().register_task(
         "test_plugin_type",
-        [](const task_graph::TaskConfig&) { return std::make_shared<TestPluginTask>(); }
+        [](const std::string& id, const task_graph::TaskConfig& config) { 
+            return std::make_shared<TestPluginTask>(id, config); 
+        }
     );
     
     task_graph::DAG dag;
@@ -126,7 +132,9 @@ bool test_json_type_id_separate() {
     
     task_graph::PluginRegistry::instance().register_task(
         "test_plugin_type",
-        [](const task_graph::TaskConfig&) { return std::make_shared<TestPluginTask>(); }
+        [](const std::string& id, const task_graph::TaskConfig& config) { 
+            return std::make_shared<TestPluginTask>(id, config); 
+        }
     );
     
     std::string json_str = R"(
