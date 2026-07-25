@@ -16,6 +16,15 @@ set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake" ${CMAKE_MODULE_PATH})
 
 find_package(Threads REQUIRED)
 
+option(TASK_GRAPH_ENABLE_CUDA "Enable CUDA support for GPU image operations" OFF)
+
+if(TASK_GRAPH_ENABLE_CUDA)
+    find_package(CUDA REQUIRED)
+    include_directories(${CUDA_INCLUDE_DIRS})
+    link_libraries(${CUDA_LIBRARIES})
+    add_definitions(-DTASK_GRAPH_ENABLE_CUDA)
+endif()
+
 add_library(task_graph SHARED
     src/task.cpp
     src/dag.cpp
@@ -27,6 +36,8 @@ add_library(task_graph SHARED
     src/plugin_registry.cpp
     src/dag_serializer.cpp
     src/logger.cpp
+    src/data_types.cpp
+    src/gpu_image_ops.cpp
 )
 
 target_include_directories(task_graph
@@ -135,6 +146,24 @@ add_executable(test_check_input_json
 )
 
 target_link_libraries(test_check_input_json
+    PRIVATE
+        task_graph
+)
+
+add_executable(test_data_types
+    tests/test_data_types.cpp
+)
+
+target_link_libraries(test_data_types
+    PRIVATE
+        task_graph
+)
+
+add_executable(test_gpu_image
+    tests/test_gpu_image.cpp
+)
+
+target_link_libraries(test_gpu_image
     PRIVATE
         task_graph
 )

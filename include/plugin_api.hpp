@@ -11,6 +11,8 @@
 #include <mutex>
 #include <shared_mutex>
 
+#include <task_graph/data_types.hpp>
+
 #ifdef _WIN32
 #if defined(TASK_GRAPH_BUILD)
 #define TG_EXPORT __declspec(dllexport)
