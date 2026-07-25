@@ -191,6 +191,17 @@ if(TASK_GRAPH_ENABLE_OPENCV)
             task_graph
             ${OpenCV_LIBS}
     )
+    
+    add_executable(test_opencv_image_filtering
+        tests/test_opencv_image_filtering.cpp
+    )
+
+    target_link_libraries(test_opencv_image_filtering
+        PRIVATE
+            task_graph
+            ${OpenCV_LIBS}
+            image_filtering
+    )
 endif()
 
 add_executable(example_basic
