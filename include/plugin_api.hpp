@@ -156,6 +156,7 @@ class IPluginTask {
 public:
     virtual ~IPluginTask() = default;
     virtual const std::string& id() const = 0;
+    virtual const std::string& type() const = 0;
     virtual TaskResult execute(IExecutionContext& ctx) = 0;
     virtual const TaskConfig& config() const = 0;
     
@@ -168,14 +169,14 @@ class IPluginRegistry {
 public:
     virtual ~IPluginRegistry() = default;
 
-    virtual void register_task(const std::string& task_id,
+    virtual void register_task(const std::string& task_type,
                                std::function<PluginTaskPtr()> creator) = 0;
 
-    virtual void unregister_task(const std::string& task_id) = 0;
+    virtual void unregister_task(const std::string& task_type) = 0;
 
-    virtual bool has_task(const std::string& task_id) const = 0;
+    virtual bool has_task(const std::string& task_type) const = 0;
 
-    virtual PluginTaskPtr create_task(const std::string& task_id) const = 0;
+    virtual PluginTaskPtr create_task(const std::string& task_type) const = 0;
 
     virtual std::vector<std::string> available_tasks() const = 0;
 };
@@ -184,14 +185,14 @@ class TG_EXPORT PluginRegistry : public IPluginRegistry {
 public:
     static PluginRegistry& instance();
 
-    void register_task(const std::string& task_id,
+    void register_task(const std::string& task_type,
                        std::function<PluginTaskPtr()> creator) override;
 
-    void unregister_task(const std::string& task_id) override;
+    void unregister_task(const std::string& task_type) override;
 
-    bool has_task(const std::string& task_id) const override;
+    bool has_task(const std::string& task_type) const override;
 
-    PluginTaskPtr create_task(const std::string& task_id) const override;
+    PluginTaskPtr create_task(const std::string& task_type) const override;
 
     std::vector<std::string> available_tasks() const override;
 

@@ -8,8 +8,9 @@
 
 class TestPluginTask : public task_graph::IPluginTask {
 public:
-    TestPluginTask() : id_("test_task") {}
+    TestPluginTask() : id_("test_task"), type_("test_task") {}
     const std::string& id() const override { return id_; }
+    const std::string& type() const override { return type_; }
     task_graph::TaskResult execute(task_graph::IExecutionContext&) override {
         return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED};
     }
@@ -22,6 +23,7 @@ public:
     }
 private:
     std::string id_;
+    std::string type_;
 };
 
 bool test_plugin_registry() {

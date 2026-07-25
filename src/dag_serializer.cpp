@@ -14,6 +14,10 @@ nlohmann::json DAGSerializer::serialize(const DAG& dag) {
         nlohmann::json task_json;
         task_json["id"] = id;
         
+        if (!task->type().empty() && task->type() != id) {
+            task_json["type"] = task->type();
+        }
+        
         const auto& config = task->config();
         task_json["priority"] = static_cast<int>(config.priority);
         task_json["max_retries"] = config.max_retries;
@@ -61,11 +65,22 @@ DAG DAGSerializer::deserialize(const nlohmann::json& j) {
     
     for (const auto& task_json : j["tasks"]) {
         std::string id = task_json["id"].get<std::string>();
+        std::string type;
         
-        bool is_plugin_task = PluginRegistry::instance().has_task(id);
+        if (task_json.contains("type")) {
+            type = task_json["type"].get<std::string>();
+        } else {
+            type = id;
+        }
+        
+        bool is_plugin_task = PluginRegistry::instance().has_task(type);
         
         if (is_plugin_task) {
-            dag.add_plugin_task(id);
+            if (id == type) {
+                dag.add_plugin_task(type);
+            } else {
+                dag.add_plugin_task(id, type);
+            }
         } else {
             TaskConfig config;
             if (task_json.contains("priority")) {
@@ -89,6 +104,7 @@ DAG DAGSerializer::deserialize(const nlohmann::json& j) {
             
             auto task = std::make_shared<Task>(
                 id,
+                type,
                 [id](IExecutionContext& ctx) {
                     return TaskResult{.status = TaskStatus::COMPLETED};
                 },

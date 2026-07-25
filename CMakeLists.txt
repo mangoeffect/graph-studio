@@ -46,6 +46,7 @@ add_library(task_graph SHARED
     src/logger.cpp
     src/data_types.cpp
     src/gpu_image_ops.cpp
+    src/task_manager.cpp
 )
 
 target_include_directories(task_graph
@@ -266,6 +267,15 @@ add_executable(test_subnode
 )
 
 target_link_libraries(test_subnode
+    PRIVATE
+        task_graph
+)
+
+add_executable(test_task_type_id
+    tests/test_task_type_id.cpp
+)
+
+target_link_libraries(test_task_type_id
     PRIVATE
         task_graph
 )

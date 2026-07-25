@@ -7,7 +7,10 @@
 namespace task_graph {
 
 Task::Task(std::string id, TaskFunction func, TaskConfig config)
-    : id_(std::move(id)), func_(std::move(func)), config_(std::move(config)) {}
+    : id_(std::move(id)), type_(id_), func_(std::move(func)), config_(std::move(config)) {}
+
+Task::Task(std::string id, std::string type, TaskFunction func, TaskConfig config)
+    : id_(std::move(id)), type_(std::move(type)), func_(std::move(func)), config_(std::move(config)) {}
 
 CheckResult Task::check_input(const std::vector<std::any>& inputs) const {
     return CheckResult(true);

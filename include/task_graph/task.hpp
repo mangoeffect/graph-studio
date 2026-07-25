@@ -11,8 +11,10 @@ using TaskFunction = std::function<TaskResult(IExecutionContext&)>;
 class Task : public IPluginTask {
 public:
     Task(std::string id, TaskFunction func, TaskConfig config = {});
+    Task(std::string id, std::string type, TaskFunction func, TaskConfig config = {});
 
     const std::string& id() const override { return id_; }
+    const std::string& type() const override { return type_; }
     const TaskFunction& func() const { return func_; }
     const TaskConfig& config() const override { return config_; }
 
@@ -21,6 +23,7 @@ public:
 
 private:
     std::string id_;
+    std::string type_;
     TaskFunction func_;
     TaskConfig config_;
 };

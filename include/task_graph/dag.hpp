@@ -2,6 +2,7 @@
 
 #include <task_graph/task.hpp>
 #include <task_graph/plugin.hpp>
+#include <task_graph/task_manager.hpp>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -20,7 +21,9 @@ public:
     DAG() = default;
 
     void add_task(TaskPtr task);
-    void add_plugin_task(const std::string& task_id);
+    void add_task(const std::string& id, TaskPtr task);
+    void add_plugin_task(const std::string& task_type);
+    void add_plugin_task(const std::string& task_id, const std::string& task_type);
     void add_dependency(const TaskId& from, const TaskId& to);
     void add_dependencies(const TaskId& from, const std::vector<TaskId>& tos);
 
