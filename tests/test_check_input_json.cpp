@@ -6,6 +6,7 @@
 #include <any>
 #include <vector>
 #include <string>
+#include <task_graph/task_context.hpp>
 
 class StrictSumTask : public task_graph::Task {
 public:
@@ -19,7 +20,7 @@ private:
         return cfg;
     }
     
-    task_graph::TaskResult execute_impl(task_graph::IExecutionContext& ctx) {
+    task_graph::TaskResult execute_impl(task_graph::TaskContext& ctx) {
         auto dep_a = ctx.template get_result_value<int>("producer_a");
         auto dep_b = ctx.template get_result_value<int>("producer_b");
         if (dep_a && dep_b) {

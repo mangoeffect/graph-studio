@@ -6,13 +6,14 @@
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <task_graph/task_context.hpp>
 
 bool test_single_opencv_blur_filter() {
     std::cout << "Test: Single blur filter execution... ";
     
     task_graph::DAG dag;
     
-    auto input_task = std::make_shared<task_graph::Task>("input_image", [](task_graph::IExecutionContext& ctx) {
+    auto input_task = std::make_shared<task_graph::Task>("input_image", [](task_graph::TaskContext& ctx) {
         cv::Mat mat = cv::Mat::ones(100, 100, CV_8UC3) * 200;
         task_graph::Image img = task_graph::Image::from_mat(mat);
         return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = img};
@@ -40,7 +41,7 @@ bool test_multiple_filter_cascade() {
     
     task_graph::DAG dag;
     
-    auto input_task = std::make_shared<task_graph::Task>("input_image", [](task_graph::IExecutionContext& ctx) {
+    auto input_task = std::make_shared<task_graph::Task>("input_image", [](task_graph::TaskContext& ctx) {
         cv::Mat mat = cv::Mat::ones(100, 100, CV_8UC3) * 200;
         task_graph::Image img = task_graph::Image::from_mat(mat);
         return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = img};
@@ -71,7 +72,7 @@ bool test_parallel_filters() {
     
     task_graph::DAG dag;
     
-    auto input_task = std::make_shared<task_graph::Task>("input_image", [](task_graph::IExecutionContext& ctx) {
+    auto input_task = std::make_shared<task_graph::Task>("input_image", [](task_graph::TaskContext& ctx) {
         cv::Mat mat = cv::Mat::ones(100, 100, CV_8UC3) * 200;
         task_graph::Image img = task_graph::Image::from_mat(mat);
         return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = img};
@@ -105,7 +106,7 @@ bool test_long_filter_pipeline() {
     
     task_graph::DAG dag;
     
-    auto input_task = std::make_shared<task_graph::Task>("input_image", [](task_graph::IExecutionContext& ctx) {
+    auto input_task = std::make_shared<task_graph::Task>("input_image", [](task_graph::TaskContext& ctx) {
         cv::Mat mat = cv::Mat::ones(200, 200, CV_8UC3) * 150;
         task_graph::Image img = task_graph::Image::from_mat(mat);
         return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = img};
@@ -145,7 +146,7 @@ bool test_same_type_multiple_instances() {
     
     task_graph::DAG dag;
     
-    auto input_task = std::make_shared<task_graph::Task>("input_image", [](task_graph::IExecutionContext& ctx) {
+    auto input_task = std::make_shared<task_graph::Task>("input_image", [](task_graph::TaskContext& ctx) {
         cv::Mat mat = cv::Mat::ones(100, 100, CV_8UC3) * 200;
         task_graph::Image img = task_graph::Image::from_mat(mat);
         return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = img};
@@ -179,7 +180,7 @@ bool test_filter_with_custom_ids() {
     
     task_graph::DAG dag;
     
-    auto input_task = std::make_shared<task_graph::Task>("input_image", [](task_graph::IExecutionContext& ctx) {
+    auto input_task = std::make_shared<task_graph::Task>("input_image", [](task_graph::TaskContext& ctx) {
         cv::Mat mat = cv::Mat::ones(100, 100, CV_8UC3) * 150;
         task_graph::Image img = task_graph::Image::from_mat(mat);
         return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = img};
@@ -213,7 +214,7 @@ bool test_image_data_passing() {
     
     task_graph::DAG dag;
     
-    auto input_task = std::make_shared<task_graph::Task>("input_image", [](task_graph::IExecutionContext& ctx) {
+    auto input_task = std::make_shared<task_graph::Task>("input_image", [](task_graph::TaskContext& ctx) {
         cv::Mat mat = cv::Mat::zeros(100, 100, CV_8UC3);
         cv::rectangle(mat, cv::Rect(20, 20, 60, 60), cv::Scalar(255, 128, 64), -1);
         task_graph::Image img = task_graph::Image::from_mat(mat);
@@ -254,7 +255,7 @@ bool test_filter_with_params() {
     
     task_graph::DAG dag;
     
-    auto input_task = std::make_shared<task_graph::Task>("input_image", [](task_graph::IExecutionContext& ctx) {
+    auto input_task = std::make_shared<task_graph::Task>("input_image", [](task_graph::TaskContext& ctx) {
         cv::Mat mat = cv::Mat::ones(100, 100, CV_8UC3) * 200;
         task_graph::Image img = task_graph::Image::from_mat(mat);
         return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = img};
@@ -267,7 +268,7 @@ bool test_filter_with_params() {
     auto blur_task = std::make_shared<task_graph::Task>(
         "custom_blur",
         "opencv_blur_filter",
-        [](task_graph::IExecutionContext& ctx) {
+        [](task_graph::TaskContext& ctx) {
             auto img_opt = ctx.template get_result_value<task_graph::Image>("input_image");
             if (!img_opt) {
                 return task_graph::TaskResult{.status = task_graph::TaskStatus::FAILED};
@@ -307,7 +308,7 @@ bool test_gaussian_blur_with_params() {
     
     task_graph::DAG dag;
     
-    auto input_task = std::make_shared<task_graph::Task>("input_image", [](task_graph::IExecutionContext& ctx) {
+    auto input_task = std::make_shared<task_graph::Task>("input_image", [](task_graph::TaskContext& ctx) {
         cv::Mat mat = cv::Mat::ones(100, 100, CV_8UC3) * 200;
         task_graph::Image img = task_graph::Image::from_mat(mat);
         return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = img};
@@ -321,7 +322,7 @@ bool test_gaussian_blur_with_params() {
     auto gaussian_task = std::make_shared<task_graph::Task>(
         "gaussian_custom",
         "opencv_gaussian_blur_filter",
-        [](task_graph::IExecutionContext& ctx) {
+        [](task_graph::TaskContext& ctx) {
             auto img_opt = ctx.template get_result_value<task_graph::Image>("input_image");
             if (!img_opt) {
                 return task_graph::TaskResult{.status = task_graph::TaskStatus::FAILED};
@@ -363,7 +364,7 @@ bool test_cascade_with_params() {
     
     task_graph::DAG dag;
     
-    auto input_task = std::make_shared<task_graph::Task>("input_image", [](task_graph::IExecutionContext& ctx) {
+    auto input_task = std::make_shared<task_graph::Task>("input_image", [](task_graph::TaskContext& ctx) {
         cv::Mat mat = cv::Mat::ones(100, 100, CV_8UC3) * 200;
         task_graph::Image img = task_graph::Image::from_mat(mat);
         return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = img};
@@ -377,7 +378,7 @@ bool test_cascade_with_params() {
     auto gaussian_task = std::make_shared<task_graph::Task>(
         "gaussian_stage",
         "opencv_gaussian_blur_filter",
-        [](task_graph::IExecutionContext& ctx) {
+        [](task_graph::TaskContext& ctx) {
             auto img_opt = ctx.template get_result_value<task_graph::Image>("input_image");
             if (!img_opt) {
                 return task_graph::TaskResult{.status = task_graph::TaskStatus::FAILED};
@@ -406,7 +407,7 @@ bool test_cascade_with_params() {
     auto sobel_task = std::make_shared<task_graph::Task>(
         "sobel_stage",
         "opencv_sobel_filter",
-        [](task_graph::IExecutionContext& ctx) {
+        [](task_graph::TaskContext& ctx) {
             auto img_opt = ctx.template get_result_value<task_graph::Image>("gaussian_stage");
             if (!img_opt) {
                 return task_graph::TaskResult{.status = task_graph::TaskStatus::FAILED};
@@ -486,7 +487,7 @@ bool test_params_from_json() {
     
     task_graph::DAG dag = task_graph::DAGSerializer::from_string(json_str);
     
-    auto input_task = std::make_shared<task_graph::Task>("input_image", [](task_graph::IExecutionContext& ctx) {
+    auto input_task = std::make_shared<task_graph::Task>("input_image", [](task_graph::TaskContext& ctx) {
         cv::Mat mat = cv::Mat::ones(100, 100, CV_8UC3) * 200;
         task_graph::Image img = task_graph::Image::from_mat(mat);
         return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = img};

@@ -2,6 +2,7 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <task_graph/task_context.hpp>
 
 int main() {
     std::cout << "=== Parallel DAG Example ===\n" << std::endl;
@@ -10,7 +11,7 @@ int main() {
 
     auto task_init = std::make_shared<task_graph::Task>(
         "init",
-        [](task_graph::IExecutionContext& ctx) {
+        [](task_graph::TaskContext& ctx) {
             std::cout << "[init] Initializing...\n";
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
             return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED};
@@ -19,32 +20,30 @@ int main() {
 
     auto task_health = std::make_shared<task_graph::Task>(
         "health_check",
-        [](task_graph::IExecutionContext& ctx) {
+        [](task_graph::TaskContext& ctx) {
             std::cout << "[health_check] Checking health...\n";
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
-            ctx.set_value("health_score", 95);
-            return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED};
+            return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = 95};
         }
     );
 
     auto task_analysis = std::make_shared<task_graph::Task>(
         "data_analysis",
-        [](task_graph::IExecutionContext& ctx) {
+        [](task_graph::TaskContext& ctx) {
             std::cout << "[data_analysis] Analyzing data...\n";
             std::this_thread::sleep_for(std::chrono::milliseconds(150));
-            ctx.set_value("analysis_result", std::string("positive"));
-            return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED};
+            return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = std::string("positive")};
         }
     );
 
     auto task_report = std::make_shared<task_graph::Task>(
         "generate_report",
-        [](task_graph::IExecutionContext& ctx) {
+        [](task_graph::TaskContext& ctx) {
             std::cout << "[generate_report] Generating report...\n";
-            auto health = ctx.get<int>("health_score");
-            auto analysis = ctx.get<std::string>("analysis_result");
+            auto health = ctx.get_input<int>("health_check");
+            auto analysis = ctx.get_input<std::string>("data_analysis");
             if (health && analysis) {
-                std::cout << "[generate_report] Report: Health=" << *health 
+                std::cout << "[generate_report] Report: Health=" << *health
                           << ", Analysis=" << *analysis << "\n";
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -80,8 +79,8 @@ int main() {
     auto results = executor.get_results();
     std::cout << "\nExecution results:\n";
     for (const auto& [id, result] : results) {
-        std::cout << "  " << id << ": " 
-                  << (result.is_success() ? "SUCCESS" : "FAILED") 
+        std::cout << "  " << id << ": "
+                  << (result.is_success() ? "SUCCESS" : "FAILED")
                   << " (" << std::chrono::duration_cast<std::chrono::milliseconds>(result.duration).count() << " ms)\n";
     }
 

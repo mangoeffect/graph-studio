@@ -1,12 +1,13 @@
 ﻿#pragma once
 
 #include <plugin_api.hpp>
+#include <task_graph/task_context.hpp>
 #include <functional>
 #include <memory>
 
 namespace task_graph {
 
-using TaskFunction = std::function<TaskResult(IExecutionContext&)>;
+using TaskFunction = std::function<TaskResult(TaskContext&)>;
 
 class Task : public IPluginTask {
 public:
@@ -16,7 +17,7 @@ public:
     const std::string& type() const override { return type_; }
     const TaskFunction& func() const { return func_; }
 
-    TaskResult execute(IExecutionContext& ctx) override;
+    TaskResult execute(TaskContext& ctx) override;
     CheckResult check_input(const std::vector<std::any>& inputs) const override;
 
 private:

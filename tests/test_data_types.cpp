@@ -5,6 +5,7 @@
 #include <iostream>
 #include <any>
 #include <vector>
+#include <task_graph/task_context.hpp>
 
 bool test_image_type() {
     std::cout << "Test: Image type creation and any cast... ";
@@ -132,7 +133,7 @@ private:
         return cfg;
     }
 
-    task_graph::TaskResult execute_impl(task_graph::IExecutionContext& ctx) {
+    task_graph::TaskResult execute_impl(task_graph::TaskContext& ctx) {
         auto img_opt = ctx.template get_result_value<task_graph::Image>("source_image");
         if (!img_opt) {
             return task_graph::TaskResult{.status = task_graph::TaskStatus::FAILED};

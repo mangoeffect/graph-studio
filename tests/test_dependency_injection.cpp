@@ -4,6 +4,7 @@
 #include <plugin_api.hpp>
 #include <iostream>
 #include <any>
+#include <task_graph/task_context.hpp>
 
 bool test_dependency_declaration() {
     std::cout << "Test: Dependency declaration in TaskConfig... ";
@@ -13,7 +14,7 @@ bool test_dependency_declaration() {
     
     auto task = std::make_shared<task_graph::Task>(
         "C",
-        [](task_graph::IExecutionContext& ctx) {
+        [](task_graph::TaskContext& ctx) {
             return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED};
         },
         config
@@ -69,8 +70,8 @@ bool test_context_dependency_methods() {
 bool test_type_safe_get_result() {
     std::cout << "Test: Type-safe get_result_value... ";
     
-    auto ctx = std::make_shared<task_graph::ExecutionContext>();
-    task_graph::IExecutionContext* ctx_ptr = ctx.get();
+    auto ctx = std::make_shared<task_graph::TaskContext>();
+    task_graph::TaskContext* ctx_ptr = ctx.get();
     
     ctx->set_result("task1", task_graph::TaskResult{
         .status = task_graph::TaskStatus::COMPLETED,

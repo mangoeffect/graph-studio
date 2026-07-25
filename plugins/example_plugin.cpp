@@ -1,6 +1,7 @@
 ﻿#include <task_graph/plugin.hpp>
 #include <task_graph/task.hpp>
 #include <task_graph/context.hpp>
+#include <task_graph/task_context.hpp>
 #include <string>
 #include <memory>
 #include <vector>
@@ -17,7 +18,7 @@ public:
         return type;
     }
     
-    TaskResult execute(IExecutionContext& ctx) override {
+    TaskResult execute(TaskContext& ctx) override {
         std::string key = id() + "_output";
         ctx.set_value(key, 42);
         return TaskResult{.status = TaskStatus::COMPLETED, .value = 42};
@@ -33,7 +34,7 @@ public:
         return type;
     }
     
-    TaskResult execute(IExecutionContext& ctx) override {
+    TaskResult execute(TaskContext& ctx) override {
         auto input = ctx.get<int>("input_data");
         if (input) {
             int result = *input * 10;

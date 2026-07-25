@@ -137,52 +137,9 @@ public:
     virtual void clear_all_results() = 0;
 
     virtual const TaskParams& params() const = 0;
-
-    void trace(const std::string& msg) { log(LogLevel::TRACE, msg); }
-    void debug(const std::string& msg) { log(LogLevel::DEBUG, msg); }
-    void info(const std::string& msg) { log(LogLevel::INFO, msg); }
-    void warn(const std::string& msg) { log(LogLevel::WARN, msg); }
-    void error(const std::string& msg) { log(LogLevel::ERROR, msg); }
-    void fatal(const std::string& msg) { log(LogLevel::FATAL, msg); }
-
-    template<typename T>
-    std::optional<T> get(const std::string& key) const {
-        auto opt = get_value(key);
-        if (!opt) {
-            return std::nullopt;
-        }
-        try {
-            return std::any_cast<T>(*opt);
-        } catch (const std::bad_any_cast&) {
-            return std::nullopt;
-        }
-    }
-
-    template<typename T>
-    std::optional<T> get_result_value(const TaskId& task_id) const {
-        auto opt = get_result(task_id);
-        if (!opt || !opt->value.has_value()) {
-            return std::nullopt;
-        }
-        try {
-            return std::any_cast<T>(opt->value);
-        } catch (const std::bad_any_cast&) {
-            return std::nullopt;
-        }
-    }
-
-    std::optional<int> get_param_int(const std::string& key) const {
-        return params().get_int(key);
-    }
-
-    std::optional<float> get_param_float(const std::string& key) const {
-        return params().get_float(key);
-    }
-
-    std::optional<std::string> get_param_string(const std::string& key) const {
-        return params().get_string(key);
-    }
 };
+
+class TaskContext;
 
 using ExecutionContextPtr = std::shared_ptr<IExecutionContext>;
 
@@ -195,10 +152,11 @@ public:
     
     const std::string& id() const { return id_; }
     virtual const std::string& type() const = 0;
-    virtual TaskResult execute(IExecutionContext& ctx) = 0;
+    virtual TaskResult execute(TaskContext& ctx) = 0;
     const TaskConfig& config() const { return config_; }
     
     virtual CheckResult check_input(const std::vector<std::any>& inputs) const {
+        (void)inputs;
         return CheckResult(true);
     }
 

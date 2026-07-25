@@ -4,6 +4,7 @@
 #include <iostream>
 #include <any>
 #include <vector>
+#include <task_graph/task_context.hpp>
 
 class SumTask : public task_graph::IPluginTask {
 public:
@@ -11,7 +12,7 @@ public:
     
     const std::string& type() const override { return type_; }
     
-    task_graph::TaskResult execute(task_graph::IExecutionContext& ctx) override {
+    task_graph::TaskResult execute(task_graph::TaskContext& ctx) override {
         auto a = ctx.get<int>("input_a");
         auto b = ctx.get<int>("input_b");
         if (a && b) {

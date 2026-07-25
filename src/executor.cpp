@@ -1,7 +1,7 @@
 ﻿#include <task_graph/executor.hpp>
 #include <task_graph/compiler.hpp>
 #include <task_graph/thread_pool.hpp>
-#include <task_graph/context.hpp>
+#include <task_graph/task_context.hpp>
 #include <plugin_api.hpp>
 #include <atomic>
 #include <unordered_map>
@@ -13,8 +13,7 @@
 namespace task_graph {
 
 DAGExecutor::DAGExecutor(ExecutorConfig config)
-    : thread_pool_(std::make_shared<ThreadPool>(config.thread_pool_size)),
-      context_(std::make_shared<ExecutionContext>()) {}
+    : thread_pool_(std::make_shared<ThreadPool>(config.thread_pool_size)) {}
 
 DAGExecutor::~DAGExecutor() {
     cancel();
@@ -114,27 +113,39 @@ void DAGExecutor::run(const DAG& dag) {
                     return;
                 }
 
-                const auto& deps = task->config().dependencies;
-                for (const auto& dep : deps) {
-                    auto dep_result = context_->get_result(dep);
-                    if (!dep_result || dep_result->status != TaskStatus::COMPLETED) {
-                        TG_LOG_ERROR("Task '" + tid + "' dependency '" + dep + "' not completed");
-                        {
-                            std::lock_guard<std::mutex> lock(results_mutex_);
+                auto it = dag.reverse_adjacency().find(tid);
+                std::vector<TaskId> deps;
+                if (it != dag.reverse_adjacency().end()) {
+                    deps = std::vector<TaskId>(it->second.begin(), it->second.end());
+                }
+
+                std::unordered_map<TaskId, TaskResult> input_results;
+                {
+                    std::lock_guard<std::mutex> lock(results_mutex_);
+                    for (const auto& dep : deps) {
+                        auto it = results_.find(dep);
+                        if (it == results_.end() || it->second.status != TaskStatus::COMPLETED) {
+                            TG_LOG_ERROR("Task '" + tid + "' dependency '" + dep + "' not completed");
                             results_[tid] = TaskResult{.status = TaskStatus::FAILED};
+                            completed_count.fetch_add(1);
+                            for (const TaskId& dependent : dependents[tid]) {
+                                size_t remaining = remaining_dependencies[dependent].fetch_sub(1);
+                                if (remaining == 1) {
+                                    std::lock_guard<std::mutex> qlock(queue_mutex);
+                                    ready_queue.push(dependent);
+                                }
+                            }
+                            queue_cv.notify_one();
+                            return;
                         }
-                        context_->set_result(tid, TaskResult{.status = TaskStatus::FAILED});
-                        completed_count.fetch_add(1);
-                        queue_cv.notify_one();
-                        return;
+                        input_results[dep] = it->second;
                     }
                 }
 
                 std::vector<std::any> inputs;
-                for (const auto& dep : deps) {
-                    auto dep_result = context_->get_result(dep);
-                    if (dep_result && dep_result->value.has_value()) {
-                        inputs.push_back(dep_result->value);
+                for (const auto& [dep, result] : input_results) {
+                    if (result.value.has_value()) {
+                        inputs.push_back(result.value);
                     } else {
                         inputs.push_back(std::any());
                     }
@@ -147,24 +158,27 @@ void DAGExecutor::run(const DAG& dag) {
                         std::lock_guard<std::mutex> lock(results_mutex_);
                         results_[tid] = TaskResult{.status = TaskStatus::FAILED};
                     }
-                    context_->set_result(tid, TaskResult{.status = TaskStatus::FAILED});
                     completed_count.fetch_add(1);
+                    for (const TaskId& dependent : dependents[tid]) {
+                        size_t remaining = remaining_dependencies[dependent].fetch_sub(1);
+                        if (remaining == 1) {
+                            std::lock_guard<std::mutex> qlock(queue_mutex);
+                            ready_queue.push(dependent);
+                        }
+                    }
                     queue_cv.notify_one();
                     return;
                 }
 
                 TG_LOG_DEBUG("Submitting task '" + tid + "' for execution");
-                auto exec_ctx = dynamic_cast<ExecutionContext*>(context_.get());
-                if (exec_ctx) {
-                    exec_ctx->set_params(task->config().params);
-                }
-                TaskResult result = task->execute(*context_);
+                
+                TaskContext task_ctx(task->config().params, deps, input_results);
+                TaskResult result = task->execute(task_ctx);
 
                 {
                     std::lock_guard<std::mutex> lock(results_mutex_);
                     results_[tid] = result;
                 }
-                context_->set_result(tid, result);
 
                 for (const TaskId& dependent : dependents[tid]) {
                     size_t remaining = remaining_dependencies[dependent].fetch_sub(1);

@@ -5,6 +5,7 @@
 #include <atomic>
 #include <chrono>
 #include <any>
+#include <task_graph/task_context.hpp>
 
 bool test_basic_dag() {
     std::cout << "Test: Basic DAG execution... ";
@@ -15,7 +16,7 @@ bool test_basic_dag() {
 
     auto task_a = std::make_shared<task_graph::Task>(
         "A",
-        [&](task_graph::IExecutionContext& ctx) {
+        [&](task_graph::TaskContext& ctx) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
             counter++;
             return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = 1};
@@ -24,7 +25,7 @@ bool test_basic_dag() {
 
     auto task_b = std::make_shared<task_graph::Task>(
         "B",
-        [&](task_graph::IExecutionContext& ctx) {
+        [&](task_graph::TaskContext& ctx) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
             counter++;
             return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = 2};
@@ -33,7 +34,7 @@ bool test_basic_dag() {
 
     auto task_c = std::make_shared<task_graph::Task>(
         "C",
-        [&](task_graph::IExecutionContext& ctx) {
+        [&](task_graph::TaskContext& ctx) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
             counter++;
             return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = 3};
@@ -63,14 +64,14 @@ bool test_cycle_detection() {
 
     auto task_a = std::make_shared<task_graph::Task>(
         "A",
-        [](task_graph::IExecutionContext& ctx) {
+        [](task_graph::TaskContext& ctx) {
             return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED};
         }
     );
 
     auto task_b = std::make_shared<task_graph::Task>(
         "B",
-        [](task_graph::IExecutionContext& ctx) {
+        [](task_graph::TaskContext& ctx) {
             return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED};
         }
     );
@@ -98,7 +99,7 @@ bool test_parallel_execution() {
 
     auto task_a = std::make_shared<task_graph::Task>(
         "A",
-        [&](task_graph::IExecutionContext& ctx) {
+        [&](task_graph::TaskContext& ctx) {
             int count = parallel_count.fetch_add(1);
             {
                 std::lock_guard<std::mutex> lock(mtx);
@@ -114,7 +115,7 @@ bool test_parallel_execution() {
 
     auto task_b = std::make_shared<task_graph::Task>(
         "B",
-        [&](task_graph::IExecutionContext& ctx) {
+        [&](task_graph::TaskContext& ctx) {
             int count = parallel_count.fetch_add(1);
             {
                 std::lock_guard<std::mutex> lock(mtx);
@@ -130,7 +131,7 @@ bool test_parallel_execution() {
 
     auto task_c = std::make_shared<task_graph::Task>(
         "C",
-        [&](task_graph::IExecutionContext& ctx) {
+        [&](task_graph::TaskContext& ctx) {
             int count = parallel_count.fetch_add(1);
             {
                 std::lock_guard<std::mutex> lock(mtx);
@@ -164,17 +165,16 @@ bool test_data_passing() {
 
     auto task_a = std::make_shared<task_graph::Task>(
         "A",
-        [](task_graph::IExecutionContext& ctx) {
-            ctx.set_value("shared_key", 42);
-            return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = 10};
+        [](task_graph::TaskContext& ctx) {
+            return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = 42};
         }
     );
 
     auto task_b = std::make_shared<task_graph::Task>(
         "B",
-        [](task_graph::IExecutionContext& ctx) {
-            auto value = ctx.get<int>("shared_key");
-            if (value && *value == 42) {
+        [](task_graph::TaskContext& ctx) {
+            auto value = ctx.get_input<int>();
+            if (value) {
                 return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = *value * 2};
             }
             return task_graph::TaskResult{.status = task_graph::TaskStatus::FAILED};
@@ -190,8 +190,10 @@ bool test_data_passing() {
 
     auto results = executor.get_results();
     bool success = results["B"].is_success();
-    auto result_value = std::any_cast<int>(results["B"].value);
-    success &= (result_value == 84);
+    if (success) {
+        auto result_value = std::any_cast<int>(results["B"].value);
+        success &= (result_value == 84);
+    }
 
     std::cout << (success ? "PASSED" : "FAILED") << std::endl;
     return success;

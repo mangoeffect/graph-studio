@@ -2,7 +2,6 @@
 
 #include <task_graph/compiler.hpp>
 #include <task_graph/thread_pool.hpp>
-#include <task_graph/context.hpp>
 #include <unordered_map>
 #include <atomic>
 #include <future>
@@ -34,7 +33,6 @@ private:
     void process_task(const DAG& dag, const ExecutionPlan& plan, const TaskId& task_id);
 
     ThreadPoolPtr thread_pool_;
-    ExecutionContextPtr context_;
     std::atomic<bool> running_{false};
     std::atomic<bool> cancelled_{false};
     std::shared_future<void> execution_future_;

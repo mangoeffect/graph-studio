@@ -164,7 +164,7 @@ DAG DAGSerializer::deserialize(const nlohmann::json& j) {
             auto task = std::make_shared<Task>(
                 id,
                 type,
-                [id](IExecutionContext& ctx) {
+                [id](TaskContext& ctx) {
                     return TaskResult{.status = TaskStatus::COMPLETED};
                 },
                 config

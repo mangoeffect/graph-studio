@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <task_graph/task_context.hpp>
 
 bool test_task_params_set_get() {
     std::cout << "Test: TaskParams set and get... ";
@@ -78,7 +79,7 @@ bool test_task_execution_with_params() {
     
     auto process_task = std::make_shared<task_graph::Task>(
         "process",
-        [](task_graph::IExecutionContext& ctx) {
+        [](task_graph::TaskContext& ctx) {
             auto input = ctx.get_result_value<int>("input");
             auto multiplier = ctx.get_param_int("multiplier");
             auto factor = ctx.get_param_float("factor");
@@ -223,7 +224,7 @@ bool test_cascade_with_params() {
     config1.params.set_int("add_value", 5);
     auto add_task = std::make_shared<task_graph::Task>(
         "add",
-        [](task_graph::IExecutionContext& ctx) {
+        [](task_graph::TaskContext& ctx) {
             auto input = ctx.get_result_value<int>("input");
             auto add_val = ctx.get_param_int("add_value");
             if (input && add_val) {
@@ -239,7 +240,7 @@ bool test_cascade_with_params() {
     config2.params.set_int("multiply_value", 2);
     auto multiply_task = std::make_shared<task_graph::Task>(
         "multiply",
-        [](task_graph::IExecutionContext& ctx) {
+        [](task_graph::TaskContext& ctx) {
             auto input = ctx.get_result_value<int>("add");
             auto mul_val = ctx.get_param_int("multiply_value");
             if (input && mul_val) {

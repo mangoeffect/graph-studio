@@ -18,7 +18,7 @@ CheckResult Task::check_input(const std::vector<std::any>& inputs) const {
     return CheckResult(true);
 }
 
-TaskResult Task::execute(IExecutionContext& ctx) {
+TaskResult Task::execute(TaskContext& ctx) {
     TaskResult result;
     auto start_time = std::chrono::high_resolution_clock::now();
 

@@ -49,7 +49,7 @@ void DAG::add_plugin_task(const std::string& task_type) {
     auto task = std::make_shared<Task>(
         plugin_task->id(),
         plugin_task->type(),
-        [plugin_task](IExecutionContext& ctx) {
+        [plugin_task](TaskContext& ctx) {
             return plugin_task->execute(ctx);
         },
         plugin_task->config()
@@ -71,7 +71,7 @@ void DAG::add_plugin_task(const std::string& task_id, const std::string& task_ty
     auto task = std::make_shared<Task>(
         task_id,
         plugin_task->type(),
-        [plugin_task](IExecutionContext& ctx) {
+        [plugin_task](TaskContext& ctx) {
             return plugin_task->execute(ctx);
         },
         plugin_task->config()
@@ -93,7 +93,7 @@ void DAG::add_plugin_task(const std::string& task_id, const std::string& task_ty
     auto task = std::make_shared<Task>(
         task_id,
         plugin_task->type(),
-        [plugin_task](IExecutionContext& ctx) {
+        [plugin_task](TaskContext& ctx) {
             return plugin_task->execute(ctx);
         },
         plugin_task->config()

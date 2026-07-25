@@ -5,6 +5,7 @@
 #include <vector>
 #include <filesystem>
 #include <any>
+#include <task_graph/task_context.hpp>
 
 class TestPluginTask : public task_graph::IPluginTask {
 public:
@@ -15,7 +16,7 @@ public:
         return type; 
     }
     
-    task_graph::TaskResult execute(task_graph::IExecutionContext&) override {
+    task_graph::TaskResult execute(task_graph::TaskContext&) override {
         return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED};
     }
 };
