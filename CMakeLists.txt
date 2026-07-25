@@ -24,6 +24,7 @@ add_library(task_graph SHARED
     src/executor.cpp
     src/context.cpp
     src/plugin.cpp
+    src/dag_serializer.cpp
 )
 
 target_include_directories(task_graph
@@ -81,6 +82,24 @@ if(UNIX AND NOT APPLE)
             stdc++fs
     )
 endif()
+
+add_executable(test_serializer
+    tests/test_serializer.cpp
+)
+
+target_link_libraries(test_serializer
+    PRIVATE
+        task_graph
+)
+
+add_executable(test_json_debug
+    tests/test_json_debug.cpp
+)
+
+target_link_libraries(test_json_debug
+    PRIVATE
+        task_graph
+)
 
 add_executable(example_basic
     examples/basic.cpp
