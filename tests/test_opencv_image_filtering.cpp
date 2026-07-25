@@ -239,8 +239,8 @@ bool test_image_data_passing() {
     
     if (success && results["edge_stage"].value.has_value()) {
         try {
-            auto output_img = std::any_cast<task_graph::Image>(results["edge_stage"].value);
-            success = output_img.width > 0 && output_img.height > 0;
+            auto output_mat = std::any_cast<cv::Mat>(results["edge_stage"].value);
+            success = !output_mat.empty();
         } catch (...) {
             success = false;
         }

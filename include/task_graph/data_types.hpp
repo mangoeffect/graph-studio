@@ -169,7 +169,11 @@ bool is_type(const std::any& value) {
 }
 
 inline bool is_image(const std::any& value) {
+#ifdef TASK_GRAPH_ENABLE_OPENCV
+    return is_type<cv::Mat>(value) || is_type<Image>(value);
+#else
     return is_type<Image>(value);
+#endif
 }
 
 inline bool is_coordinate2d(const std::any& value) {
