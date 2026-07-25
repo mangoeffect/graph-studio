@@ -34,14 +34,14 @@
       "ref": "main",
       "type": "local",
       "tasks": [
-        "blur_filter",
-        "gaussian_blur_filter",
-        "median_blur_filter",
-        "bilateral_filter",
-        "box_filter",
-        "sobel_filter",
-        "scharr_filter",
-        "laplacian_filter"
+        "opencv_blur_filter",
+        "opencv_gaussian_blur_filter",
+        "opencv_median_blur_filter",
+        "opencv_bilateral_filter",
+        "opencv_box_filter",
+        "opencv_sobel_filter",
+        "opencv_scharr_filter",
+        "opencv_laplacian_filter"
       ]
     }
   ]

@@ -7,7 +7,7 @@
 #include <vector>
 #include <algorithm>
 
-bool test_single_blur_filter() {
+bool test_single_opencv_blur_filter() {
     std::cout << "Test: Single blur filter execution... ";
     
     task_graph::DAG dag;
@@ -19,7 +19,7 @@ bool test_single_blur_filter() {
     });
     
     dag.add_task(input_task);
-    dag.add_plugin_task("my_blur", "blur_filter");
+    dag.add_plugin_task("my_blur", "opencv_blur_filter");
     
     dag.add_dependency("input_image", "my_blur");
     
@@ -47,8 +47,8 @@ bool test_multiple_filter_cascade() {
     });
     
     dag.add_task(input_task);
-    dag.add_plugin_task("gaussian_blur", "gaussian_blur_filter");
-    dag.add_plugin_task("sobel_edge", "sobel_filter");
+    dag.add_plugin_task("gaussian_blur", "opencv_gaussian_blur_filter");
+    dag.add_plugin_task("sobel_edge", "opencv_sobel_filter");
     
     dag.add_dependency("input_image", "gaussian_blur");
     dag.add_dependency("gaussian_blur", "sobel_edge");
@@ -78,9 +78,9 @@ bool test_parallel_filters() {
     });
     
     dag.add_task(input_task);
-    dag.add_plugin_task("box_blur", "blur_filter");
-    dag.add_plugin_task("median_blur", "median_blur_filter");
-    dag.add_plugin_task("bilateral", "bilateral_filter");
+    dag.add_plugin_task("box_blur", "opencv_blur_filter");
+    dag.add_plugin_task("median_blur", "opencv_median_blur_filter");
+    dag.add_plugin_task("bilateral", "opencv_bilateral_filter");
     
     dag.add_dependency("input_image", "box_blur");
     dag.add_dependency("input_image", "median_blur");
@@ -112,11 +112,11 @@ bool test_long_filter_pipeline() {
     });
     
     dag.add_task(input_task);
-    dag.add_plugin_task("stage1_box", "box_filter");
-    dag.add_plugin_task("stage2_gaussian", "gaussian_blur_filter");
-    dag.add_plugin_task("stage3_median", "median_blur_filter");
-    dag.add_plugin_task("stage4_sobel", "sobel_filter");
-    dag.add_plugin_task("stage5_laplacian", "laplacian_filter");
+    dag.add_plugin_task("stage1_box", "opencv_box_filter");
+    dag.add_plugin_task("stage2_gaussian", "opencv_gaussian_blur_filter");
+    dag.add_plugin_task("stage3_median", "opencv_median_blur_filter");
+    dag.add_plugin_task("stage4_sobel", "opencv_sobel_filter");
+    dag.add_plugin_task("stage5_laplacian", "opencv_laplacian_filter");
     
     dag.add_dependency("input_image", "stage1_box");
     dag.add_dependency("stage1_box", "stage2_gaussian");
@@ -152,9 +152,9 @@ bool test_same_type_multiple_instances() {
     });
     
     dag.add_task(input_task);
-    dag.add_plugin_task("blur_instance_1", "blur_filter");
-    dag.add_plugin_task("blur_instance_2", "blur_filter");
-    dag.add_plugin_task("blur_instance_3", "blur_filter");
+    dag.add_plugin_task("blur_instance_1", "opencv_blur_filter");
+    dag.add_plugin_task("blur_instance_2", "opencv_blur_filter");
+    dag.add_plugin_task("blur_instance_3", "opencv_blur_filter");
     
     dag.add_dependency("input_image", "blur_instance_1");
     dag.add_dependency("input_image", "blur_instance_2");
@@ -186,9 +186,9 @@ bool test_filter_with_custom_ids() {
     });
     dag.add_task(input_task);
     
-    dag.add_plugin_task("preprocessing_blur", "gaussian_blur_filter");
-    dag.add_plugin_task("edge_detection", "sobel_filter");
-    dag.add_plugin_task("enhancement", "laplacian_filter");
+    dag.add_plugin_task("preprocessing_blur", "opencv_gaussian_blur_filter");
+    dag.add_plugin_task("edge_detection", "opencv_sobel_filter");
+    dag.add_plugin_task("enhancement", "opencv_laplacian_filter");
     
     dag.add_dependency("input_image", "preprocessing_blur");
     dag.add_dependency("preprocessing_blur", "edge_detection");
@@ -221,8 +221,8 @@ bool test_image_data_passing() {
     });
     
     dag.add_task(input_task);
-    dag.add_plugin_task("blur_stage", "blur_filter");
-    dag.add_plugin_task("edge_stage", "sobel_filter");
+    dag.add_plugin_task("blur_stage", "opencv_blur_filter");
+    dag.add_plugin_task("edge_stage", "opencv_sobel_filter");
     
     dag.add_dependency("input_image", "blur_stage");
     dag.add_dependency("blur_stage", "edge_stage");
@@ -266,7 +266,7 @@ bool test_filter_with_params() {
     
     auto blur_task = std::make_shared<task_graph::Task>(
         "custom_blur",
-        "blur_filter",
+        "opencv_blur_filter",
         [](task_graph::IExecutionContext& ctx) {
             auto img_opt = ctx.template get_result_value<task_graph::Image>("input_image");
             if (!img_opt) {
@@ -320,7 +320,7 @@ bool test_gaussian_blur_with_params() {
     
     auto gaussian_task = std::make_shared<task_graph::Task>(
         "gaussian_custom",
-        "gaussian_blur_filter",
+        "opencv_gaussian_blur_filter",
         [](task_graph::IExecutionContext& ctx) {
             auto img_opt = ctx.template get_result_value<task_graph::Image>("input_image");
             if (!img_opt) {
@@ -376,7 +376,7 @@ bool test_cascade_with_params() {
     
     auto gaussian_task = std::make_shared<task_graph::Task>(
         "gaussian_stage",
-        "gaussian_blur_filter",
+        "opencv_gaussian_blur_filter",
         [](task_graph::IExecutionContext& ctx) {
             auto img_opt = ctx.template get_result_value<task_graph::Image>("input_image");
             if (!img_opt) {
@@ -405,7 +405,7 @@ bool test_cascade_with_params() {
     
     auto sobel_task = std::make_shared<task_graph::Task>(
         "sobel_stage",
-        "sobel_filter",
+        "opencv_sobel_filter",
         [](task_graph::IExecutionContext& ctx) {
             auto img_opt = ctx.template get_result_value<task_graph::Image>("gaussian_stage");
             if (!img_opt) {
@@ -462,14 +462,14 @@ bool test_params_from_json() {
                 {"id": "input_image"},
                 {
                     "id": "param_blur",
-                    "type": "blur_filter",
+                    "type": "opencv_blur_filter",
                     "params": {
                         "kernel_size": 9
                     }
                 },
                 {
                     "id": "param_sobel",
-                    "type": "sobel_filter",
+                    "type": "opencv_sobel_filter",
                     "params": {
                         "kernel_size": 5,
                         "dx": 1,
@@ -509,7 +509,7 @@ bool test_params_from_json() {
 int main() {
     std::vector<bool> results;
     
-    results.push_back(test_single_blur_filter());
+    results.push_back(test_single_opencv_blur_filter());
     results.push_back(test_multiple_filter_cascade());
     results.push_back(test_parallel_filters());
     results.push_back(test_long_filter_pipeline());
