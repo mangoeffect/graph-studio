@@ -1,3 +1,4 @@
 ﻿build/
 submodules/
 .DS_Store
+app/graph_studio/build/

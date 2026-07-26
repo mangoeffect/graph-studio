@@ -1,0 +1,182 @@
+[
+{
+  "directory": "/Users/wumango/Code/task_graph",
+  "command": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ -DTASK_GRAPH_BUILD -Dtask_graph_EXPORTS -I/Users/wumango/Code/task_graph/include  -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk -fPIC -Wall -Wextra -Wpedantic -O2 -std=c++2a -o CMakeFiles/task_graph.dir/src/task.cpp.o -c /Users/wumango/Code/task_graph/src/task.cpp",
+  "file": "/Users/wumango/Code/task_graph/src/task.cpp"
+},
+{
+  "directory": "/Users/wumango/Code/task_graph",
+  "command": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ -DTASK_GRAPH_BUILD -Dtask_graph_EXPORTS -I/Users/wumango/Code/task_graph/include  -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk -fPIC -Wall -Wextra -Wpedantic -O2 -std=c++2a -o CMakeFiles/task_graph.dir/src/dag.cpp.o -c /Users/wumango/Code/task_graph/src/dag.cpp",
+  "file": "/Users/wumango/Code/task_graph/src/dag.cpp"
+},
+{
+  "directory": "/Users/wumango/Code/task_graph",
+  "command": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ -DTASK_GRAPH_BUILD -Dtask_graph_EXPORTS -I/Users/wumango/Code/task_graph/include  -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk -fPIC -Wall -Wextra -Wpedantic -O2 -std=c++2a -o CMakeFiles/task_graph.dir/src/compiler.cpp.o -c /Users/wumango/Code/task_graph/src/compiler.cpp",
+  "file": "/Users/wumango/Code/task_graph/src/compiler.cpp"
+},
+{
+  "directory": "/Users/wumango/Code/task_graph",
+  "command": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ -DTASK_GRAPH_BUILD -Dtask_graph_EXPORTS -I/Users/wumango/Code/task_graph/include  -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk -fPIC -Wall -Wextra -Wpedantic -O2 -std=c++2a -o CMakeFiles/task_graph.dir/src/thread_pool.cpp.o -c /Users/wumango/Code/task_graph/src/thread_pool.cpp",
+  "file": "/Users/wumango/Code/task_graph/src/thread_pool.cpp"
+},
+{
+  "directory": "/Users/wumango/Code/task_graph",
+  "command": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ -DTASK_GRAPH_BUILD -Dtask_graph_EXPORTS -I/Users/wumango/Code/task_graph/include  -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk -fPIC -Wall -Wextra -Wpedantic -O2 -std=c++2a -o CMakeFiles/task_graph.dir/src/executor.cpp.o -c /Users/wumango/Code/task_graph/src/executor.cpp",
+  "file": "/Users/wumango/Code/task_graph/src/executor.cpp"
+},
+{
+  "directory": "/Users/wumango/Code/task_graph",
+  "command": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ -DTASK_GRAPH_BUILD -Dtask_graph_EXPORTS -I/Users/wumango/Code/task_graph/include  -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk -fPIC -Wall -Wextra -Wpedantic -O2 -std=c++2a -o CMakeFiles/task_graph.dir/src/context.cpp.o -c /Users/wumango/Code/task_graph/src/context.cpp",
+  "file": "/Users/wumango/Code/task_graph/src/context.cpp"
+},
+{
+  "directory": "/Users/wumango/Code/task_graph",
+  "command": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ -DTASK_GRAPH_BUILD -Dtask_graph_EXPORTS -I/Users/wumango/Code/task_graph/include  -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk -fPIC -Wall -Wextra -Wpedantic -O2 -std=c++2a -o CMakeFiles/task_graph.dir/src/plugin.cpp.o -c /Users/wumango/Code/task_graph/src/plugin.cpp",
+  "file": "/Users/wumango/Code/task_graph/src/plugin.cpp"
+},
+{
+  "directory": "/Users/wumango/Code/task_graph",
+  "command": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ -DTASK_GRAPH_BUILD -Dtask_graph_EXPORTS -I/Users/wumango/Code/task_graph/include  -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk -fPIC -Wall -Wextra -Wpedantic -O2 -std=c++2a -o CMakeFiles/task_graph.dir/src/plugin_registry.cpp.o -c /Users/wumango/Code/task_graph/src/plugin_registry.cpp",
+  "file": "/Users/wumango/Code/task_graph/src/plugin_registry.cpp"
+},
+{
+  "directory": "/Users/wumango/Code/task_graph",
+  "command": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ -DTASK_GRAPH_BUILD -Dtask_graph_EXPORTS -I/Users/wumango/Code/task_graph/include  -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk -fPIC -Wall -Wextra -Wpedantic -O2 -std=c++2a -o CMakeFiles/task_graph.dir/src/dag_serializer.cpp.o -c /Users/wumango/Code/task_graph/src/dag_serializer.cpp",
+  "file": "/Users/wumango/Code/task_graph/src/dag_serializer.cpp"
+},
+{
+  "directory": "/Users/wumango/Code/task_graph",
+  "command": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ -DTASK_GRAPH_BUILD -Dtask_graph_EXPORTS -I/Users/wumango/Code/task_graph/include  -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk -fPIC -Wall -Wextra -Wpedantic -O2 -std=c++2a -o CMakeFiles/task_graph.dir/src/logger.cpp.o -c /Users/wumango/Code/task_graph/src/logger.cpp",
+  "file": "/Users/wumango/Code/task_graph/src/logger.cpp"
+},
+{
+  "directory": "/Users/wumango/Code/task_graph",
+  "command": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ -DTASK_GRAPH_BUILD -Dtask_graph_EXPORTS -I/Users/wumango/Code/task_graph/include  -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk -fPIC -Wall -Wextra -Wpedantic -O2 -std=c++2a -o CMakeFiles/task_graph.dir/src/data_types.cpp.o -c /Users/wumango/Code/task_graph/src/data_types.cpp",
+  "file": "/Users/wumango/Code/task_graph/src/data_types.cpp"
+},
+{
+  "directory": "/Users/wumango/Code/task_graph",
+  "command": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ -DTASK_GRAPH_BUILD -Dtask_graph_EXPORTS -I/Users/wumango/Code/task_graph/include  -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk -fPIC -Wall -Wextra -Wpedantic -O2 -std=c++2a -o CMakeFiles/task_graph.dir/src/gpu_image_ops.cpp.o -c /Users/wumango/Code/task_graph/src/gpu_image_ops.cpp",
+  "file": "/Users/wumango/Code/task_graph/src/gpu_image_ops.cpp"
+},
+{
+  "directory": "/Users/wumango/Code/task_graph",
+  "command": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ -DTASK_GRAPH_BUILD -Dtask_graph_EXPORTS -I/Users/wumango/Code/task_graph/include  -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk -fPIC -Wall -Wextra -Wpedantic -O2 -std=c++2a -o CMakeFiles/task_graph.dir/src/task_manager.cpp.o -c /Users/wumango/Code/task_graph/src/task_manager.cpp",
+  "file": "/Users/wumango/Code/task_graph/src/task_manager.cpp"
+},
+{
+  "directory": "/Users/wumango/Code/task_graph",
+  "command": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ -DTASK_GRAPH_BUILD -Dtask_graph_EXPORTS -I/Users/wumango/Code/task_graph/include  -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk -fPIC -Wall -Wextra -Wpedantic -O2 -std=c++2a -o CMakeFiles/task_graph.dir/src/task_params.cpp.o -c /Users/wumango/Code/task_graph/src/task_params.cpp",
+  "file": "/Users/wumango/Code/task_graph/src/task_params.cpp"
+},
+{
+  "directory": "/Users/wumango/Code/task_graph",
+  "command": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ -DTASK_GRAPH_BUILD -Dtask_graph_EXPORTS -I/Users/wumango/Code/task_graph/include  -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk -fPIC -Wall -Wextra -Wpedantic -O2 -std=c++2a -o CMakeFiles/task_graph.dir/src/profiler.cpp.o -c /Users/wumango/Code/task_graph/src/profiler.cpp",
+  "file": "/Users/wumango/Code/task_graph/src/profiler.cpp"
+},
+{
+  "directory": "/Users/wumango/Code/task_graph",
+  "command": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++  -I/Users/wumango/Code/task_graph/include  -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk -std=c++2a -o CMakeFiles/test_dag.dir/tests/test_dag.cpp.o -c /Users/wumango/Code/task_graph/tests/test_dag.cpp",
+  "file": "/Users/wumango/Code/task_graph/tests/test_dag.cpp"
+},
+{
+  "directory": "/Users/wumango/Code/task_graph",
+  "command": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++  -I/Users/wumango/Code/task_graph/include  -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk -std=c++2a -o CMakeFiles/test_plugin.dir/tests/test_plugin.cpp.o -c /Users/wumango/Code/task_graph/tests/test_plugin.cpp",
+  "file": "/Users/wumango/Code/task_graph/tests/test_plugin.cpp"
+},
+{
+  "directory": "/Users/wumango/Code/task_graph",
+  "command": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++  -I/Users/wumango/Code/task_graph/include  -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk -std=c++2a -o CMakeFiles/test_serializer.dir/tests/test_serializer.cpp.o -c /Users/wumango/Code/task_graph/tests/test_serializer.cpp",
+  "file": "/Users/wumango/Code/task_graph/tests/test_serializer.cpp"
+},
+{
+  "directory": "/Users/wumango/Code/task_graph",
+  "command": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++  -I/Users/wumango/Code/task_graph/include  -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk -std=c++2a -o CMakeFiles/test_json_debug.dir/tests/test_json_debug.cpp.o -c /Users/wumango/Code/task_graph/tests/test_json_debug.cpp",
+  "file": "/Users/wumango/Code/task_graph/tests/test_json_debug.cpp"
+},
+{
+  "directory": "/Users/wumango/Code/task_graph",
+  "command": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++  -I/Users/wumango/Code/task_graph/include  -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk -std=c++2a -o CMakeFiles/test_logger.dir/tests/test_logger.cpp.o -c /Users/wumango/Code/task_graph/tests/test_logger.cpp",
+  "file": "/Users/wumango/Code/task_graph/tests/test_logger.cpp"
+},
+{
+  "directory": "/Users/wumango/Code/task_graph",
+  "command": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++  -I/Users/wumango/Code/task_graph/include  -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk -std=c++2a -o CMakeFiles/test_dependency_injection.dir/tests/test_dependency_injection.cpp.o -c /Users/wumango/Code/task_graph/tests/test_dependency_injection.cpp",
+  "file": "/Users/wumango/Code/task_graph/tests/test_dependency_injection.cpp"
+},
+{
+  "directory": "/Users/wumango/Code/task_graph",
+  "command": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++  -I/Users/wumango/Code/task_graph/include  -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk -std=c++2a -o CMakeFiles/test_check_input.dir/tests/test_check_input.cpp.o -c /Users/wumango/Code/task_graph/tests/test_check_input.cpp",
+  "file": "/Users/wumango/Code/task_graph/tests/test_check_input.cpp"
+},
+{
+  "directory": "/Users/wumango/Code/task_graph",
+  "command": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++  -I/Users/wumango/Code/task_graph/include  -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk -std=c++2a -o CMakeFiles/test_check_input_json.dir/tests/test_check_input_json.cpp.o -c /Users/wumango/Code/task_graph/tests/test_check_input_json.cpp",
+  "file": "/Users/wumango/Code/task_graph/tests/test_check_input_json.cpp"
+},
+{
+  "directory": "/Users/wumango/Code/task_graph",
+  "command": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++  -I/Users/wumango/Code/task_graph/include  -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk -std=c++2a -o CMakeFiles/test_data_types.dir/tests/test_data_types.cpp.o -c /Users/wumango/Code/task_graph/tests/test_data_types.cpp",
+  "file": "/Users/wumango/Code/task_graph/tests/test_data_types.cpp"
+},
+{
+  "directory": "/Users/wumango/Code/task_graph",
+  "command": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++  -I/Users/wumango/Code/task_graph/include  -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk -std=c++2a -o CMakeFiles/test_gpu_image.dir/tests/test_gpu_image.cpp.o -c /Users/wumango/Code/task_graph/tests/test_gpu_image.cpp",
+  "file": "/Users/wumango/Code/task_graph/tests/test_gpu_image.cpp"
+},
+{
+  "directory": "/Users/wumango/Code/task_graph",
+  "command": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++  -I/Users/wumango/Code/task_graph/include  -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk -std=c++2a -o CMakeFiles/example_basic.dir/examples/basic.cpp.o -c /Users/wumango/Code/task_graph/examples/basic.cpp",
+  "file": "/Users/wumango/Code/task_graph/examples/basic.cpp"
+},
+{
+  "directory": "/Users/wumango/Code/task_graph",
+  "command": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++  -I/Users/wumango/Code/task_graph/include  -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk -std=c++2a -o CMakeFiles/example_parallel.dir/examples/parallel.cpp.o -c /Users/wumango/Code/task_graph/examples/parallel.cpp",
+  "file": "/Users/wumango/Code/task_graph/examples/parallel.cpp"
+},
+{
+  "directory": "/Users/wumango/Code/task_graph",
+  "command": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++  -I/Users/wumango/Code/task_graph/include  -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk -std=c++2a -o CMakeFiles/example_plugin.dir/examples/plugin.cpp.o -c /Users/wumango/Code/task_graph/examples/plugin.cpp",
+  "file": "/Users/wumango/Code/task_graph/examples/plugin.cpp"
+},
+{
+  "directory": "/Users/wumango/Code/task_graph",
+  "command": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ -Dtask_plugin_example_EXPORTS -I/Users/wumango/Code/task_graph/include  -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk -fPIC -std=c++2a -o CMakeFiles/task_plugin_example.dir/plugins/example_plugin.cpp.o -c /Users/wumango/Code/task_graph/plugins/example_plugin.cpp",
+  "file": "/Users/wumango/Code/task_graph/plugins/example_plugin.cpp"
+},
+{
+  "directory": "/Users/wumango/Code/task_graph",
+  "command": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++  -I/Users/wumango/Code/task_graph/include  -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk -std=c++2a -o CMakeFiles/test_subnode.dir/tests/test_subnode.cpp.o -c /Users/wumango/Code/task_graph/tests/test_subnode.cpp",
+  "file": "/Users/wumango/Code/task_graph/tests/test_subnode.cpp"
+},
+{
+  "directory": "/Users/wumango/Code/task_graph",
+  "command": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++  -I/Users/wumango/Code/task_graph/include  -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk -std=c++2a -o CMakeFiles/test_task_type_id.dir/tests/test_task_type_id.cpp.o -c /Users/wumango/Code/task_graph/tests/test_task_type_id.cpp",
+  "file": "/Users/wumango/Code/task_graph/tests/test_task_type_id.cpp"
+},
+{
+  "directory": "/Users/wumango/Code/task_graph",
+  "command": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++  -I/Users/wumango/Code/task_graph/include  -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk -std=c++2a -o CMakeFiles/test_task_params.dir/tests/test_task_params.cpp.o -c /Users/wumango/Code/task_graph/tests/test_task_params.cpp",
+  "file": "/Users/wumango/Code/task_graph/tests/test_task_params.cpp"
+},
+{
+  "directory": "/Users/wumango/Code/task_graph",
+  "command": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++  -I/Users/wumango/Code/task_graph/include  -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk -std=c++2a -o CMakeFiles/test_profiler.dir/tests/test_profiler.cpp.o -c /Users/wumango/Code/task_graph/tests/test_profiler.cpp",
+  "file": "/Users/wumango/Code/task_graph/tests/test_profiler.cpp"
+},
+{
+  "directory": "/Users/wumango/Code/task_graph/submodules/task1",
+  "command": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ -Dtask1_EXPORTS -I/Users/wumango/Code/task_graph/submodules/task1/include -I/Users/wumango/Code/task_graph/include  -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk -fPIC -Wall -Wextra -Wpedantic -O2 -std=c++2a -o CMakeFiles/task1.dir/src/task1.cpp.o -c /Users/wumango/Code/task_graph/submodules/task1/src/task1.cpp",
+  "file": "/Users/wumango/Code/task_graph/submodules/task1/src/task1.cpp"
+},
+{
+  "directory": "/Users/wumango/Code/task_graph/submodules/task2",
+  "command": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ -Dtask2_EXPORTS -I/Users/wumango/Code/task_graph/submodules/task2/include -I/Users/wumango/Code/task_graph/include  -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk -fPIC -Wall -Wextra -Wpedantic -O2 -std=c++2a -o CMakeFiles/task2.dir/src/task2.cpp.o -c /Users/wumango/Code/task_graph/submodules/task2/src/task2.cpp",
+  "file": "/Users/wumango/Code/task_graph/submodules/task2/src/task2.cpp"
+},
+{
+  "directory": "/Users/wumango/Code/task_graph/submodules/task_processor",
+  "command": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ -Dtask_processor_EXPORTS -I/Users/wumango/Code/task_graph/submodules/task_processor/include -I/Users/wumango/Code/task_graph/include  -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk -fPIC -Wall -Wextra -Wpedantic -O2 -std=c++2a -o CMakeFiles/task_processor.dir/src/task_processor.cpp.o -c /Users/wumango/Code/task_graph/submodules/task_processor/src/task_processor.cpp",
+  "file": "/Users/wumango/Code/task_graph/submodules/task_processor/src/task_processor.cpp"
+}
+]
