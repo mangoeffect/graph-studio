@@ -35,7 +35,7 @@
 
 ## Phase 1: 基础框架搭建（2-3 周）
 
-### [ ] Task 1.1: 搭建 Qt6 开发环境（Windows/macOS）
+### [x] Task 1.1: 搭建 Qt6 开发环境（Windows/macOS）
 - **Priority**: high
 - **Depends On**: None
 - **Description**: 
@@ -47,7 +47,7 @@
   - `human-judgment` TR-1.1.1: Qt6 安装完成，qmake 可正常运行
   - `programmatic` TR-1.1.2: CMake 配置可正确找到 Qt6 库
 
-### [ ] Task 1.2: 集成 task_graph 库
+### [x] Task 1.2: 集成 task_graph 库
 - **Priority**: high
 - **Depends On**: Task 1.1
 - **Description**: 
@@ -278,7 +278,7 @@
 
 ## Phase 5: 测试与优化（2 周）
 
-### [ ] Task 5.1: 单元测试
+### [x] Task 5.1: 单元测试
 - **Priority**: medium
 - **Depends On**: Task 1.4, Task 3.2
 - **Description**: 
@@ -291,7 +291,7 @@
   - `programmatic` TR-5.1.2: CommandStack 测试用例全部通过
   - `programmatic` TR-5.1.3: JSON 序列化测试用例全部通过
 
-### [ ] Task 5.2: 集成测试
+### [x] Task 5.2: 集成测试
 - **Priority**: medium
 - **Depends On**: Task 2.4, Task 2.5, Task 2.6
 - **Description**: 

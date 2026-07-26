@@ -81,6 +81,7 @@ private:
     QString generateUniqueId(const QString& taskType) const;
     void rebuildDag();
     void removeEdgesOfNode(const QString& taskId);
+    bool canReach(const QString& from, const QString& to) const;
 
     GraphModel& model_;
     QList<NodeData> nodeList_;

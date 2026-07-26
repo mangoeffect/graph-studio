@@ -4,6 +4,7 @@
 #include <QTextStream>
 #include <QSet>
 #include <QQueue>
+#include <QStack>
 #include <algorithm>
 
 using namespace graph_studio;
@@ -110,6 +111,13 @@ bool GraphViewModel::addEdge(const QString& fromId, const QString& toId)
             emit logMessage("[WARNING] Edge already exists: " + fromId + " -> " + toId);
             return false;
         }
+    }
+
+    // Cycle detection: adding from->to would create a cycle if to can already
+    // reach from through existing edges.
+    if (canReach(toId, fromId)) {
+        emit logMessage("[WARNING] Cycle detected, cannot add edge: " + fromId + " -> " + toId);
+        return false;
     }
 
     if (!model_.add_edge(fromId.toStdString(), toId.toStdString())) {
@@ -386,4 +394,30 @@ void GraphViewModel::removeEdgesOfNode(const QString& taskId)
             edgeList_.removeAt(i);
         }
     }
+}
+
+bool GraphViewModel::canReach(const QString& from, const QString& to) const
+{
+    // DFS: check if there's a path from 'from' to 'to' via existing edges
+    if (from == to)
+        return true;
+
+    QSet<QString> visited;
+    QStack<QString> stack;
+    stack.push(from);
+
+    while (!stack.isEmpty()) {
+        QString cur = stack.pop();
+        if (cur == to)
+            return true;
+        if (visited.contains(cur))
+            continue;
+        visited.insert(cur);
+
+        for (const auto& e : edgeList_) {
+            if (e.fromId == cur && !visited.contains(e.toId))
+                stack.push(e.toId);
+        }
+    }
+    return false;
 }

@@ -1,6 +1,8 @@
 #include "model/GraphModel.h"
 #include <task_graph/dag.hpp>
 #include <task_graph/dag_serializer.hpp>
+#include <task_graph/task.hpp>
+#include <task_graph/task_context.hpp>
 #include <stdexcept>
 
 using namespace graph_studio;
@@ -15,10 +17,25 @@ GraphModel::~GraphModel() = default;
 bool GraphModel::add_task(const std::string& task_id, const std::string& task_type, const task_graph::TaskConfig& config)
 {
     try {
+        // Prefer registered plugin task (real implementation available)
         dag_->add_plugin_task(task_id, task_type, config);
         return true;
     } catch (const std::exception&) {
-        return false;
+        // Fallback: plugin not registered, create a placeholder task so the
+        // editor can still model the graph. Execution will require the plugin
+        // to be registered at runtime.
+        try {
+            auto placeholder = std::make_shared<task_graph::Task>(
+                task_id, task_type,
+                [](task_graph::TaskContext&) -> task_graph::TaskResult {
+                    return {};
+                },
+                config);
+            dag_->add_task(task_id, placeholder);
+            return true;
+        } catch (const std::exception&) {
+            return false;
+        }
     }
 }
 
@@ -42,7 +59,7 @@ void GraphModel::rebuild(const std::vector<std::pair<std::string, std::string>>&
 {
     dag_ = std::make_unique<task_graph::DAG>();
     for (const auto& [id, type] : tasks) {
-        dag_->add_plugin_task(id, type);
+        add_task(id, type);
     }
     for (const auto& [from, to] : edges) {
         dag_->add_dependency(from, to);

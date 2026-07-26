@@ -27,7 +27,7 @@ if(APPLE)
     endforeach()
 endif()
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets)
+find_package(Qt6 REQUIRED COMPONENTS Widgets Test)
 qt_standard_project_setup()
 
 set(PROJECT_HEADERS
@@ -70,3 +70,43 @@ if(APPLE)
         MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/src/platform/macos/Info.plist.in"
     )
 endif()
+
+# ---- 单元测试与集成测试 ----
+enable_testing()
+
+# ViewModel 单元测试
+qt_add_executable(test_graph_view_model
+    tests/test_graph_view_model.cpp
+    include/model/GraphModel.h
+    include/viewmodel/GraphViewModel.h
+    src/model/GraphModel.cpp
+    src/viewmodel/GraphViewModel.cpp
+)
+target_link_libraries(test_graph_view_model PRIVATE Qt6::Test task_graph)
+add_test(NAME test_graph_view_model COMMAND test_graph_view_model)
+
+# CommandStack 单元测试
+qt_add_executable(test_command_stack
+    tests/test_command_stack.cpp
+    include/model/GraphModel.h
+    include/viewmodel/GraphViewModel.h
+    include/command/CommandStack.h
+    src/model/GraphModel.cpp
+    src/viewmodel/GraphViewModel.cpp
+    src/command/CommandStack.cpp
+)
+target_link_libraries(test_command_stack PRIVATE Qt6::Test task_graph)
+add_test(NAME test_command_stack COMMAND test_command_stack)
+
+# 集成测试
+qt_add_executable(test_integration
+    tests/test_integration.cpp
+    include/model/GraphModel.h
+    include/viewmodel/GraphViewModel.h
+    include/command/CommandStack.h
+    src/model/GraphModel.cpp
+    src/viewmodel/GraphViewModel.cpp
+    src/command/CommandStack.cpp
+)
+target_link_libraries(test_integration PRIVATE Qt6::Test task_graph)
+add_test(NAME test_integration COMMAND test_integration)

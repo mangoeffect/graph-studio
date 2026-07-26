@@ -11,8 +11,13 @@ AddTaskCommand::AddTaskCommand(GraphViewModel& vm, const QString& taskType, qrea
 
 void AddTaskCommand::execute()
 {
-    // Generate id via ViewModel (id stored for undo)
-    taskId_ = vm_.addTask(taskType_, x_, y_);
+    if (taskId_.isEmpty()) {
+        // First execution: let ViewModel generate the id
+        taskId_ = vm_.addTask(taskType_, x_, y_);
+    } else {
+        // Redo: reuse the original id so edges still reference it
+        vm_.addTask(taskType_, x_, y_, taskId_);
+    }
 }
 
 void AddTaskCommand::undo()
