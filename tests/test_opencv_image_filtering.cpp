@@ -507,6 +507,213 @@ bool test_params_from_json() {
     return success;
 }
 
+bool test_filter_2d() {
+    std::cout << "Test: Filter2D task... ";
+    
+    task_graph::DAG dag;
+    
+    auto input_task = std::make_shared<task_graph::Task>("input_image", [](task_graph::TaskContext& ctx) {
+        cv::Mat mat = cv::Mat::ones(100, 100, CV_8UC3) * 200;
+        task_graph::Image img = task_graph::Image::from_mat(mat);
+        return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = img};
+    });
+    
+    dag.add_task(input_task);
+    dag.add_plugin_task("filter_2d", "opencv_filter_2d");
+    
+    dag.add_dependency("input_image", "filter_2d");
+    
+    task_graph::DAGExecutor executor;
+    executor.execute(dag).wait();
+    
+    auto results = executor.get_results();
+    
+    bool success = results["input_image"].is_success() && 
+                   results["filter_2d"].is_success();
+    
+    std::cout << (success ? "PASSED" : "FAILED") << std::endl;
+    return success;
+}
+
+bool test_dilate_erode() {
+    std::cout << "Test: Dilate and Erode tasks... ";
+    
+    task_graph::DAG dag;
+    
+    auto input_task = std::make_shared<task_graph::Task>("input_image", [](task_graph::TaskContext& ctx) {
+        cv::Mat mat = cv::Mat::zeros(100, 100, CV_8UC1);
+        cv::rectangle(mat, cv::Rect(40, 40, 20, 20), cv::Scalar(255), -1);
+        task_graph::Image img = task_graph::Image::from_mat(mat);
+        return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = img};
+    });
+    
+    dag.add_task(input_task);
+    dag.add_plugin_task("dilate", "opencv_dilate");
+    dag.add_plugin_task("erode", "opencv_erode");
+    
+    dag.add_dependency("input_image", "dilate");
+    dag.add_dependency("dilate", "erode");
+    
+    task_graph::DAGExecutor executor;
+    executor.execute(dag).wait();
+    
+    auto results = executor.get_results();
+    
+    bool success = results["input_image"].is_success() && 
+                   results["dilate"].is_success() &&
+                   results["erode"].is_success();
+    
+    std::cout << (success ? "PASSED" : "FAILED") << std::endl;
+    return success;
+}
+
+bool test_morphology_ex() {
+    std::cout << "Test: MorphologyEx task (OPEN/CLOSE)... ";
+    
+    task_graph::DAG dag;
+    
+    auto input_task = std::make_shared<task_graph::Task>("input_image", [](task_graph::TaskContext& ctx) {
+        cv::Mat mat = cv::Mat::zeros(100, 100, CV_8UC1);
+        cv::rectangle(mat, cv::Rect(40, 40, 20, 20), cv::Scalar(255), -1);
+        task_graph::Image img = task_graph::Image::from_mat(mat);
+        return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = img};
+    });
+    
+    dag.add_task(input_task);
+    dag.add_plugin_task("morph_open", "opencv_morphology_ex");
+    dag.add_plugin_task("morph_close", "opencv_morphology_ex");
+    
+    dag.add_dependency("input_image", "morph_open");
+    dag.add_dependency("morph_open", "morph_close");
+    
+    task_graph::DAGExecutor executor;
+    executor.execute(dag).wait();
+    
+    auto results = executor.get_results();
+    
+    bool success = results["input_image"].is_success() && 
+                   results["morph_open"].is_success() &&
+                   results["morph_close"].is_success();
+    
+    std::cout << (success ? "PASSED" : "FAILED") << std::endl;
+    return success;
+}
+
+bool test_pyramid_tasks() {
+    std::cout << "Test: PyrDown and PyrUp tasks... ";
+    
+    task_graph::DAG dag;
+    
+    auto input_task = std::make_shared<task_graph::Task>("input_image", [](task_graph::TaskContext& ctx) {
+        cv::Mat mat = cv::Mat::ones(200, 200, CV_8UC3) * 150;
+        task_graph::Image img = task_graph::Image::from_mat(mat);
+        return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = img};
+    });
+    
+    dag.add_task(input_task);
+    dag.add_plugin_task("pyr_down", "opencv_pyr_down");
+    dag.add_plugin_task("pyr_up", "opencv_pyr_up");
+    
+    dag.add_dependency("input_image", "pyr_down");
+    dag.add_dependency("pyr_down", "pyr_up");
+    
+    task_graph::DAGExecutor executor;
+    executor.execute(dag).wait();
+    
+    auto results = executor.get_results();
+    
+    bool success = results["input_image"].is_success() && 
+                   results["pyr_down"].is_success() &&
+                   results["pyr_up"].is_success();
+    
+    std::cout << (success ? "PASSED" : "FAILED") << std::endl;
+    return success;
+}
+
+bool test_sep_filter_2d() {
+    std::cout << "Test: SepFilter2D task... ";
+    
+    task_graph::DAG dag;
+    
+    auto input_task = std::make_shared<task_graph::Task>("input_image", [](task_graph::TaskContext& ctx) {
+        cv::Mat mat = cv::Mat::ones(100, 100, CV_8UC3) * 200;
+        task_graph::Image img = task_graph::Image::from_mat(mat);
+        return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = img};
+    });
+    
+    dag.add_task(input_task);
+    dag.add_plugin_task("sep_filter", "opencv_sep_filter_2d");
+    
+    dag.add_dependency("input_image", "sep_filter");
+    
+    task_graph::DAGExecutor executor;
+    executor.execute(dag).wait();
+    
+    auto results = executor.get_results();
+    
+    bool success = results["input_image"].is_success() && 
+                   results["sep_filter"].is_success();
+    
+    std::cout << (success ? "PASSED" : "FAILED") << std::endl;
+    return success;
+}
+
+bool test_sqr_box_filter() {
+    std::cout << "Test: SqrBoxFilter task... ";
+    
+    task_graph::DAG dag;
+    
+    auto input_task = std::make_shared<task_graph::Task>("input_image", [](task_graph::TaskContext& ctx) {
+        cv::Mat mat = cv::Mat::ones(100, 100, CV_8UC3) * 100;
+        task_graph::Image img = task_graph::Image::from_mat(mat);
+        return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = img};
+    });
+    
+    dag.add_task(input_task);
+    dag.add_plugin_task("sqr_box", "opencv_sqr_box_filter");
+    
+    dag.add_dependency("input_image", "sqr_box");
+    
+    task_graph::DAGExecutor executor;
+    executor.execute(dag).wait();
+    
+    auto results = executor.get_results();
+    
+    bool success = results["input_image"].is_success() && 
+                   results["sqr_box"].is_success();
+    
+    std::cout << (success ? "PASSED" : "FAILED") << std::endl;
+    return success;
+}
+
+bool test_gabor_filter() {
+    std::cout << "Test: GaborFilter task... ";
+    
+    task_graph::DAG dag;
+    
+    auto input_task = std::make_shared<task_graph::Task>("input_image", [](task_graph::TaskContext& ctx) {
+        cv::Mat mat = cv::Mat::ones(100, 100, CV_8UC3) * 200;
+        task_graph::Image img = task_graph::Image::from_mat(mat);
+        return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = img};
+    });
+    
+    dag.add_task(input_task);
+    dag.add_plugin_task("gabor", "opencv_gabor_filter");
+    
+    dag.add_dependency("input_image", "gabor");
+    
+    task_graph::DAGExecutor executor;
+    executor.execute(dag).wait();
+    
+    auto results = executor.get_results();
+    
+    bool success = results["input_image"].is_success() && 
+                   results["gabor"].is_success();
+    
+    std::cout << (success ? "PASSED" : "FAILED") << std::endl;
+    return success;
+}
+
 int main() {
     std::vector<bool> results;
     
@@ -521,6 +728,13 @@ int main() {
     results.push_back(test_gaussian_blur_with_params());
     results.push_back(test_cascade_with_params());
     results.push_back(test_params_from_json());
+    results.push_back(test_filter_2d());
+    results.push_back(test_dilate_erode());
+    results.push_back(test_morphology_ex());
+    results.push_back(test_pyramid_tasks());
+    results.push_back(test_sep_filter_2d());
+    results.push_back(test_sqr_box_filter());
+    results.push_back(test_gabor_filter());
     
     std::cout << "\n--- Summary ---" << std::endl;
     int passed = std::count(results.begin(), results.end(), true);
