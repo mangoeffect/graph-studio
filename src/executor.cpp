@@ -13,10 +13,42 @@
 namespace task_graph {
 
 DAGExecutor::DAGExecutor(ExecutorConfig config)
-    : thread_pool_(std::make_shared<ThreadPool>(config.thread_pool_size)) {}
+    : thread_pool_(std::make_shared<ThreadPool>(config.thread_pool_size)),
+      config_(std::move(config)) {}
 
 DAGExecutor::~DAGExecutor() {
     cancel();
+}
+
+// 触发任务级性能事件：同时通知用户回调和内置 collector
+void DAGExecutor::emit_task_event(const std::string& task_id, const std::string& task_type,
+                                   ProfilePhase phase, std::chrono::nanoseconds duration) {
+    if (!config_.enable_profiling && !config_.profile_callback) {
+        return;
+    }
+    TaskProfileEvent event{
+        task_id, task_type, phase, std::chrono::steady_clock::now(), duration
+    };
+    if (config_.enable_profiling) {
+        profiler_.on_task_event(event);
+    }
+    if (config_.profile_callback) {
+        config_.profile_callback(event);
+    }
+}
+
+// 触发 DAG 级性能事件
+void DAGExecutor::emit_dag_event(DagProfilePhase phase, size_t total_tasks) {
+    if (!config_.enable_profiling && !config_.dag_profile_callback) {
+        return;
+    }
+    DagProfileEvent event{phase, std::chrono::steady_clock::now(), total_tasks};
+    if (config_.enable_profiling) {
+        profiler_.on_dag_event(event);
+    }
+    if (config_.dag_profile_callback) {
+        config_.dag_profile_callback(event);
+    }
 }
 
 std::shared_future<void> DAGExecutor::execute(const DAG& dag) {
@@ -69,6 +101,8 @@ std::unordered_map<TaskId, TaskResult> DAGExecutor::get_results() const {
 // 维护每个任务的剩余依赖计数，任务完成时递减下游依赖计数，归零即加入就绪队列
 void DAGExecutor::run(const DAG& dag) {
     try {
+        emit_dag_event(DagProfilePhase::STARTED, dag.num_tasks());
+
         TG_LOG_DEBUG("Initializing task dependencies tracking");
         
         // remaining_dependencies：每个任务尚未完成的依赖数，归零表示可执行
@@ -109,16 +143,21 @@ void DAGExecutor::run(const DAG& dag) {
         auto submit_task = [&](const TaskId& tid) {
             futures.push_back(thread_pool_->submit([this, &dag, tid, &remaining_dependencies, &dependents,
                                                    &queue_mutex, &queue_cv, &ready_queue, &completed_count]() {
+                TaskPtr task = dag.get_task(tid);
+
                 if (cancelled_) {
                     TG_LOG_DEBUG("Task '" + tid + "' skipped due to cancellation");
+                    emit_task_event(tid, task ? task->type() : std::string{}, ProfilePhase::SKIPPED);
                     return;
                 }
 
-                TaskPtr task = dag.get_task(tid);
                 if (!task) {
                     TG_LOG_ERROR("Task '" + tid + "' not found in DAG");
                     return;
                 }
+
+                // READY：任务已被调度器取出，进入处理流程
+                emit_task_event(tid, task->type(), ProfilePhase::READY);
 
                 auto it = dag.reverse_adjacency().find(tid);
                 std::vector<TaskId> deps;
@@ -136,6 +175,7 @@ void DAGExecutor::run(const DAG& dag) {
                             TG_LOG_ERROR("Task '" + tid + "' dependency '" + dep + "' not completed");
                             results_[tid] = TaskResult{.status = TaskStatus::FAILED};
                             completed_count.fetch_add(1);
+                            emit_task_event(tid, task->type(), ProfilePhase::FAILED);
                             // 即使任务失败也需通知下游，避免调度死锁
                             for (const TaskId& dependent : dependents[tid]) {
                                 size_t remaining = remaining_dependencies[dependent].fetch_sub(1);
@@ -170,6 +210,7 @@ void DAGExecutor::run(const DAG& dag) {
                         results_[tid] = TaskResult{.status = TaskStatus::FAILED};
                     }
                     completed_count.fetch_add(1);
+                    emit_task_event(tid, task->type(), ProfilePhase::FAILED);
                     // 校验失败同样需推进下游调度
                     for (const TaskId& dependent : dependents[tid]) {
                         size_t remaining = remaining_dependencies[dependent].fetch_sub(1);
@@ -183,14 +224,27 @@ void DAGExecutor::run(const DAG& dag) {
                 }
 
                 TG_LOG_DEBUG("Submitting task '" + tid + "' for execution");
-                
+
+                // STARTED：任务实际开始执行 execute()
+                emit_task_event(tid, task->type(), ProfilePhase::STARTED);
+                auto exec_start = std::chrono::steady_clock::now();
+
                 TaskContext task_ctx(task->config().params, deps, input_results);
                 TaskResult result = task->execute(task_ctx);
+
+                auto exec_duration = std::chrono::steady_clock::now() - exec_start;
+                // 顺手填充 TaskResult.duration（框架已有字段，此前始终为 0）
+                result.duration = std::chrono::duration_cast<std::chrono::nanoseconds>(exec_duration);
 
                 {
                     std::lock_guard<std::mutex> lock(results_mutex_);
                     results_[tid] = result;
                 }
+
+                // COMPLETED/FAILED：依据执行结果触发，附带 execute 耗时
+                emit_task_event(tid, task->type(),
+                                result.is_success() ? ProfilePhase::COMPLETED : ProfilePhase::FAILED,
+                                result.duration);
 
                 // 关键调度节点：任务完成后递减下游依赖计数，归零则唤醒调度循环
                 for (const TaskId& dependent : dependents[tid]) {
@@ -252,12 +306,16 @@ void DAGExecutor::run(const DAG& dag) {
         TG_LOG_INFO("DAG execution completed: " + std::to_string(completed_count) + "/" + 
                     std::to_string(dag.num_tasks()) + " tasks completed");
 
+        emit_dag_event(DagProfilePhase::COMPLETED, dag.num_tasks());
+
     } catch (const std::exception& e) {
         running_ = false;
+        emit_dag_event(DagProfilePhase::COMPLETED, dag.num_tasks());
         TG_LOG_ERROR("DAG execution failed with exception: " + std::string(e.what()));
         throw;
     } catch (...) {
         running_ = false;
+        emit_dag_event(DagProfilePhase::COMPLETED, dag.num_tasks());
         TG_LOG_ERROR("DAG execution failed with unknown exception");
         throw;
     }

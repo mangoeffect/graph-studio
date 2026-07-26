@@ -48,6 +48,7 @@ add_library(task_graph SHARED
     src/gpu_image_ops.cpp
     src/task_manager.cpp
     src/task_params.cpp
+    src/profiler.cpp
 )
 
 target_include_directories(task_graph
@@ -297,6 +298,15 @@ add_executable(test_task_params
 )
 
 target_link_libraries(test_task_params
+    PRIVATE
+        task_graph
+)
+
+add_executable(test_profiler
+    tests/test_profiler.cpp
+)
+
+target_link_libraries(test_profiler
     PRIVATE
         task_graph
 )

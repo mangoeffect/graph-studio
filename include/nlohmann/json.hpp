@@ -229,7 +229,7 @@ template<> inline size_t json::get<size_t>() const {
     return static_cast<size_t>(std::get<int64_t>(m_value));
 }
 
-void json::dump(std::ostream& os, int indent, int depth) const {
+inline void json::dump(std::ostream& os, int indent, int depth) const {
     switch (m_type) {
         case value_t::null: os << "null"; break;
         case value_t::boolean: os << (std::get<bool>(m_value) ? "true" : "false"); break;
@@ -305,7 +305,7 @@ void json::dump(std::ostream& os, int indent, int depth) const {
     }
 }
 
-json json::parse_value(const std::string& s, size_t& pos) {
+inline json json::parse_value(const std::string& s, size_t& pos) {
     skip_ws(s, pos);
     if (pos >= s.size()) return nullptr;
 
@@ -326,7 +326,7 @@ json json::parse_value(const std::string& s, size_t& pos) {
     throw std::runtime_error("invalid JSON");
 }
 
-json json::parse_object(const std::string& s, size_t& pos) {
+inline json json::parse_object(const std::string& s, size_t& pos) {
     skip_ws(s, pos);
     if (s[pos] != '{') throw std::runtime_error("expected '{'");
     pos++;
@@ -357,7 +357,7 @@ json json::parse_object(const std::string& s, size_t& pos) {
     return obj;
 }
 
-json json::parse_array(const std::string& s, size_t& pos) {
+inline json json::parse_array(const std::string& s, size_t& pos) {
     skip_ws(s, pos);
     if (s[pos] != '[') throw std::runtime_error("expected '['");
     pos++;
@@ -380,7 +380,7 @@ json json::parse_array(const std::string& s, size_t& pos) {
     return arr;
 }
 
-std::string json::parse_string(const std::string& s, size_t& pos) {
+inline std::string json::parse_string(const std::string& s, size_t& pos) {
     skip_ws(s, pos);
     if (s[pos] != '"') throw std::runtime_error("expected '\"'");
     pos++;
@@ -408,18 +408,18 @@ std::string json::parse_string(const std::string& s, size_t& pos) {
     return result;
 }
 
-bool json::parse_boolean(const std::string& s, size_t& pos, bool& value) {
+inline bool json::parse_boolean(const std::string& s, size_t& pos, bool& value) {
     if (s.substr(pos, 4) == "true") { value = true; pos += 4; return true; }
     if (s.substr(pos, 5) == "false") { value = false; pos += 5; return true; }
     return false;
 }
 
-bool json::parse_null(const std::string& s, size_t& pos) {
+inline bool json::parse_null(const std::string& s, size_t& pos) {
     if (s.substr(pos, 4) == "null") { pos += 4; return true; }
     return false;
 }
 
-bool json::parse_number(const std::string& s, size_t& pos, json& result) {
+inline bool json::parse_number(const std::string& s, size_t& pos, json& result) {
     size_t start = pos;
     if (s[pos] == '-') pos++;
     if (pos >= s.size() || !isdigit(s[pos])) return false;
@@ -448,7 +448,7 @@ bool json::parse_number(const std::string& s, size_t& pos, json& result) {
     return true;
 }
 
-void json::skip_ws(const std::string& s, size_t& pos) {
+inline void json::skip_ws(const std::string& s, size_t& pos) {
     while (pos < s.size() && (s[pos] == ' ' || s[pos] == '\n' || s[pos] == '\r' || s[pos] == '\t')) {
         pos++;
     }
