@@ -9,11 +9,18 @@ set(TASK_GRAPH_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 include_directories(${TASK_GRAPH_ROOT}/include)
 
-link_directories(${TASK_GRAPH_ROOT}/build)
+# 根据是否为 WASM 编译选择对应的 task_graph 库目录
+if(EMSCRIPTEN)
+    link_directories(${TASK_GRAPH_ROOT}/build_wasm)
+else()
+    link_directories(${TASK_GRAPH_ROOT}/build)
+endif()
 
-# Qt6 路径配置 - macOS Homebrew 安装路径
-if(APPLE)
-    # 优先使用 qtbase (6.11.1)，其次完整 qt 包 (6.5.2)
+# Qt6 路径配置
+if(EMSCRIPTEN)
+    # WASM: 由外部传入 CMAKE_PREFIX_PATH 或 Qt6_DIR
+    message(STATUS "Building for WebAssembly with Qt6")
+elseif(APPLE)
     foreach(QT_PATH
             "/opt/homebrew/Cellar/qtbase/6.11.1"
             "/opt/homebrew/Cellar/qt/6.5.2"
@@ -27,7 +34,12 @@ if(APPLE)
     endforeach()
 endif()
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets Test)
+if(EMSCRIPTEN)
+    set(QT_COMPONENTS Widgets)
+else()
+    set(QT_COMPONENTS Widgets Test)
+endif()
+find_package(Qt6 REQUIRED COMPONENTS ${QT_COMPONENTS})
 qt_standard_project_setup()
 
 set(PROJECT_HEADERS
@@ -63,15 +75,16 @@ target_link_libraries(graph_studio PRIVATE
     task_graph
 )
 
-# macOS 部署配置
-if(APPLE)
+# macOS 部署配置（非 WASM）
+if(APPLE AND NOT EMSCRIPTEN)
     set_target_properties(graph_studio PROPERTIES
         MACOSX_BUNDLE TRUE
         MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/src/platform/macos/Info.plist.in"
     )
 endif()
 
-# ---- 单元测试与集成测试 ----
+# ---- 单元测试与集成测试（仅在非 WASM 平台编译） ----
+if(NOT EMSCRIPTEN)
 enable_testing()
 
 # ViewModel 单元测试
@@ -110,3 +123,4 @@ qt_add_executable(test_integration
 )
 target_link_libraries(test_integration PRIVATE Qt6::Test task_graph)
 add_test(NAME test_integration COMMAND test_integration)
+endif()

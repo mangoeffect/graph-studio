@@ -1,0 +1,251 @@
+2026-07-26 18:28:28,378 - aqt.main - ERROR - installer 8286155008 Invalid version: 'wasm_multilib'! Please use the form '5.X.Y'.
+2026-07-26 18:28:46,695 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_6111/qt6_6111/Updates.xml.sha256
+2026-07-26 18:28:48,617 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_6111/qt6_6111/Updates.xml.sha256
+2026-07-26 18:28:50,524 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/extensions/qtpdf/6111/wasm_multilib/Updates.xml.sha256
+2026-07-26 18:28:51,411 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/extensions/qtpdf/6111/wasm_multilib/Updates.xml.sha256
+2026-07-26 18:28:52,395 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/extensions/qtpdf/6111/wasm_multilib/Updates.xml.sha256
+2026-07-26 18:28:53,271 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/extensions/qtpdf/6111/wasm_multilib/Updates.xml.sha256
+2026-07-26 18:28:54,179 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/extensions/qtpdf/6111/wasm_multilib/Updates.xml.sha256
+2026-07-26 18:28:55,141 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/extensions/qtwebengine/6111/wasm_multilib/Updates.xml.sha256
+2026-07-26 18:28:56,017 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/extensions/qtwebengine/6111/wasm_multilib/Updates.xml.sha256
+2026-07-26 18:28:57,026 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/extensions/qtwebengine/6111/wasm_multilib/Updates.xml.sha256
+2026-07-26 18:28:57,904 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/extensions/qtwebengine/6111/wasm_multilib/Updates.xml.sha256
+2026-07-26 18:28:58,888 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/extensions/qtwebengine/6111/wasm_multilib/Updates.xml.sha256
+2026-07-26 18:28:59,778 - aqt.main - ERROR - installer 8286155008 No modules available for this request.
+==============================Suggested follow-up:==============================
+* Please use 'aqt list-qt mac desktop' to show versions of Qt available.
+* Please use 'aqt list-qt mac desktop --arch <QT_VERSION>' to list valid architectures.
+2026-07-26 18:29:05,256 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_683/qt6_683/Updates.xml.sha256
+2026-07-26 18:29:07,351 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_6120/qt6_6120/Updates.xml.sha256
+2026-07-26 18:29:20,897 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_653/Updates.xml.sha256
+2026-07-26 18:29:22,809 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_653_wasm_singlethread/Updates.xml.sha256
+2026-07-26 18:29:24,744 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_653_wasm_multithread/Updates.xml.sha256
+2026-07-26 18:29:26,704 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663/Updates.xml.sha256
+2026-07-26 18:29:28,576 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_singlethread/Updates.xml.sha256
+2026-07-26 18:29:30,457 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_multithread/Updates.xml.sha256
+2026-07-26 18:29:32,562 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_673/Updates.xml.sha256
+2026-07-26 18:29:34,564 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_683/qt6_683/Updates.xml.sha256
+2026-07-26 18:29:36,819 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_6111/qt6_6111/Updates.xml.sha256
+2026-07-26 18:29:48,202 - aqt.main - INFO - installer 8286155008 aqtinstall(aqt) v3.3.0 on Python 3.14.6 [CPython Clang 21.0.0 (clang-2100.0.123.102)]
+2026-07-26 18:29:48,203 - aqt.main - WARNING - installer 8286155008 You are installing the Qt6-WASM version of Qt, which requires that the desktop version of Qt is also installed. You can install it with the following command:
+          `aqt install-qt mac desktop 6.6.3 clang_64`
+2026-07-26 18:29:48,203 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_multithread/Updates.xml.sha256
+2026-07-26 18:29:50,378 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_multithread/qt.qt6.663.wasm_multithread/6.6.3-0-202403191839qtsvg-MacOS-MacOS_13-Clang-MacOS-WebAssembly-X86_64.7z.sha256
+2026-07-26 18:29:50,378 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_multithread/qt.qt6.663.wasm_multithread/6.6.3-0-202403191839qtbase-MacOS-MacOS_13-Clang-MacOS-WebAssembly-X86_64.7z.sha256
+2026-07-26 18:29:50,378 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_multithread/qt.qt6.663.wasm_multithread/6.6.3-0-202403191839qtdeclarative-MacOS-MacOS_13-Clang-MacOS-WebAssembly-X86_64.7z.sha256
+2026-07-26 18:29:50,378 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_multithread/qt.qt6.663.wasm_multithread/6.6.3-0-202403191839qttools-MacOS-MacOS_13-Clang-MacOS-WebAssembly-X86_64.7z.sha256
+2026-07-26 18:29:51,297 - aqt.helper - INFO - helper 8286155008 Downloading qtbase...
+2026-07-26 18:29:51,297 - aqt.installer - DEBUG - installer 8286155008 Download URL: https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_multithread/qt.qt6.663.wasm_multithread/6.6.3-0-202403191839qtbase-MacOS-MacOS_13-Clang-MacOS-WebAssembly-X86_64.7z
+2026-07-26 18:29:51,302 - aqt.helper - INFO - helper 8286155008 Downloading qtsvg...
+2026-07-26 18:29:51,302 - aqt.installer - DEBUG - installer 8286155008 Download URL: https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_multithread/qt.qt6.663.wasm_multithread/6.6.3-0-202403191839qtsvg-MacOS-MacOS_13-Clang-MacOS-WebAssembly-X86_64.7z
+2026-07-26 18:29:51,307 - aqt.helper - INFO - helper 8286155008 Downloading qttools...
+2026-07-26 18:29:51,307 - aqt.installer - DEBUG - installer 8286155008 Download URL: https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_multithread/qt.qt6.663.wasm_multithread/6.6.3-0-202403191839qttools-MacOS-MacOS_13-Clang-MacOS-WebAssembly-X86_64.7z
+2026-07-26 18:29:51,378 - aqt.helper - INFO - helper 8286155008 Downloading qtdeclarative...
+2026-07-26 18:29:51,379 - aqt.installer - DEBUG - installer 8286155008 Download URL: https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_multithread/qt.qt6.663.wasm_multithread/6.6.3-0-202403191839qtdeclarative-MacOS-MacOS_13-Clang-MacOS-WebAssembly-X86_64.7z
+2026-07-26 18:29:52,180 - aqt.helper - DEBUG - helper 8286155008 Asked to redirect(302) to: https://mirrors.sau.edu.cn/qt/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_multithread/qt.qt6.663.wasm_multithread/6.6.3-0-202403191839qtdeclarative-MacOS-MacOS_13-Clang-MacOS-WebAssembly-X86_64.7z
+2026-07-26 18:29:52,180 - aqt.helper - INFO - helper 8286155008 Redirected: mirrors.sau.edu.cn
+2026-07-26 18:29:52,183 - aqt.helper - DEBUG - helper 8286155008 Asked to redirect(302) to: https://mirrors.sau.edu.cn/qt/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_multithread/qt.qt6.663.wasm_multithread/6.6.3-0-202403191839qtsvg-MacOS-MacOS_13-Clang-MacOS-WebAssembly-X86_64.7z
+2026-07-26 18:29:52,183 - aqt.helper - INFO - helper 8286155008 Redirected: mirrors.sau.edu.cn
+2026-07-26 18:29:52,202 - aqt.helper - DEBUG - helper 8286155008 Asked to redirect(302) to: https://mirrors.sau.edu.cn/qt/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_multithread/qt.qt6.663.wasm_multithread/6.6.3-0-202403191839qtbase-MacOS-MacOS_13-Clang-MacOS-WebAssembly-X86_64.7z
+2026-07-26 18:29:52,202 - aqt.helper - INFO - helper 8286155008 Redirected: mirrors.sau.edu.cn
+2026-07-26 18:29:52,384 - aqt.helper - DEBUG - helper 8286155008 Asked to redirect(302) to: https://mirrors.sau.edu.cn/qt/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_multithread/qt.qt6.663.wasm_multithread/6.6.3-0-202403191839qttools-MacOS-MacOS_13-Clang-MacOS-WebAssembly-X86_64.7z
+2026-07-26 18:29:52,384 - aqt.helper - INFO - helper 8286155008 Redirected: mirrors.sau.edu.cn
+2026-07-26 18:29:52,718 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_multithread/qt.qt6.663.wasm_multithread/6.6.3-0-202403191839qttranslations-MacOS-MacOS_13-Clang-MacOS-WebAssembly-X86_64.7z.sha256
+2026-07-26 18:29:53,686 - aqt.helper - INFO - helper 8286155008 Downloading qttranslations...
+2026-07-26 18:29:53,686 - aqt.installer - DEBUG - installer 8286155008 Download URL: https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_multithread/qt.qt6.663.wasm_multithread/6.6.3-0-202403191839qttranslations-MacOS-MacOS_13-Clang-MacOS-WebAssembly-X86_64.7z
+2026-07-26 18:29:54,575 - aqt.helper - DEBUG - helper 8286155008 Asked to redirect(302) to: https://mirrors.sau.edu.cn/qt/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_multithread/qt.qt6.663.wasm_multithread/6.6.3-0-202403191839qttranslations-MacOS-MacOS_13-Clang-MacOS-WebAssembly-X86_64.7z
+2026-07-26 18:29:54,575 - aqt.helper - INFO - helper 8286155008 Redirected: mirrors.sau.edu.cn
+2026-07-26 18:29:55,250 - aqt.installer - WARNING - installer 8286155008 Caught PermissionError, terminating installer workers
+2026-07-26 18:29:55,257 - aqt.main - ERROR - installer 8286155008 Failed to write to base directory at /Users/wumango/Qt
+==============================Suggested follow-up:==============================
+* Check that the destination is writable and does not already contain files owned by another user.
+2026-07-26 18:31:07,028 - aqt.main - INFO - installer 8286155008 aqtinstall(aqt) v3.3.0 on Python 3.14.6 [CPython Clang 21.0.0 (clang-2100.0.123.102)]
+2026-07-26 18:31:07,028 - aqt.main - WARNING - installer 8286155008 You are installing the Qt6-WASM version of Qt, which requires that the desktop version of Qt is also installed. You can install it with the following command:
+          `aqt install-qt mac desktop 6.6.3 clang_64`
+2026-07-26 18:31:07,028 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_multithread/Updates.xml.sha256
+2026-07-26 18:31:09,272 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_multithread/qt.qt6.663.wasm_multithread/6.6.3-0-202403191839qttools-MacOS-MacOS_13-Clang-MacOS-WebAssembly-X86_64.7z.sha256
+2026-07-26 18:31:09,272 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_multithread/qt.qt6.663.wasm_multithread/6.6.3-0-202403191839qtsvg-MacOS-MacOS_13-Clang-MacOS-WebAssembly-X86_64.7z.sha256
+2026-07-26 18:31:09,272 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_multithread/qt.qt6.663.wasm_multithread/6.6.3-0-202403191839qtbase-MacOS-MacOS_13-Clang-MacOS-WebAssembly-X86_64.7z.sha256
+2026-07-26 18:31:09,272 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_multithread/qt.qt6.663.wasm_multithread/6.6.3-0-202403191839qtdeclarative-MacOS-MacOS_13-Clang-MacOS-WebAssembly-X86_64.7z.sha256
+2026-07-26 18:31:10,162 - aqt.helper - INFO - helper 8286155008 Downloading qttools...
+2026-07-26 18:31:10,162 - aqt.installer - DEBUG - installer 8286155008 Download URL: https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_multithread/qt.qt6.663.wasm_multithread/6.6.3-0-202403191839qttools-MacOS-MacOS_13-Clang-MacOS-WebAssembly-X86_64.7z
+2026-07-26 18:31:10,196 - aqt.helper - INFO - helper 8286155008 Downloading qtsvg...
+2026-07-26 18:31:10,197 - aqt.installer - DEBUG - installer 8286155008 Download URL: https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_multithread/qt.qt6.663.wasm_multithread/6.6.3-0-202403191839qtsvg-MacOS-MacOS_13-Clang-MacOS-WebAssembly-X86_64.7z
+2026-07-26 18:31:10,246 - aqt.helper - INFO - helper 8286155008 Downloading qtdeclarative...
+2026-07-26 18:31:10,247 - aqt.installer - DEBUG - installer 8286155008 Download URL: https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_multithread/qt.qt6.663.wasm_multithread/6.6.3-0-202403191839qtdeclarative-MacOS-MacOS_13-Clang-MacOS-WebAssembly-X86_64.7z
+2026-07-26 18:31:10,271 - aqt.helper - INFO - helper 8286155008 Downloading qtbase...
+2026-07-26 18:31:10,271 - aqt.installer - DEBUG - installer 8286155008 Download URL: https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_multithread/qt.qt6.663.wasm_multithread/6.6.3-0-202403191839qtbase-MacOS-MacOS_13-Clang-MacOS-WebAssembly-X86_64.7z
+2026-07-26 18:31:11,089 - aqt.helper - DEBUG - helper 8286155008 Asked to redirect(302) to: https://mirrors.sau.edu.cn/qt/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_multithread/qt.qt6.663.wasm_multithread/6.6.3-0-202403191839qtsvg-MacOS-MacOS_13-Clang-MacOS-WebAssembly-X86_64.7z
+2026-07-26 18:31:11,089 - aqt.helper - INFO - helper 8286155008 Redirected: mirrors.sau.edu.cn
+2026-07-26 18:31:11,136 - aqt.helper - DEBUG - helper 8286155008 Asked to redirect(302) to: https://mirrors.sau.edu.cn/qt/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_multithread/qt.qt6.663.wasm_multithread/6.6.3-0-202403191839qttools-MacOS-MacOS_13-Clang-MacOS-WebAssembly-X86_64.7z
+2026-07-26 18:31:11,136 - aqt.helper - INFO - helper 8286155008 Redirected: mirrors.sau.edu.cn
+2026-07-26 18:31:11,216 - aqt.helper - DEBUG - helper 8286155008 Asked to redirect(302) to: https://mirrors.sau.edu.cn/qt/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_multithread/qt.qt6.663.wasm_multithread/6.6.3-0-202403191839qtdeclarative-MacOS-MacOS_13-Clang-MacOS-WebAssembly-X86_64.7z
+2026-07-26 18:31:11,216 - aqt.helper - INFO - helper 8286155008 Redirected: mirrors.sau.edu.cn
+2026-07-26 18:31:11,347 - aqt.helper - DEBUG - helper 8286155008 Asked to redirect(302) to: https://mirrors.sau.edu.cn/qt/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_multithread/qt.qt6.663.wasm_multithread/6.6.3-0-202403191839qtbase-MacOS-MacOS_13-Clang-MacOS-WebAssembly-X86_64.7z
+2026-07-26 18:31:11,347 - aqt.helper - INFO - helper 8286155008 Redirected: mirrors.sau.edu.cn
+2026-07-26 18:31:11,717 - aqt.installer - INFO - installer 8286155008 Finished installation of qtsvg-MacOS-MacOS_13-Clang-MacOS-WebAssembly-X86_64.7z in 2.44660654
+2026-07-26 18:31:11,725 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_multithread/qt.qt6.663.wasm_multithread/6.6.3-0-202403191839qttranslations-MacOS-MacOS_13-Clang-MacOS-WebAssembly-X86_64.7z.sha256
+2026-07-26 18:31:11,749 - aqt.installer - INFO - installer 8286155008 Finished installation of qttools-MacOS-MacOS_13-Clang-MacOS-WebAssembly-X86_64.7z in 2.47827896
+2026-07-26 18:31:12,611 - aqt.helper - INFO - helper 8286155008 Downloading qttranslations...
+2026-07-26 18:31:12,611 - aqt.installer - DEBUG - installer 8286155008 Download URL: https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_multithread/qt.qt6.663.wasm_multithread/6.6.3-0-202403191839qttranslations-MacOS-MacOS_13-Clang-MacOS-WebAssembly-X86_64.7z
+2026-07-26 18:31:13,405 - aqt.helper - DEBUG - helper 8286155008 Asked to redirect(302) to: https://mirrors.sau.edu.cn/qt/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_multithread/qt.qt6.663.wasm_multithread/6.6.3-0-202403191839qttranslations-MacOS-MacOS_13-Clang-MacOS-WebAssembly-X86_64.7z
+2026-07-26 18:31:13,405 - aqt.helper - INFO - helper 8286155008 Redirected: mirrors.sau.edu.cn
+2026-07-26 18:31:14,302 - aqt.installer - INFO - installer 8286155008 Finished installation of qttranslations-MacOS-MacOS_13-Clang-MacOS-WebAssembly-X86_64.7z in 2.57819558
+2026-07-26 18:31:14,746 - aqt.installer - INFO - installer 8286155008 Finished installation of qtdeclarative-MacOS-MacOS_13-Clang-MacOS-WebAssembly-X86_64.7z in 5.47484846
+2026-07-26 18:31:15,474 - aqt.installer - INFO - installer 8286155008 Finished installation of qtbase-MacOS-MacOS_13-Clang-MacOS-WebAssembly-X86_64.7z in 6.20386242
+2026-07-26 18:31:15,589 - aqt.updater - INFO - updater 8286155008 Patching /Users/wumango/Qt/6.6.3/wasm_multithread/bin/qmake
+2026-07-26 18:31:15,590 - aqt.updater - INFO - updater 8286155008 Patching /Users/wumango/Qt/6.6.3/wasm_multithread/bin/qtpaths
+2026-07-26 18:31:15,590 - aqt.updater - INFO - updater 8286155008 Patching /Users/wumango/Qt/6.6.3/wasm_multithread/bin/qmake6
+2026-07-26 18:31:15,590 - aqt.updater - INFO - updater 8286155008 Patching /Users/wumango/Qt/6.6.3/wasm_multithread/bin/qtpaths6
+2026-07-26 18:31:15,591 - aqt.updater - INFO - updater 8286155008 Patching /Users/wumango/Qt/6.6.3/wasm_multithread/bin/target_qt.conf
+2026-07-26 18:31:15,592 - aqt.main - INFO - installer 8286155008 Finished installation
+2026-07-26 18:31:15,592 - aqt.main - INFO - installer 8286155008 Time elapsed: 8.56383667 second
+2026-07-26 18:38:10,646 - aqt.main - INFO - installer 8286155008 aqtinstall(aqt) v3.3.0 on Python 3.14.6 [CPython Clang 21.0.0 (clang-2100.0.123.102)]
+2026-07-26 18:38:10,646 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663/Updates.xml.sha256
+2026-07-26 18:38:12,874 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663/qt.qt6.663.clang_64/6.6.3-0-202403191839qtbase-MacOS-MacOS_13-Clang-MacOS-MacOS_13-X86_64-ARM64.7z.sha256
+2026-07-26 18:38:12,874 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663/qt.qt6.663.clang_64/6.6.3-0-202403191839qtdeclarative-MacOS-MacOS_13-Clang-MacOS-MacOS_13-X86_64-ARM64.7z.sha256
+2026-07-26 18:38:12,874 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663/qt.qt6.663.clang_64/6.6.3-0-202403191839qttools-MacOS-MacOS_13-Clang-MacOS-MacOS_13-X86_64-ARM64.7z.sha256
+2026-07-26 18:38:12,875 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663/qt.qt6.663.clang_64/6.6.3-0-202403191839qtsvg-MacOS-MacOS_13-Clang-MacOS-MacOS_13-X86_64-ARM64.7z.sha256
+2026-07-26 18:38:13,800 - aqt.helper - INFO - helper 8286155008 Downloading qtdeclarative...
+2026-07-26 18:38:13,801 - aqt.installer - DEBUG - installer 8286155008 Download URL: https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663/qt.qt6.663.clang_64/6.6.3-0-202403191839qtdeclarative-MacOS-MacOS_13-Clang-MacOS-MacOS_13-X86_64-ARM64.7z
+2026-07-26 18:38:13,814 - aqt.helper - INFO - helper 8286155008 Downloading qtbase...
+2026-07-26 18:38:13,814 - aqt.installer - DEBUG - installer 8286155008 Download URL: https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663/qt.qt6.663.clang_64/6.6.3-0-202403191839qtbase-MacOS-MacOS_13-Clang-MacOS-MacOS_13-X86_64-ARM64.7z
+2026-07-26 18:38:13,843 - aqt.helper - INFO - helper 8286155008 Downloading qtsvg...
+2026-07-26 18:38:13,844 - aqt.installer - DEBUG - installer 8286155008 Download URL: https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663/qt.qt6.663.clang_64/6.6.3-0-202403191839qtsvg-MacOS-MacOS_13-Clang-MacOS-MacOS_13-X86_64-ARM64.7z
+2026-07-26 18:38:13,884 - aqt.helper - INFO - helper 8286155008 Downloading qttools...
+2026-07-26 18:38:13,885 - aqt.installer - DEBUG - installer 8286155008 Download URL: https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663/qt.qt6.663.clang_64/6.6.3-0-202403191839qttools-MacOS-MacOS_13-Clang-MacOS-MacOS_13-X86_64-ARM64.7z
+2026-07-26 18:38:14,686 - aqt.helper - DEBUG - helper 8286155008 Asked to redirect(302) to: https://mirrors.sau.edu.cn/qt/online/qtsdkrepository/mac_x64/desktop/qt6_663/qt.qt6.663.clang_64/6.6.3-0-202403191839qtdeclarative-MacOS-MacOS_13-Clang-MacOS-MacOS_13-X86_64-ARM64.7z
+2026-07-26 18:38:14,686 - aqt.helper - INFO - helper 8286155008 Redirected: mirrors.sau.edu.cn
+2026-07-26 18:38:14,800 - aqt.helper - DEBUG - helper 8286155008 Asked to redirect(302) to: https://mirrors.sau.edu.cn/qt/online/qtsdkrepository/mac_x64/desktop/qt6_663/qt.qt6.663.clang_64/6.6.3-0-202403191839qtsvg-MacOS-MacOS_13-Clang-MacOS-MacOS_13-X86_64-ARM64.7z
+2026-07-26 18:38:14,800 - aqt.helper - INFO - helper 8286155008 Redirected: mirrors.sau.edu.cn
+2026-07-26 18:38:14,801 - aqt.helper - DEBUG - helper 8286155008 Asked to redirect(302) to: https://mirrors.sau.edu.cn/qt/online/qtsdkrepository/mac_x64/desktop/qt6_663/qt.qt6.663.clang_64/6.6.3-0-202403191839qtbase-MacOS-MacOS_13-Clang-MacOS-MacOS_13-X86_64-ARM64.7z
+2026-07-26 18:38:14,801 - aqt.helper - INFO - helper 8286155008 Redirected: mirrors.sau.edu.cn
+2026-07-26 18:38:14,852 - aqt.helper - DEBUG - helper 8286155008 Asked to redirect(302) to: https://mirrors.sau.edu.cn/qt/online/qtsdkrepository/mac_x64/desktop/qt6_663/qt.qt6.663.clang_64/6.6.3-0-202403191839qttools-MacOS-MacOS_13-Clang-MacOS-MacOS_13-X86_64-ARM64.7z
+2026-07-26 18:38:14,852 - aqt.helper - INFO - helper 8286155008 Redirected: mirrors.sau.edu.cn
+2026-07-26 18:38:16,621 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663/qt.qt6.663.clang_64/6.6.3-0-202403191839qttranslations-MacOS-MacOS_13-Clang-MacOS-MacOS_13-X86_64-ARM64.7z.sha256
+2026-07-26 18:38:17,419 - aqt.helper - INFO - helper 8286155008 Downloading qttranslations...
+2026-07-26 18:38:17,419 - aqt.installer - DEBUG - installer 8286155008 Download URL: https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663/qt.qt6.663.clang_64/6.6.3-0-202403191839qttranslations-MacOS-MacOS_13-Clang-MacOS-MacOS_13-X86_64-ARM64.7z
+2026-07-26 18:38:18,311 - aqt.helper - DEBUG - helper 8286155008 Asked to redirect(302) to: https://mirrors.sau.edu.cn/qt/online/qtsdkrepository/mac_x64/desktop/qt6_663/qt.qt6.663.clang_64/6.6.3-0-202403191839qttranslations-MacOS-MacOS_13-Clang-MacOS-MacOS_13-X86_64-ARM64.7z
+2026-07-26 18:38:18,312 - aqt.helper - INFO - helper 8286155008 Redirected: mirrors.sau.edu.cn
+2026-07-26 18:39:31,440 - aqt.installer - WARNING - installer 8286155008 Caught PermissionError, terminating installer workers
+2026-07-26 18:39:31,455 - aqt.main - ERROR - installer 8286155008 Failed to write to base directory at /Users/wumango/Qt
+==============================Suggested follow-up:==============================
+* Check that the destination is writable and does not already contain files owned by another user.
+2026-07-26 18:40:03,044 - aqt.main - INFO - installer 8286155008 aqtinstall(aqt) v3.3.0 on Python 3.14.6 [CPython Clang 21.0.0 (clang-2100.0.123.102)]
+2026-07-26 18:40:03,044 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663/Updates.xml.sha256
+2026-07-26 18:40:05,332 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663/qt.qt6.663.clang_64/6.6.3-0-202403191839qtsvg-MacOS-MacOS_13-Clang-MacOS-MacOS_13-X86_64-ARM64.7z.sha256
+2026-07-26 18:40:05,332 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663/qt.qt6.663.clang_64/6.6.3-0-202403191839qtbase-MacOS-MacOS_13-Clang-MacOS-MacOS_13-X86_64-ARM64.7z.sha256
+2026-07-26 18:40:05,332 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663/qt.qt6.663.clang_64/6.6.3-0-202403191839qtdeclarative-MacOS-MacOS_13-Clang-MacOS-MacOS_13-X86_64-ARM64.7z.sha256
+2026-07-26 18:40:05,333 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663/qt.qt6.663.clang_64/6.6.3-0-202403191839qttools-MacOS-MacOS_13-Clang-MacOS-MacOS_13-X86_64-ARM64.7z.sha256
+2026-07-26 18:40:06,233 - aqt.helper - INFO - helper 8286155008 Downloading qttools...
+2026-07-26 18:40:06,233 - aqt.installer - DEBUG - installer 8286155008 Download URL: https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663/qt.qt6.663.clang_64/6.6.3-0-202403191839qttools-MacOS-MacOS_13-Clang-MacOS-MacOS_13-X86_64-ARM64.7z
+2026-07-26 18:40:06,251 - aqt.helper - INFO - helper 8286155008 Downloading qtdeclarative...
+2026-07-26 18:40:06,251 - aqt.installer - DEBUG - installer 8286155008 Download URL: https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663/qt.qt6.663.clang_64/6.6.3-0-202403191839qtdeclarative-MacOS-MacOS_13-Clang-MacOS-MacOS_13-X86_64-ARM64.7z
+2026-07-26 18:40:06,310 - aqt.helper - INFO - helper 8286155008 Downloading qtbase...
+2026-07-26 18:40:06,311 - aqt.helper - INFO - helper 8286155008 Downloading qtsvg...
+2026-07-26 18:40:06,310 - aqt.installer - DEBUG - installer 8286155008 Download URL: https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663/qt.qt6.663.clang_64/6.6.3-0-202403191839qtbase-MacOS-MacOS_13-Clang-MacOS-MacOS_13-X86_64-ARM64.7z
+2026-07-26 18:40:06,311 - aqt.installer - DEBUG - installer 8286155008 Download URL: https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663/qt.qt6.663.clang_64/6.6.3-0-202403191839qtsvg-MacOS-MacOS_13-Clang-MacOS-MacOS_13-X86_64-ARM64.7z
+2026-07-26 18:40:07,192 - aqt.helper - DEBUG - helper 8286155008 Asked to redirect(302) to: https://mirrors.sau.edu.cn/qt/online/qtsdkrepository/mac_x64/desktop/qt6_663/qt.qt6.663.clang_64/6.6.3-0-202403191839qtbase-MacOS-MacOS_13-Clang-MacOS-MacOS_13-X86_64-ARM64.7z
+2026-07-26 18:40:07,192 - aqt.helper - INFO - helper 8286155008 Redirected: mirrors.sau.edu.cn
+2026-07-26 18:40:07,199 - aqt.helper - DEBUG - helper 8286155008 Asked to redirect(302) to: https://mirrors.sau.edu.cn/qt/online/qtsdkrepository/mac_x64/desktop/qt6_663/qt.qt6.663.clang_64/6.6.3-0-202403191839qtsvg-MacOS-MacOS_13-Clang-MacOS-MacOS_13-X86_64-ARM64.7z
+2026-07-26 18:40:07,199 - aqt.helper - INFO - helper 8286155008 Redirected: mirrors.sau.edu.cn
+2026-07-26 18:40:07,233 - aqt.helper - DEBUG - helper 8286155008 Asked to redirect(302) to: https://mirrors.sau.edu.cn/qt/online/qtsdkrepository/mac_x64/desktop/qt6_663/qt.qt6.663.clang_64/6.6.3-0-202403191839qtdeclarative-MacOS-MacOS_13-Clang-MacOS-MacOS_13-X86_64-ARM64.7z
+2026-07-26 18:40:07,234 - aqt.helper - INFO - helper 8286155008 Redirected: mirrors.sau.edu.cn
+2026-07-26 18:40:07,306 - aqt.helper - DEBUG - helper 8286155008 Asked to redirect(302) to: https://mirrors.sau.edu.cn/qt/online/qtsdkrepository/mac_x64/desktop/qt6_663/qt.qt6.663.clang_64/6.6.3-0-202403191839qttools-MacOS-MacOS_13-Clang-MacOS-MacOS_13-X86_64-ARM64.7z
+2026-07-26 18:40:07,306 - aqt.helper - INFO - helper 8286155008 Redirected: mirrors.sau.edu.cn
+2026-07-26 18:40:08,630 - aqt.installer - INFO - installer 8286155008 Finished installation of qtsvg-MacOS-MacOS_13-Clang-MacOS-MacOS_13-X86_64-ARM64.7z in 3.29871621
+2026-07-26 18:40:08,638 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663/qt.qt6.663.clang_64/6.6.3-0-202403191839qttranslations-MacOS-MacOS_13-Clang-MacOS-MacOS_13-X86_64-ARM64.7z.sha256
+2026-07-26 18:40:09,534 - aqt.helper - INFO - helper 8286155008 Downloading qttranslations...
+2026-07-26 18:40:09,534 - aqt.installer - DEBUG - installer 8286155008 Download URL: https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663/qt.qt6.663.clang_64/6.6.3-0-202403191839qttranslations-MacOS-MacOS_13-Clang-MacOS-MacOS_13-X86_64-ARM64.7z
+2026-07-26 18:40:10,398 - aqt.helper - DEBUG - helper 8286155008 Asked to redirect(302) to: https://mirrors.sau.edu.cn/qt/online/qtsdkrepository/mac_x64/desktop/qt6_663/qt.qt6.663.clang_64/6.6.3-0-202403191839qttranslations-MacOS-MacOS_13-Clang-MacOS-MacOS_13-X86_64-ARM64.7z
+2026-07-26 18:40:10,398 - aqt.helper - INFO - helper 8286155008 Redirected: mirrors.sau.edu.cn
+2026-07-26 18:40:11,572 - aqt.installer - INFO - installer 8286155008 Finished installation of qttranslations-MacOS-MacOS_13-Clang-MacOS-MacOS_13-X86_64-ARM64.7z in 2.93525929
+2026-07-26 18:40:49,580 - aqt.installer - INFO - installer 8286155008 Finished installation of qttools-MacOS-MacOS_13-Clang-MacOS-MacOS_13-X86_64-ARM64.7z in 44.24859662
+2026-07-26 18:41:37,172 - aqt.installer - INFO - installer 8286155008 Finished installation of qtbase-MacOS-MacOS_13-Clang-MacOS-MacOS_13-X86_64-ARM64.7z in 91.84070092
+2026-07-26 18:42:24,407 - aqt.installer - INFO - installer 8286155008 Finished installation of qtdeclarative-MacOS-MacOS_13-Clang-MacOS-MacOS_13-X86_64-ARM64.7z in 139.07532104
+2026-07-26 18:42:26,203 - aqt.updater - INFO - updater 8286155008 Patching /Users/wumango/Qt/6.6.3/macos/bin/qmake
+2026-07-26 18:42:26,211 - aqt.updater - INFO - updater 8286155008 Patching /Users/wumango/Qt/6.6.3/macos/lib/libQt6QmlLS.prl
+2026-07-26 18:42:26,211 - aqt.updater - INFO - updater 8286155008 Patching /Users/wumango/Qt/6.6.3/macos/lib/libQt6FbSupport.prl
+2026-07-26 18:42:26,212 - aqt.updater - INFO - updater 8286155008 Patching /Users/wumango/Qt/6.6.3/macos/lib/libQt6QmlDebug.prl
+2026-07-26 18:42:26,212 - aqt.updater - INFO - updater 8286155008 Patching /Users/wumango/Qt/6.6.3/macos/lib/libQt6QmlTypeRegistrar.prl
+2026-07-26 18:42:26,212 - aqt.updater - INFO - updater 8286155008 Patching /Users/wumango/Qt/6.6.3/macos/lib/libQt6QuickTestUtils.prl
+2026-07-26 18:42:26,212 - aqt.updater - INFO - updater 8286155008 Patching /Users/wumango/Qt/6.6.3/macos/lib/libQt6ExampleIcons.prl
+2026-07-26 18:42:26,212 - aqt.updater - INFO - updater 8286155008 Patching /Users/wumango/Qt/6.6.3/macos/lib/libQt6QuickControlsTestUtils.prl
+2026-07-26 18:42:26,212 - aqt.updater - INFO - updater 8286155008 Patching /Users/wumango/Qt/6.6.3/macos/lib/libQt6DeviceDiscoverySupport.prl
+2026-07-26 18:42:26,213 - aqt.updater - INFO - updater 8286155008 Patching /Users/wumango/Qt/6.6.3/macos/lib/libQt6QmlDom.prl
+2026-07-26 18:42:26,213 - aqt.updater - INFO - updater 8286155008 Patching /Users/wumango/Qt/6.6.3/macos/lib/libQt6PacketProtocol.prl
+2026-07-26 18:42:26,213 - aqt.updater - INFO - updater 8286155008 Patching /Users/wumango/Qt/6.6.3/macos/lib/libQt6QmlToolingSettings.prl
+2026-07-26 18:42:26,213 - aqt.main - INFO - installer 8286155008 Finished installation
+2026-07-26 18:42:26,213 - aqt.main - INFO - installer 8286155008 Time elapsed: 143.16922117 second
+2026-07-26 18:42:41,523 - aqt.main - INFO - installer 8286155008 aqtinstall(aqt) v3.3.0 on Python 3.14.6 [CPython Clang 21.0.0 (clang-2100.0.123.102)]
+2026-07-26 18:42:41,523 - aqt.main - INFO - installer 8286155008 Found installed mac-desktop Qt at /Users/wumango/Qt/6.6.3/macos
+2026-07-26 18:42:41,523 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_singlethread/Updates.xml.sha256
+2026-07-26 18:42:43,915 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_singlethread/qt.qt6.663.wasm_singlethread/6.6.3-0-202403191839qtbase-Windows-Windows_10_22H2-Clang-Windows-WebAssembly-X86_64.7z.sha256
+2026-07-26 18:42:43,915 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_singlethread/qt.qt6.663.wasm_singlethread/6.6.3-0-202403191839qtsvg-Windows-Windows_10_22H2-Clang-Windows-WebAssembly-X86_64.7z.sha256
+2026-07-26 18:42:43,916 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_singlethread/qt.qt6.663.wasm_singlethread/6.6.3-0-202403191839qtdeclarative-Windows-Windows_10_22H2-Clang-Windows-WebAssembly-X86_64.7z.sha256
+2026-07-26 18:42:43,919 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_singlethread/qt.qt6.663.wasm_singlethread/6.6.3-0-202403191839qttools-Windows-Windows_10_22H2-Clang-Windows-WebAssembly-X86_64.7z.sha256
+2026-07-26 18:42:44,805 - aqt.helper - INFO - helper 8286155008 Downloading qttools...
+2026-07-26 18:42:44,806 - aqt.installer - DEBUG - installer 8286155008 Download URL: https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_singlethread/qt.qt6.663.wasm_singlethread/6.6.3-0-202403191839qttools-Windows-Windows_10_22H2-Clang-Windows-WebAssembly-X86_64.7z
+2026-07-26 18:42:44,826 - aqt.helper - INFO - helper 8286155008 Downloading qtdeclarative...
+2026-07-26 18:42:44,826 - aqt.installer - DEBUG - installer 8286155008 Download URL: https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_singlethread/qt.qt6.663.wasm_singlethread/6.6.3-0-202403191839qtdeclarative-Windows-Windows_10_22H2-Clang-Windows-WebAssembly-X86_64.7z
+2026-07-26 18:42:44,827 - aqt.helper - INFO - helper 8286155008 Downloading qtbase...
+2026-07-26 18:42:44,828 - aqt.installer - DEBUG - installer 8286155008 Download URL: https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_singlethread/qt.qt6.663.wasm_singlethread/6.6.3-0-202403191839qtbase-Windows-Windows_10_22H2-Clang-Windows-WebAssembly-X86_64.7z
+2026-07-26 18:42:44,832 - aqt.helper - INFO - helper 8286155008 Downloading qtsvg...
+2026-07-26 18:42:44,833 - aqt.installer - DEBUG - installer 8286155008 Download URL: https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_singlethread/qt.qt6.663.wasm_singlethread/6.6.3-0-202403191839qtsvg-Windows-Windows_10_22H2-Clang-Windows-WebAssembly-X86_64.7z
+2026-07-26 18:42:45,736 - aqt.helper - DEBUG - helper 8286155008 Asked to redirect(302) to: https://mirrors.sau.edu.cn/qt/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_singlethread/qt.qt6.663.wasm_singlethread/6.6.3-0-202403191839qtbase-Windows-Windows_10_22H2-Clang-Windows-WebAssembly-X86_64.7z
+2026-07-26 18:42:45,736 - aqt.helper - INFO - helper 8286155008 Redirected: mirrors.sau.edu.cn
+2026-07-26 18:42:45,786 - aqt.helper - DEBUG - helper 8286155008 Asked to redirect(302) to: https://mirrors.sau.edu.cn/qt/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_singlethread/qt.qt6.663.wasm_singlethread/6.6.3-0-202403191839qttools-Windows-Windows_10_22H2-Clang-Windows-WebAssembly-X86_64.7z
+2026-07-26 18:42:45,786 - aqt.helper - INFO - helper 8286155008 Redirected: mirrors.sau.edu.cn
+2026-07-26 18:42:45,791 - aqt.helper - DEBUG - helper 8286155008 Asked to redirect(302) to: https://mirrors.sau.edu.cn/qt/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_singlethread/qt.qt6.663.wasm_singlethread/6.6.3-0-202403191839qtsvg-Windows-Windows_10_22H2-Clang-Windows-WebAssembly-X86_64.7z
+2026-07-26 18:42:45,792 - aqt.helper - INFO - helper 8286155008 Redirected: mirrors.sau.edu.cn
+2026-07-26 18:42:45,809 - aqt.helper - DEBUG - helper 8286155008 Asked to redirect(302) to: https://mirrors.sau.edu.cn/qt/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_singlethread/qt.qt6.663.wasm_singlethread/6.6.3-0-202403191839qtdeclarative-Windows-Windows_10_22H2-Clang-Windows-WebAssembly-X86_64.7z
+2026-07-26 18:42:45,809 - aqt.helper - INFO - helper 8286155008 Redirected: mirrors.sau.edu.cn
+2026-07-26 18:42:46,274 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_singlethread/qt.qt6.663.wasm_singlethread/6.6.3-0-202403191839qttranslations-Windows-Windows_10_22H2-Clang-Windows-WebAssembly-X86_64.7z.sha256
+2026-07-26 18:42:47,241 - aqt.helper - INFO - helper 8286155008 Downloading qttranslations...
+2026-07-26 18:42:47,242 - aqt.installer - DEBUG - installer 8286155008 Download URL: https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_singlethread/qt.qt6.663.wasm_singlethread/6.6.3-0-202403191839qttranslations-Windows-Windows_10_22H2-Clang-Windows-WebAssembly-X86_64.7z
+2026-07-26 18:42:48,204 - aqt.helper - DEBUG - helper 8286155008 Asked to redirect(302) to: https://mirrors.sau.edu.cn/qt/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_singlethread/qt.qt6.663.wasm_singlethread/6.6.3-0-202403191839qttranslations-Windows-Windows_10_22H2-Clang-Windows-WebAssembly-X86_64.7z
+2026-07-26 18:42:48,204 - aqt.helper - INFO - helper 8286155008 Redirected: mirrors.sau.edu.cn
+2026-07-26 18:43:05,531 - aqt.installer - WARNING - installer 8286155008 Caught PermissionError, terminating installer workers
+2026-07-26 18:43:05,536 - aqt.main - ERROR - installer 8286155008 Failed to write to base directory at /Users/wumango/Qt
+==============================Suggested follow-up:==============================
+* Check that the destination is writable and does not already contain files owned by another user.
+2026-07-26 18:43:18,944 - aqt.main - INFO - installer 8286155008 aqtinstall(aqt) v3.3.0 on Python 3.14.6 [CPython Clang 21.0.0 (clang-2100.0.123.102)]
+2026-07-26 18:43:18,945 - aqt.main - INFO - installer 8286155008 Found installed mac-desktop Qt at /Users/wumango/Qt/6.6.3/macos
+2026-07-26 18:43:18,945 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_singlethread/Updates.xml.sha256
+2026-07-26 18:43:21,191 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_singlethread/qt.qt6.663.wasm_singlethread/6.6.3-0-202403191839qtbase-Windows-Windows_10_22H2-Clang-Windows-WebAssembly-X86_64.7z.sha256
+2026-07-26 18:43:21,193 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_singlethread/qt.qt6.663.wasm_singlethread/6.6.3-0-202403191839qtdeclarative-Windows-Windows_10_22H2-Clang-Windows-WebAssembly-X86_64.7z.sha256
+2026-07-26 18:43:21,194 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_singlethread/qt.qt6.663.wasm_singlethread/6.6.3-0-202403191839qtsvg-Windows-Windows_10_22H2-Clang-Windows-WebAssembly-X86_64.7z.sha256
+2026-07-26 18:43:21,203 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_singlethread/qt.qt6.663.wasm_singlethread/6.6.3-0-202403191839qttools-Windows-Windows_10_22H2-Clang-Windows-WebAssembly-X86_64.7z.sha256
+2026-07-26 18:43:22,092 - aqt.helper - INFO - helper 8286155008 Downloading qtbase...
+2026-07-26 18:43:22,092 - aqt.installer - DEBUG - installer 8286155008 Download URL: https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_singlethread/qt.qt6.663.wasm_singlethread/6.6.3-0-202403191839qtbase-Windows-Windows_10_22H2-Clang-Windows-WebAssembly-X86_64.7z
+2026-07-26 18:43:22,118 - aqt.helper - INFO - helper 8286155008 Downloading qtsvg...
+2026-07-26 18:43:22,118 - aqt.installer - DEBUG - installer 8286155008 Download URL: https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_singlethread/qt.qt6.663.wasm_singlethread/6.6.3-0-202403191839qtsvg-Windows-Windows_10_22H2-Clang-Windows-WebAssembly-X86_64.7z
+2026-07-26 18:43:22,162 - aqt.helper - INFO - helper 8286155008 Downloading qttools...
+2026-07-26 18:43:22,162 - aqt.installer - DEBUG - installer 8286155008 Download URL: https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_singlethread/qt.qt6.663.wasm_singlethread/6.6.3-0-202403191839qttools-Windows-Windows_10_22H2-Clang-Windows-WebAssembly-X86_64.7z
+2026-07-26 18:43:22,193 - aqt.helper - INFO - helper 8286155008 Downloading qtdeclarative...
+2026-07-26 18:43:22,193 - aqt.installer - DEBUG - installer 8286155008 Download URL: https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_singlethread/qt.qt6.663.wasm_singlethread/6.6.3-0-202403191839qtdeclarative-Windows-Windows_10_22H2-Clang-Windows-WebAssembly-X86_64.7z
+2026-07-26 18:43:22,962 - aqt.helper - DEBUG - helper 8286155008 Asked to redirect(302) to: https://mirrors.sau.edu.cn/qt/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_singlethread/qt.qt6.663.wasm_singlethread/6.6.3-0-202403191839qtbase-Windows-Windows_10_22H2-Clang-Windows-WebAssembly-X86_64.7z
+2026-07-26 18:43:22,962 - aqt.helper - INFO - helper 8286155008 Redirected: mirrors.sau.edu.cn
+2026-07-26 18:43:23,087 - aqt.helper - DEBUG - helper 8286155008 Asked to redirect(302) to: https://mirrors.sau.edu.cn/qt/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_singlethread/qt.qt6.663.wasm_singlethread/6.6.3-0-202403191839qtdeclarative-Windows-Windows_10_22H2-Clang-Windows-WebAssembly-X86_64.7z
+2026-07-26 18:43:23,087 - aqt.helper - INFO - helper 8286155008 Redirected: mirrors.sau.edu.cn
+2026-07-26 18:43:23,096 - aqt.helper - DEBUG - helper 8286155008 Asked to redirect(302) to: https://mirrors.sau.edu.cn/qt/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_singlethread/qt.qt6.663.wasm_singlethread/6.6.3-0-202403191839qtsvg-Windows-Windows_10_22H2-Clang-Windows-WebAssembly-X86_64.7z
+2026-07-26 18:43:23,096 - aqt.helper - INFO - helper 8286155008 Redirected: mirrors.sau.edu.cn
+2026-07-26 18:43:23,112 - aqt.helper - DEBUG - helper 8286155008 Asked to redirect(302) to: https://mirrors.sau.edu.cn/qt/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_singlethread/qt.qt6.663.wasm_singlethread/6.6.3-0-202403191839qttools-Windows-Windows_10_22H2-Clang-Windows-WebAssembly-X86_64.7z
+2026-07-26 18:43:23,112 - aqt.helper - INFO - helper 8286155008 Redirected: mirrors.sau.edu.cn
+2026-07-26 18:43:23,721 - aqt.installer - INFO - installer 8286155008 Finished installation of qtsvg-Windows-Windows_10_22H2-Clang-Windows-WebAssembly-X86_64.7z in 2.52866038
+2026-07-26 18:43:23,729 - aqt.helper - DEBUG - helper 8286155008 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_singlethread/qt.qt6.663.wasm_singlethread/6.6.3-0-202403191839qttranslations-Windows-Windows_10_22H2-Clang-Windows-WebAssembly-X86_64.7z.sha256
+2026-07-26 18:43:24,349 - aqt.installer - INFO - installer 8286155008 Finished installation of qttools-Windows-Windows_10_22H2-Clang-Windows-WebAssembly-X86_64.7z in 3.14722596
+2026-07-26 18:43:24,726 - aqt.helper - INFO - helper 8286155008 Downloading qttranslations...
+2026-07-26 18:43:24,726 - aqt.installer - DEBUG - installer 8286155008 Download URL: https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_singlethread/qt.qt6.663.wasm_singlethread/6.6.3-0-202403191839qttranslations-Windows-Windows_10_22H2-Clang-Windows-WebAssembly-X86_64.7z
+2026-07-26 18:43:25,713 - aqt.helper - DEBUG - helper 8286155008 Asked to redirect(302) to: https://mirrors.sau.edu.cn/qt/online/qtsdkrepository/mac_x64/desktop/qt6_663_wasm_singlethread/qt.qt6.663.wasm_singlethread/6.6.3-0-202403191839qttranslations-Windows-Windows_10_22H2-Clang-Windows-WebAssembly-X86_64.7z
+2026-07-26 18:43:25,714 - aqt.helper - INFO - helper 8286155008 Redirected: mirrors.sau.edu.cn
+2026-07-26 18:43:28,114 - aqt.installer - INFO - installer 8286155008 Finished installation of qttranslations-Windows-Windows_10_22H2-Clang-Windows-WebAssembly-X86_64.7z in 4.38632496
+2026-07-26 18:43:30,563 - aqt.installer - INFO - installer 8286155008 Finished installation of qtbase-Windows-Windows_10_22H2-Clang-Windows-WebAssembly-X86_64.7z in 9.37459800
+2026-07-26 18:43:31,293 - aqt.installer - INFO - installer 8286155008 Finished installation of qtdeclarative-Windows-Windows_10_22H2-Clang-Windows-WebAssembly-X86_64.7z in 10.10193375
+2026-07-26 18:43:31,397 - aqt.updater - INFO - updater 8286155008 Patching /Users/wumango/Qt/6.6.3/wasm_singlethread/bin/qmake
+2026-07-26 18:43:31,398 - aqt.updater - INFO - updater 8286155008 Patching /Users/wumango/Qt/6.6.3/wasm_singlethread/bin/qtpaths
+2026-07-26 18:43:31,398 - aqt.updater - INFO - updater 8286155008 Patching /Users/wumango/Qt/6.6.3/wasm_singlethread/bin/qmake6
+2026-07-26 18:43:31,399 - aqt.updater - INFO - updater 8286155008 Patching /Users/wumango/Qt/6.6.3/wasm_singlethread/bin/qtpaths6
+2026-07-26 18:43:31,399 - aqt.updater - INFO - updater 8286155008 Patching /Users/wumango/Qt/6.6.3/wasm_singlethread/bin/target_qt.conf
+2026-07-26 18:43:31,400 - aqt.main - INFO - installer 8286155008 Finished installation
+2026-07-26 18:43:31,400 - aqt.main - INFO - installer 8286155008 Time elapsed: 12.45581004 second

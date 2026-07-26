@@ -1,4 +1,6 @@
 ﻿build/
+build_wasm/
 submodules/
 .DS_Store
 app/graph_studio/build/
+app/graph_studio/build_wasm/

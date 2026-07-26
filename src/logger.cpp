@@ -1,4 +1,4 @@
-#include <plugin_api.hpp>
+﻿#include <plugin_api.hpp>
 #include <iostream>
 #include <fstream>
 #include <chrono>
@@ -33,6 +33,8 @@ namespace {
         uint64_t tid;
         pthread_threadid_np(NULL, &tid);
         ss << tid;
+#elif defined(__EMSCRIPTEN__)
+        ss << std::this_thread::get_id();
 #else
         ss << syscall(SYS_gettid);
 #endif
@@ -49,6 +51,8 @@ namespace {
             return std::string(buffer);
         }
         return "";
+#elif defined(__EMSCRIPTEN__)
+        return "main";
 #else
         char buffer[16];
         if (pthread_getname_np(pthread_self(), buffer, sizeof(buffer)) == 0) {

@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.16)
+﻿cmake_minimum_required(VERSION 3.16)
 
 project(task_graph
     VERSION 0.1.0
@@ -14,7 +14,9 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake" ${CMAKE_MODULE_PATH})
 
-find_package(Threads REQUIRED)
+if(NOT EMSCRIPTEN)
+    find_package(Threads REQUIRED)
+endif()
 
 option(TASK_GRAPH_ENABLE_CUDA "Enable CUDA support for GPU image operations" OFF)
 
@@ -33,7 +35,13 @@ if(TASK_GRAPH_ENABLE_OPENCV)
     add_definitions(-DTASK_GRAPH_ENABLE_OPENCV)
 endif()
 
-add_library(task_graph SHARED
+if(EMSCRIPTEN)
+    set(TASK_GRAPH_LIB_TYPE STATIC)
+else()
+    set(TASK_GRAPH_LIB_TYPE SHARED)
+endif()
+
+add_library(task_graph ${TASK_GRAPH_LIB_TYPE}
     src/task.cpp
     src/dag.cpp
     src/compiler.cpp
@@ -59,14 +67,14 @@ target_include_directories(task_graph
 
 target_link_libraries(task_graph
     PUBLIC
-        Threads::Threads
+        $<$<NOT:$<BOOL:${EMSCRIPTEN}>>:Threads::Threads>
 )
 
 if(TASK_GRAPH_ENABLE_OPENCV)
     target_link_libraries(task_graph PRIVATE ${OpenCV_LIBS})
 endif()
 
-if(UNIX AND NOT APPLE)
+if(UNIX AND NOT APPLE AND NOT EMSCRIPTEN)
     target_link_libraries(task_graph
         PUBLIC
             dl
@@ -104,7 +112,7 @@ target_link_libraries(test_plugin
         task_graph
 )
 
-if(UNIX AND NOT APPLE)
+if(UNIX AND NOT APPLE AND NOT EMSCRIPTEN)
     target_link_libraries(test_plugin
         PRIVATE
             stdc++fs
