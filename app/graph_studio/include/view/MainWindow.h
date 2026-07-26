@@ -12,6 +12,7 @@
 #include <QGroupBox>
 #include <QLineEdit>
 #include <QHash>
+#include <QMimeData>
 
 #include "view/GraphView.h"
 #include "viewmodel/GraphViewModel.h"
@@ -23,6 +24,28 @@ class GraphScene;
 class GraphViewModel;
 class NodeItem;
 class EdgeItem;
+
+// QListWidget subclass that emits plain-text mime data on drag, so the canvas
+// GraphView (which checks hasText()) can accept the drop.
+class TaskListWidget : public QListWidget
+{
+public:
+    using QListWidget::QListWidget;
+
+protected:
+    QMimeData* mimeData(const QList<QListWidgetItem*>& items) const override
+    {
+        // Only emit text for the first draggable item (single selection drag)
+        for (auto* item : items) {
+            if (item->flags() & Qt::ItemIsDragEnabled) {
+                QMimeData* mimeData = new QMimeData;
+                mimeData->setText(item->text());
+                return mimeData;
+            }
+        }
+        return nullptr;
+    }
+};
 
 class MainWindow : public QMainWindow
 {
@@ -92,7 +115,7 @@ private:
     GraphScene* scene_ = nullptr;
     QStatusBar* statusBar_ = nullptr;
 
-    QListWidget* taskList_ = nullptr;
+    TaskListWidget* taskList_ = nullptr;
     QLabel* imageResultLabel_ = nullptr;
     QFormLayout* nodePropertyLayout_ = nullptr;
     QGroupBox* nodePropertyGroup_ = nullptr;

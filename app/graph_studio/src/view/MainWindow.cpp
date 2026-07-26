@@ -335,8 +335,10 @@ QWidget* MainWindow::CreateTaskPanel()
     header->setStyleSheet("padding: 4px;");
     layout->addWidget(header);
 
-    taskList_ = new QListWidget();
+    taskList_ = new TaskListWidget();
     taskList_->setDragEnabled(true);
+    taskList_->setDragDropMode(QAbstractItemView::DragOnly);
+    taskList_->setDefaultDropAction(Qt::CopyAction);
     taskList_->setToolTip("Drag to canvas or double-click to add");
     layout->addWidget(taskList_);
 
@@ -354,23 +356,27 @@ void MainWindow::PopulateTaskLibrary()
                                        "opencv_sobel_filter", "opencv_laplacian_filter", "resize", "convert_color"};
     const QStringList outputTasks = {"file_output", "display", "save_image"};
 
-    auto* inputItem = new QListWidgetItem("-- Input --");
-    inputItem->setFlags(inputItem->flags() & ~Qt::ItemIsEnabled & ~Qt::ItemIsSelectable);
-    inputItem->setForeground(QColor("#888888"));
-    taskList_->addItem(inputItem);
-    for (const auto& t : inputTasks) taskList_->addItem(t);
+    auto addSection = [this](const QString& title) {
+        auto* item = new QListWidgetItem(title);
+        item->setFlags(item->flags() & ~Qt::ItemIsEnabled & ~Qt::ItemIsSelectable & ~Qt::ItemIsDragEnabled);
+        item->setForeground(QColor("#888888"));
+        taskList_->addItem(item);
+    };
 
-    auto* processItem = new QListWidgetItem("-- Process --");
-    processItem->setFlags(processItem->flags() & ~Qt::ItemIsEnabled & ~Qt::ItemIsSelectable);
-    processItem->setForeground(QColor("#888888"));
-    taskList_->addItem(processItem);
-    for (const auto& t : processTasks) taskList_->addItem(t);
+    auto addTaskItem = [this](const QString& name) {
+        auto* item = new QListWidgetItem(name);
+        item->setFlags(item->flags() | Qt::ItemIsDragEnabled);
+        taskList_->addItem(item);
+    };
 
-    auto* outputItem = new QListWidgetItem("-- Output --");
-    outputItem->setFlags(outputItem->flags() & ~Qt::ItemIsEnabled & ~Qt::ItemIsSelectable);
-    outputItem->setForeground(QColor("#888888"));
-    taskList_->addItem(outputItem);
-    for (const auto& t : outputTasks) taskList_->addItem(t);
+    addSection("-- Input --");
+    for (const auto& t : inputTasks) addTaskItem(t);
+
+    addSection("-- Process --");
+    for (const auto& t : processTasks) addTaskItem(t);
+
+    addSection("-- Output --");
+    for (const auto& t : outputTasks) addTaskItem(t);
 }
 
 QWidget* MainWindow::CreateImageResultPanel()
