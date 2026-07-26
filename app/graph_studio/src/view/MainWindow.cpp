@@ -32,7 +32,7 @@ static QString edgeKey(const QString& from, const QString& to)
 }
 
 MainWindow::MainWindow(GraphViewModel& vm, QWidget* parent)
-    : QMainWindow(parent), vm_(vm)
+    : QMainWindow(parent), vm_(vm), commandStack_(this)
 {
     setWindowTitle("Graph Studio");
     resize(1600, 1000);
@@ -55,6 +55,7 @@ MainWindow::MainWindow(GraphViewModel& vm, QWidget* parent)
 
     graphicsView_->centerOn(0, 0);
     UpdateStatusBar();
+    UpdateUndoRedoActions();
 }
 
 MainWindow::~MainWindow() = default;
@@ -242,6 +243,10 @@ void MainWindow::ConnectSignals()
         QPointF center = graphicsView_->mapToScene(graphicsView_->viewport()->rect().center());
         CreateNodeAt(item->text(), center);
     });
+
+    // Command stack
+    connect(&commandStack_, &CommandStack::canUndoChanged, this, &MainWindow::UpdateUndoRedoActions);
+    connect(&commandStack_, &CommandStack::canRedoChanged, this, &MainWindow::UpdateUndoRedoActions);
 }
 
 void MainWindow::CreateMenuBar()
@@ -255,6 +260,13 @@ void MainWindow::CreateMenuBar()
     connect(fileMenu->addAction("Exit"), &QAction::triggered, this, &QMainWindow::close);
 
     auto* editMenu = menuBar()->addMenu("&Edit");
+    undoAction_ = editMenu->addAction("Undo");
+    undoAction_->setShortcut(QKeySequence::Undo);
+    redoAction_ = editMenu->addAction("Redo");
+    redoAction_->setShortcut(QKeySequence::Redo);
+    connect(undoAction_, &QAction::triggered, this, &MainWindow::ActionUndo);
+    connect(redoAction_, &QAction::triggered, this, &MainWindow::ActionRedo);
+    editMenu->addSeparator();
     auto* deleteAction = editMenu->addAction("Delete");
     deleteAction->setShortcut(QKeySequence::Delete);
     connect(deleteAction, &QAction::triggered, this, &MainWindow::DeleteSelected);
@@ -291,6 +303,9 @@ void MainWindow::CreateToolbar()
     connect(btnOpen, &QAction::triggered, this, &MainWindow::ActionOpen);
     auto* btnSave = toolbar_->addAction("Save");
     connect(btnSave, &QAction::triggered, this, &MainWindow::ActionSave);
+    toolbar_->addSeparator();
+    toolbar_->addAction(undoAction_);
+    toolbar_->addAction(redoAction_);
     toolbar_->addSeparator();
     auto* btnLayout = toolbar_->addAction("Auto Layout");
     connect(btnLayout, &QAction::triggered, this, &MainWindow::ActionAutoLayout);
@@ -597,7 +612,7 @@ void MainWindow::onSceneSelectionChanged()
 
 void MainWindow::onEdgeCreationRequested(const QString& fromId, const QString& toId)
 {
-    vm_.addEdge(fromId, toId);
+    commandStack_.push(std::make_unique<AddEdgeCommand>(vm_, fromId, toId));
 }
 
 void MainWindow::onNodeMovedScene(const QString& id, qreal x, qreal y)
@@ -629,18 +644,24 @@ void MainWindow::DeleteSelected()
         }
     }
 
-    // Delete edges first (so they don't reference deleted nodes)
+    if (nodesToDelete.isEmpty() && edgesToDelete.isEmpty())
+        return;
+
+    // Build a macro command: edges first, then nodes
+    auto macro = std::make_unique<MacroCommand>("Delete Selection");
     for (int i = 0; i < edgesToDelete.size(); i += 2) {
-        vm_.removeEdge(edgesToDelete[i], edgesToDelete[i + 1]);
+        macro->add(std::make_unique<RemoveEdgeCommand>(vm_, edgesToDelete[i], edgesToDelete[i + 1]));
     }
     for (const auto& id : nodesToDelete) {
-        vm_.removeTask(id);
+        macro->add(std::make_unique<RemoveTaskCommand>(vm_, id));
     }
+
+    commandStack_.push(std::move(macro));
 }
 
 void MainWindow::CreateNodeAt(const QString& taskType, const QPointF& scenePos)
 {
-    vm_.addTask(taskType, scenePos.x(), scenePos.y());
+    commandStack_.push(std::make_unique<AddTaskCommand>(vm_, taskType, scenePos.x(), scenePos.y()));
 }
 
 void MainWindow::UpdateStatusBar()
@@ -679,6 +700,7 @@ void MainWindow::ClearPropertyPanel()
 void MainWindow::ActionNew()
 {
     vm_.clear();
+    commandStack_.clear();
     currentFilePath_.clear();
 }
 
@@ -746,6 +768,31 @@ void MainWindow::ActionFitToView()
     }
     if (zoomLabel_)
         zoomLabel_->setText(QString("Zoom: %1%").arg(int(graphicsView_->transform().m11() * 100)));
+}
+
+void MainWindow::ActionUndo()
+{
+    commandStack_.undo();
+}
+
+void MainWindow::ActionRedo()
+{
+    commandStack_.redo();
+}
+
+void MainWindow::UpdateUndoRedoActions()
+{
+    bool canUndo = commandStack_.canUndo();
+    bool canRedo = commandStack_.canRedo();
+
+    if (undoAction_) {
+        undoAction_->setEnabled(canUndo);
+        undoAction_->setText(canUndo ? QString("Undo: %1").arg(commandStack_.undoDescription()) : "Undo");
+    }
+    if (redoAction_) {
+        redoAction_->setEnabled(canRedo);
+        redoAction_->setText(canRedo ? QString("Redo: %1").arg(commandStack_.redoDescription()) : "Redo");
+    }
 }
 
 void MainWindow::keyPressEvent(QKeyEvent* event)

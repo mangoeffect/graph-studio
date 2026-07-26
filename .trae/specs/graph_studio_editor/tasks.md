@@ -184,7 +184,7 @@
   - `human-judgment` TR-3.1.2: 拖拽空白区域平移画布，节点位置相应变化
   - `human-judgment` TR-3.1.3: 缩放围绕鼠标位置进行
 
-### [ ] Task 3.2: 实现撤销/重做功能
+### [x] Task 3.2: 实现撤销/重做功能
 - **Priority**: medium
 - **Depends On**: Task 2.4, Task 2.5
 - **Description**: 

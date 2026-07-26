@@ -33,6 +33,7 @@ qt_standard_project_setup()
 set(PROJECT_HEADERS
     include/model/GraphModel.h
     include/viewmodel/GraphViewModel.h
+    include/command/CommandStack.h
     include/view/MainWindow.h
     include/view/NodeItem.h
     include/view/EdgeItem.h
@@ -44,6 +45,7 @@ set(PROJECT_SOURCES
     src/platform/macos/entry.cpp
     src/model/GraphModel.cpp
     src/viewmodel/GraphViewModel.cpp
+    src/command/CommandStack.cpp
     src/view/MainWindow.cpp
     src/view/NodeItem.cpp
     src/view/EdgeItem.cpp

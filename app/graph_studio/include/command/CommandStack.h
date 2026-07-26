@@ -1,0 +1,129 @@
+#ifndef COMMAND_STACK_H
+#define COMMAND_STACK_H
+
+#include <QObject>
+#include <QString>
+#include <memory>
+#include <vector>
+
+#include "viewmodel/GraphViewModel.h"
+
+namespace graph_studio {
+
+// Abstract command interface
+class Command {
+public:
+    virtual ~Command() = default;
+    virtual void execute() = 0;
+    virtual void undo() = 0;
+    virtual QString description() const = 0;
+};
+
+using CommandPtr = std::unique_ptr<Command>;
+
+// Add a task node
+class AddTaskCommand : public Command {
+public:
+    AddTaskCommand(GraphViewModel& vm, const QString& taskType, qreal x, qreal y);
+    void execute() override;
+    void undo() override;
+    QString description() const override { return "Add Task"; }
+    QString taskId() const { return taskId_; }
+
+private:
+    GraphViewModel& vm_;
+    QString taskType_;
+    qreal x_;
+    qreal y_;
+    QString taskId_;
+};
+
+// Remove a task node (records connected edges for restoration)
+class RemoveTaskCommand : public Command {
+public:
+    RemoveTaskCommand(GraphViewModel& vm, const QString& taskId);
+    void execute() override;
+    void undo() override;
+    QString description() const override { return "Remove Task"; }
+
+private:
+    GraphViewModel& vm_;
+    QString taskId_;
+    // Snapshot for undo
+    NodeData node_;
+    QList<EdgeData> connectedEdges_;
+    bool snapshotTaken_ = false;
+};
+
+// Add a dependency edge
+class AddEdgeCommand : public Command {
+public:
+    AddEdgeCommand(GraphViewModel& vm, const QString& fromId, const QString& toId);
+    void execute() override;
+    void undo() override;
+    QString description() const override { return "Add Edge"; }
+
+private:
+    GraphViewModel& vm_;
+    QString fromId_;
+    QString toId_;
+};
+
+// Remove a dependency edge
+class RemoveEdgeCommand : public Command {
+public:
+    RemoveEdgeCommand(GraphViewModel& vm, const QString& fromId, const QString& toId);
+    void execute() override;
+    void undo() override;
+    QString description() const override { return "Remove Edge"; }
+
+private:
+    GraphViewModel& vm_;
+    QString fromId_;
+    QString toId_;
+};
+
+// Macro command: groups multiple commands (e.g. delete selection)
+class MacroCommand : public Command {
+public:
+    explicit MacroCommand(const QString& desc);
+    void add(CommandPtr cmd);
+    void execute() override;
+    void undo() override;
+    QString description() const override { return desc_; }
+
+private:
+    QString desc_;
+    std::vector<CommandPtr> commands_;
+};
+
+// Command stack managing undo/redo history
+class CommandStack : public QObject {
+    Q_OBJECT
+public:
+    explicit CommandStack(QObject* parent = nullptr, int maxStack = 100);
+
+    void push(CommandPtr cmd);
+    bool undo();
+    bool redo();
+    void clear();
+
+    bool canUndo() const;
+    bool canRedo() const;
+    QString undoDescription() const;
+    QString redoDescription() const;
+
+signals:
+    void canUndoChanged(bool can);
+    void canRedoChanged(bool can);
+    void stackChanged();
+
+private:
+    std::vector<CommandPtr> undoStack_;
+    std::vector<CommandPtr> redoStack_;
+    int maxStack_;
+};
+
+} // namespace graph_studio
+
+#endif // COMMAND_STACK_H

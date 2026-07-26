@@ -15,6 +15,7 @@
 
 #include "view/GraphView.h"
 #include "viewmodel/GraphViewModel.h"
+#include "command/CommandStack.h"
 
 namespace graph_studio {
 
@@ -78,6 +79,9 @@ private:
     void ActionZoomIn();
     void ActionZoomOut();
     void ActionFitToView();
+    void ActionUndo();
+    void ActionRedo();
+    void UpdateUndoRedoActions();
 
     GraphViewModel& vm_;
     QSplitter* mainSplitter_ = nullptr;
@@ -107,6 +111,10 @@ private:
     QHash<QString, NodeItem*> nodeItems_;
 
     QString currentFilePath_;
+
+    CommandStack commandStack_;
+    QAction* undoAction_ = nullptr;
+    QAction* redoAction_ = nullptr;
 };
 
 } // namespace graph_studio
