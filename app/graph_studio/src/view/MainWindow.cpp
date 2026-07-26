@@ -701,6 +701,11 @@ void MainWindow::UpdatePropertyPanel(const QString& nodeId)
         return;
     }
 
+    if (!propIdEdit_) {
+        ClearPropertyPanel();
+        return;
+    }
+
     NodeData data = vm_.nodeData(nodeId);
     propIdEdit_->setText(data.id);
     propTypeEdit_->setText(data.type);
@@ -710,12 +715,10 @@ void MainWindow::UpdatePropertyPanel(const QString& nodeId)
 
 void MainWindow::ClearPropertyPanel()
 {
-    if (propIdEdit_) {
-        propIdEdit_->setText("(none)");
-        propTypeEdit_->setText("(none)");
-        propXEdit_->setText("-");
-        propYEdit_->setText("-");
-    }
+    if (propIdEdit_) propIdEdit_->setText("(none)");
+    if (propTypeEdit_) propTypeEdit_->setText("(none)");
+    if (propXEdit_) propXEdit_->setText("-");
+    if (propYEdit_) propYEdit_->setText("-");
 }
 
 void MainWindow::ActionNew()
