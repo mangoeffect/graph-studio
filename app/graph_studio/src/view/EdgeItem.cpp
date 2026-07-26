@@ -59,19 +59,26 @@ void EdgeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, 
     if (!source_ || !target_)
         return;
 
-    QPen pen(QColor(150, 150, 150), 2);
-    painter->setPen(pen);
+    QLineF line(sourcePoint_, targetPoint_);
+    double angle = std::atan2(-line.dy(), line.dx());
+
+    QPen linePen(QColor(180, 180, 200), 2.5, Qt::SolidLine, Qt::RoundCap);
+    painter->setPen(linePen);
     painter->setBrush(Qt::NoBrush);
 
-    QLineF line(sourcePoint_, targetPoint_);
-    painter->drawLine(line);
-
-    double angle = std::atan2(-line.dy(), line.dx());
+    QPainterPath curvePath(sourcePoint_);
+    qreal dx = targetPoint_.x() - sourcePoint_.x();
+    qreal dy = targetPoint_.y() - sourcePoint_.y();
+    QPointF ctrl1(sourcePoint_.x() + dx * 0.5, sourcePoint_.y());
+    QPointF ctrl2(targetPoint_.x() - dx * 0.5, targetPoint_.y());
+    curvePath.cubicTo(ctrl1, ctrl2, targetPoint_);
+    painter->drawPath(curvePath);
 
     QPointF arrowP1 = targetPoint_ - QPointF(sin(angle - M_PI / 6) * ARROW_SIZE, cos(angle - M_PI / 6) * ARROW_SIZE);
     QPointF arrowP2 = targetPoint_ - QPointF(sin(angle + M_PI / 6) * ARROW_SIZE, cos(angle + M_PI / 6) * ARROW_SIZE);
 
-    painter->setBrush(QColor(150, 150, 150));
+    painter->setPen(QPen(QColor(180, 180, 200), 1));
+    painter->setBrush(QColor(200, 200, 220));
     painter->drawPolygon(QPolygonF({targetPoint_, arrowP1, arrowP2}));
 }
 
