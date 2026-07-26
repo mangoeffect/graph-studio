@@ -5,6 +5,8 @@
 #include <QPainter>
 #include <QGraphicsItem>
 #include <QKeyEvent>
+#include <QMenu>
+#include <QAction>
 
 using namespace graph_studio;
 
@@ -163,6 +165,57 @@ void GraphScene::mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event)
         }
     }
     QGraphicsScene::mouseDoubleClickEvent(event);
+}
+
+void GraphScene::contextMenuEvent(QGraphicsSceneContextMenuEvent* event)
+{
+    // 右键空白处弹出任务创建菜单；右键节点时不拦截（交由默认行为）
+    auto* itemUnder = itemAt(event->scenePos(), QTransform());
+    if (itemUnder) {
+        QGraphicsScene::contextMenuEvent(event);
+        return;
+    }
+
+    QMenu menu;
+    QPointF pos = event->scenePos();
+
+    auto addSection = [&menu](const QString& title) {
+        auto* a = menu.addAction(title);
+        a->setEnabled(false);
+        QFont f = a->font();
+        f.setBold(true);
+        a->setFont(f);
+    };
+
+    auto addTask = [this, &menu, pos](const QString& name) {
+        menu.addAction(name, this, [this, name, pos]() {
+            emit nodeCreateRequested(name, pos);
+        });
+    };
+
+    addSection("Input");
+    addTask("file_input");
+    addTask("camera_input");
+    addTask("image_load");
+
+    menu.addSeparator();
+    addSection("Process");
+    addTask("data_processor");
+    addTask("opencv_blur_filter");
+    addTask("opencv_gaussian_blur_filter");
+    addTask("opencv_sobel_filter");
+    addTask("opencv_laplacian_filter");
+    addTask("resize");
+    addTask("convert_color");
+
+    menu.addSeparator();
+    addSection("Output");
+    addTask("file_output");
+    addTask("display");
+    addTask("save_image");
+
+    menu.exec(event->screenPos());
+    event->accept();
 }
 
 void GraphScene::keyPressEvent(QKeyEvent* event)

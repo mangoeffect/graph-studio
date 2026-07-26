@@ -23,6 +23,7 @@ signals:
     void edgeCreationRequested(const QString& fromId, const QString& toId);
     void nodeMoved(const QString& id, qreal x, qreal y);
     void nodeDoubleClicked(const QString& id);
+    void nodeCreateRequested(const QString& taskType, const QPointF& pos);
 
 protected:
     void drawBackground(QPainter* painter, const QRectF& rect) override;
@@ -30,6 +31,7 @@ protected:
     void mouseMoveEvent(QGraphicsSceneMouseEvent* event) override;
     void mouseReleaseEvent(QGraphicsSceneMouseEvent* event) override;
     void mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event) override;
+    void contextMenuEvent(QGraphicsSceneContextMenuEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
 
 private:

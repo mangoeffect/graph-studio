@@ -225,6 +225,7 @@ void MainWindow::ConnectSignals()
     connect(scene_, &GraphScene::edgeCreationRequested, this, &MainWindow::onEdgeCreationRequested);
     connect(scene_, &GraphScene::nodeMoved, this, &MainWindow::onNodeMovedScene);
     connect(scene_, &GraphScene::nodeDoubleClicked, this, &MainWindow::onNodeDoubleClicked);
+    connect(scene_, &GraphScene::nodeCreateRequested, this, &MainWindow::CreateNodeAt);
     connect(scene_, &QGraphicsScene::selectionChanged, this, &MainWindow::onSceneSelectionChanged);
 
     // GraphView → MainWindow
