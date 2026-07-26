@@ -37,6 +37,7 @@ set(PROJECT_HEADERS
     include/view/NodeItem.h
     include/view/EdgeItem.h
     include/view/GraphScene.h
+    include/view/GraphView.h
 )
 
 set(PROJECT_SOURCES
@@ -47,6 +48,7 @@ set(PROJECT_SOURCES
     src/view/NodeItem.cpp
     src/view/EdgeItem.cpp
     src/view/GraphScene.cpp
+    src/view/GraphView.cpp
 )
 
 qt_add_executable(graph_studio

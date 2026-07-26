@@ -3,8 +3,12 @@
 
 #include <QGraphicsScene>
 #include <QGraphicsSceneMouseEvent>
+#include <QString>
 
 namespace graph_studio {
+
+class NodeItem;
+class EdgeItem;
 
 class GraphScene : public QGraphicsScene
 {
@@ -13,15 +17,25 @@ public:
     GraphScene(QObject* parent = nullptr);
     ~GraphScene() override;
 
+    NodeItem* findNodeItem(const QString& id) const;
+
+signals:
+    void edgeCreationRequested(const QString& fromId, const QString& toId);
+    void nodeMoved(const QString& id, qreal x, qreal y);
+    void nodeDoubleClicked(const QString& id);
+
 protected:
     void drawBackground(QPainter* painter, const QRectF& rect) override;
     void mousePressEvent(QGraphicsSceneMouseEvent* event) override;
     void mouseMoveEvent(QGraphicsSceneMouseEvent* event) override;
     void mouseReleaseEvent(QGraphicsSceneMouseEvent* event) override;
+    void mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event) override;
+    void keyPressEvent(QKeyEvent* event) override;
 
 private:
-    bool isDragging_ = false;
-    QPointF dragStart_;
+    bool portDragging_ = false;
+    NodeItem* dragSource_ = nullptr;
+    EdgeItem* tempEdge_ = nullptr;
 };
 
 } // namespace graph_studio

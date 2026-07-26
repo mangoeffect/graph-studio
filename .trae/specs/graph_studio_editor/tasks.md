@@ -59,7 +59,7 @@
   - `programmatic` TR-1.2.1: 成功编译并链接 task_graph 库
   - `programmatic` TR-1.2.2: 成功创建 DAG 实例并添加任务
 
-### [ ] Task 1.3: 实现主窗口布局（QMainWindow + Qt Widgets）
+### [x] Task 1.3: 实现主窗口布局（QMainWindow + Qt Widgets）
 - **Priority**: high
 - **Depends On**: Task 1.1
 - **Description**: 
@@ -73,7 +73,7 @@
   - `human-judgment` TR-1.3.1: 主窗口显示工具栏、侧边栏（任务库）、画布区域、状态栏
   - `human-judgment` TR-1.3.2: 布局在不同窗口尺寸下自适应
 
-### [ ] Task 1.4: 实现 GraphViewModel 基础功能
+### [x] Task 1.4: 实现 GraphViewModel 基础功能
 - **Priority**: high
 - **Depends On**: Task 1.2
 - **Description**: 
@@ -90,7 +90,7 @@
 
 ## Phase 2: 核心编辑功能（3-4 周）
 
-### [ ] Task 2.1: 实现 QGraphicsScene/QGraphicsView 画布
+### [x] Task 2.1: 实现 QGraphicsScene/QGraphicsView 画布
 - **Priority**: high
 - **Depends On**: Task 1.3
 - **Description**: 
@@ -103,7 +103,7 @@
   - `human-judgment` TR-2.1.2: 鼠标滚轮缩放正常工作
   - `human-judgment` TR-2.1.3: 拖拽空白区域平移正常工作
 
-### [ ] Task 2.2: 实现 NodeItem 节点图形项
+### [x] Task 2.2: 实现 NodeItem 节点图形项
 - **Priority**: high
 - **Depends On**: Task 2.1, Task 1.4
 - **Description**: 
@@ -116,7 +116,7 @@
   - `human-judgment` TR-2.2.2: 点击节点选中，显示选中状态
   - `human-judgment` TR-2.2.3: 拖拽节点可移动位置
 
-### [ ] Task 2.3: 实现 EdgeItem 连线图形项
+### [x] Task 2.3: 实现 EdgeItem 连线图形项
 - **Priority**: high
 - **Depends On**: Task 2.2
 - **Description**: 
@@ -129,7 +129,7 @@
   - `human-judgment` TR-2.3.2: 点击连线选中，显示选中状态
   - `human-judgment` TR-2.3.3: 按 Delete 键成功删除连线
 
-### [ ] Task 2.4: 实现任务节点管理（添加/删除/编辑）
+### [x] Task 2.4: 实现任务节点管理（添加/删除/编辑）
 - **Priority**: high
 - **Depends On**: Task 2.2, Task 1.4
 - **Description**: 
@@ -142,7 +142,7 @@
   - `human-judgment` TR-2.4.2: 选中节点按 Delete 键成功删除
   - `human-judgment` TR-2.4.3: 双击节点弹出编辑对话框
 
-### [ ] Task 2.5: 实现依赖连线编辑（拖拽创建）
+### [x] Task 2.5: 实现依赖连线编辑（拖拽创建）
 - **Priority**: high
 - **Depends On**: Task 2.3, Task 1.4
 - **Description**: 
@@ -154,7 +154,7 @@
   - `human-judgment` TR-2.5.1: 从节点输出端口拖拽到输入端口成功创建连线
   - `human-judgment` TR-2.5.2: 连线自动更新位置跟随节点移动
 
-### [ ] Task 2.6: 实现 JSON 导入导出
+### [x] Task 2.6: 实现 JSON 导入导出
 - **Priority**: high
 - **Depends On**: Task 1.2, Task 1.4
 - **Description**: 
@@ -171,7 +171,7 @@
 
 ## Phase 3: 交互优化（2-3 周）
 
-### [ ] Task 3.1: 实现画布缩放/平移
+### [x] Task 3.1: 实现画布缩放/平移
 - **Priority**: medium
 - **Depends On**: Task 2.1
 - **Description**: 
@@ -197,7 +197,7 @@
   - `human-judgment` TR-3.2.2: 撤销后按 Ctrl+Y 重做，节点重新出现
   - `programmatic` TR-3.2.3: 连续多次撤销/重做操作正确
 
-### [ ] Task 3.3: 实现自动布局算法
+### [x] Task 3.3: 实现自动布局算法
 - **Priority**: medium
 - **Depends On**: Task 1.4
 - **Description**: 
@@ -209,7 +209,7 @@
   - `human-judgment` TR-3.3.1: 点击自动布局按钮后，节点排列成清晰的层级结构
   - `human-judgment` TR-3.3.2: 连线不交叉，布局美观
 
-### [ ] Task 3.4: 实现属性面板
+### [x] Task 3.4: 实现属性面板
 - **Priority**: medium
 - **Depends On**: Task 1.3, Task 2.4
 - **Description**: 

@@ -1,5 +1,6 @@
 ﻿#include "view/MainWindow.h"
 #include "view/GraphScene.h"
+#include "view/GraphView.h"
 #include "view/NodeItem.h"
 #include "view/EdgeItem.h"
 #include "viewmodel/GraphViewModel.h"
@@ -15,8 +16,20 @@
 #include <QComboBox>
 #include <QScrollArea>
 #include <QPainter>
+#include <QFileDialog>
+#include <QMessageBox>
+#include <QKeyEvent>
+#include <QShortcut>
+#include <QDrag>
+#include <QMimeData>
+#include <QApplication>
 
 using namespace graph_studio;
+
+static QString edgeKey(const QString& from, const QString& to)
+{
+    return from + "->" + to;
+}
 
 MainWindow::MainWindow(GraphViewModel& vm, QWidget* parent)
     : QMainWindow(parent), vm_(vm)
@@ -27,6 +40,21 @@ MainWindow::MainWindow(GraphViewModel& vm, QWidget* parent)
 
     ApplyDarkTheme();
     InitializeLayout();
+    ConnectSignals();
+
+    // Seed a demo graph through the ViewModel
+    vm_.addTask("file_input", -300, -50, "file_input");
+    vm_.addTask("opencv_blur_filter", -50, -50);
+    vm_.addTask("opencv_sobel_filter", 200, -100);
+    vm_.addTask("display", 450, -50);
+    vm_.addTask("save_image", 200, 100);
+    vm_.addEdge("file_input", "opencv_blur_filter");
+    vm_.addEdge("opencv_blur_filter", "opencv_sobel_filter");
+    vm_.addEdge("opencv_sobel_filter", "display");
+    vm_.addEdge("opencv_blur_filter", "save_image");
+
+    graphicsView_->centerOn(0, 0);
+    UpdateStatusBar();
 }
 
 MainWindow::~MainWindow() = default;
@@ -48,6 +76,7 @@ void MainWindow::ApplyDarkTheme()
         QToolBar::separator { background-color: #3c3c3c; width: 1px; margin: 4px 6px; }
 
         QStatusBar { background-color: #007acc; color: #ffffff; border-top: 1px solid #3c3c3c; }
+        QStatusBar::item { border: none; }
 
         QSplitter::handle { background-color: #3c3c3c; }
         QSplitter::handle:horizontal { width: 2px; }
@@ -108,6 +137,7 @@ void MainWindow::ApplyDarkTheme()
             color: #d4d4d4;
         }
         QLineEdit:focus, QSpinBox:focus, QComboBox:focus { border-color: #007acc; }
+        QLineEdit:read-only { color: #999999; }
 
         QPushButton {
             background-color: #0e639c;
@@ -130,6 +160,7 @@ void MainWindow::ApplyDarkTheme()
         QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
 
         QScrollArea { border: none; background-color: transparent; }
+        QToolTip { background-color: #2d2d30; color: #d4d4d4; border: 1px solid #3c3c3c; }
     )");
 }
 
@@ -175,35 +206,77 @@ void MainWindow::InitializeLayout()
     CreateStatusBar();
 }
 
+void MainWindow::ConnectSignals()
+{
+    // ViewModel → MainWindow
+    connect(&vm_, &GraphViewModel::taskAdded, this, &MainWindow::onTaskAdded);
+    connect(&vm_, &GraphViewModel::taskRemoved, this, &MainWindow::onTaskRemoved);
+    connect(&vm_, &GraphViewModel::edgeAdded, this, &MainWindow::onEdgeAdded);
+    connect(&vm_, &GraphViewModel::edgeRemoved, this, &MainWindow::onEdgeRemoved);
+    connect(&vm_, &GraphViewModel::nodeMoved, this, &MainWindow::onNodeMovedVm);
+    connect(&vm_, &GraphViewModel::graphReset, this, &MainWindow::onGraphReset);
+    connect(&vm_, &GraphViewModel::logMessage, this, &MainWindow::onLogMessage);
+    connect(&vm_, &GraphViewModel::selectionChanged, this, &MainWindow::onSelectionChangedVm);
+    connect(&vm_, &GraphViewModel::taskCountChanged, this, &MainWindow::UpdateStatusBar);
+    connect(&vm_, &GraphViewModel::edgeCountChanged, this, &MainWindow::UpdateStatusBar);
+
+    // Scene → MainWindow
+    connect(scene_, &GraphScene::edgeCreationRequested, this, &MainWindow::onEdgeCreationRequested);
+    connect(scene_, &GraphScene::nodeMoved, this, &MainWindow::onNodeMovedScene);
+    connect(scene_, &GraphScene::nodeDoubleClicked, this, &MainWindow::onNodeDoubleClicked);
+    connect(scene_, &QGraphicsScene::selectionChanged, this, &MainWindow::onSceneSelectionChanged);
+
+    // GraphView → MainWindow
+    connect(graphicsView_, &GraphView::taskDropped, this, [this](const QString& taskType, const QPointF& pos) {
+        CreateNodeAt(taskType, pos);
+    });
+    connect(graphicsView_, &GraphView::zoomChanged, this, [this](qreal factor) {
+        if (zoomLabel_)
+            zoomLabel_->setText(QString("Zoom: %1%").arg(int(factor * 100)));
+    });
+
+    // Task list double-click → add at view center
+    connect(taskList_, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem* item) {
+        if (!item || !(item->flags() & Qt::ItemIsEnabled))
+            return;
+        QPointF center = graphicsView_->mapToScene(graphicsView_->viewport()->rect().center());
+        CreateNodeAt(item->text(), center);
+    });
+}
+
 void MainWindow::CreateMenuBar()
 {
     auto* fileMenu = menuBar()->addMenu("&File");
-    fileMenu->addAction("New");
-    fileMenu->addAction("Open...");
-    fileMenu->addAction("Save");
-    fileMenu->addAction("Save As...");
+    connect(fileMenu->addAction("New"), &QAction::triggered, this, &MainWindow::ActionNew);
+    connect(fileMenu->addAction("Open..."), &QAction::triggered, this, &MainWindow::ActionOpen);
+    connect(fileMenu->addAction("Save"), &QAction::triggered, this, &MainWindow::ActionSave);
+    connect(fileMenu->addAction("Save As..."), &QAction::triggered, this, &MainWindow::ActionSaveAs);
     fileMenu->addSeparator();
-    fileMenu->addAction("Exit");
+    connect(fileMenu->addAction("Exit"), &QAction::triggered, this, &QMainWindow::close);
 
     auto* editMenu = menuBar()->addMenu("&Edit");
-    editMenu->addAction("Undo");
-    editMenu->addAction("Redo");
-    editMenu->addSeparator();
-    editMenu->addAction("Delete");
+    auto* deleteAction = editMenu->addAction("Delete");
+    deleteAction->setShortcut(QKeySequence::Delete);
+    connect(deleteAction, &QAction::triggered, this, &MainWindow::DeleteSelected);
 
     auto* viewMenu = menuBar()->addMenu("&View");
-    viewMenu->addAction("Zoom In");
-    viewMenu->addAction("Zoom Out");
-    viewMenu->addAction("Fit to View");
+    connect(viewMenu->addAction("Zoom In"), &QAction::triggered, this, &MainWindow::ActionZoomIn);
+    connect(viewMenu->addAction("Zoom Out"), &QAction::triggered, this, &MainWindow::ActionZoomOut);
+    connect(viewMenu->addAction("Fit to View"), &QAction::triggered, this, &MainWindow::ActionFitToView);
     viewMenu->addSeparator();
-    viewMenu->addAction("Auto Layout");
-
-    auto* runMenu = menuBar()->addMenu("&Run");
-    runMenu->addAction("Execute");
-    runMenu->addAction("Stop");
+    connect(viewMenu->addAction("Auto Layout"), &QAction::triggered, this, &MainWindow::ActionAutoLayout);
 
     auto* helpMenu = menuBar()->addMenu("&Help");
-    helpMenu->addAction("About");
+    connect(helpMenu->addAction("About"), &QAction::triggered, this, [this]() {
+        QMessageBox::about(this, "About Graph Studio",
+            "Graph Studio\nA DAG visual editor for task_graph.\n\n"
+            "Controls:\n"
+            "  Ctrl+Scroll - Zoom\n"
+            "  Middle-drag - Pan\n"
+            "  Drag task from left panel - Create node\n"
+            "  Drag output port to input port - Create edge\n"
+            "  Delete - Remove selected\n");
+    });
 }
 
 void MainWindow::CreateToolbar()
@@ -212,17 +285,22 @@ void MainWindow::CreateToolbar()
     toolbar_->setMovable(false);
     toolbar_->setIconSize(QSize(20, 20));
 
-    toolbar_->addAction("New");
-    toolbar_->addAction("Open");
-    toolbar_->addAction("Save");
+    auto* btnNew = toolbar_->addAction("New");
+    connect(btnNew, &QAction::triggered, this, &MainWindow::ActionNew);
+    auto* btnOpen = toolbar_->addAction("Open");
+    connect(btnOpen, &QAction::triggered, this, &MainWindow::ActionOpen);
+    auto* btnSave = toolbar_->addAction("Save");
+    connect(btnSave, &QAction::triggered, this, &MainWindow::ActionSave);
     toolbar_->addSeparator();
-    toolbar_->addAction("Undo");
-    toolbar_->addAction("Redo");
+    auto* btnLayout = toolbar_->addAction("Auto Layout");
+    connect(btnLayout, &QAction::triggered, this, &MainWindow::ActionAutoLayout);
     toolbar_->addSeparator();
-    toolbar_->addAction("Auto Layout");
-    toolbar_->addSeparator();
-    toolbar_->addAction("Execute");
-    toolbar_->addAction("Stop");
+    auto* btnZoomIn = toolbar_->addAction("Zoom +");
+    connect(btnZoomIn, &QAction::triggered, this, &MainWindow::ActionZoomIn);
+    auto* btnZoomOut = toolbar_->addAction("Zoom -");
+    connect(btnZoomOut, &QAction::triggered, this, &MainWindow::ActionZoomOut);
+    auto* btnFit = toolbar_->addAction("Fit");
+    connect(btnFit, &QAction::triggered, this, &MainWindow::ActionFitToView);
 
     addToolBar(toolbar_);
 }
@@ -243,6 +321,8 @@ QWidget* MainWindow::CreateTaskPanel()
     layout->addWidget(header);
 
     taskList_ = new QListWidget();
+    taskList_->setDragEnabled(true);
+    taskList_->setToolTip("Drag to canvas or double-click to add");
     layout->addWidget(taskList_);
 
     PopulateTaskLibrary();
@@ -260,19 +340,19 @@ void MainWindow::PopulateTaskLibrary()
     const QStringList outputTasks = {"file_output", "display", "save_image"};
 
     auto* inputItem = new QListWidgetItem("-- Input --");
-    inputItem->setFlags(inputItem->flags() & ~Qt::ItemIsEnabled);
+    inputItem->setFlags(inputItem->flags() & ~Qt::ItemIsEnabled & ~Qt::ItemIsSelectable);
     inputItem->setForeground(QColor("#888888"));
     taskList_->addItem(inputItem);
     for (const auto& t : inputTasks) taskList_->addItem(t);
 
     auto* processItem = new QListWidgetItem("-- Process --");
-    processItem->setFlags(processItem->flags() & ~Qt::ItemIsEnabled);
+    processItem->setFlags(processItem->flags() & ~Qt::ItemIsEnabled & ~Qt::ItemIsSelectable);
     processItem->setForeground(QColor("#888888"));
     taskList_->addItem(processItem);
     for (const auto& t : processTasks) taskList_->addItem(t);
 
     auto* outputItem = new QListWidgetItem("-- Output --");
-    outputItem->setFlags(outputItem->flags() & ~Qt::ItemIsEnabled);
+    outputItem->setFlags(outputItem->flags() & ~Qt::ItemIsEnabled & ~Qt::ItemIsSelectable);
     outputItem->setForeground(QColor("#888888"));
     taskList_->addItem(outputItem);
     for (const auto& t : outputTasks) taskList_->addItem(t);
@@ -322,14 +402,24 @@ QWidget* MainWindow::CreateNodePropertyPanel()
     nodePropertyGroup_ = new QGroupBox("Selected Node");
     nodePropertyLayout_ = new QFormLayout(nodePropertyGroup_);
 
-    nodePropertyLayout_->addRow("Node ID:", new QLineEdit("(none)"));
-    nodePropertyLayout_->addRow("Type:", new QLineEdit("(none)"));
-    nodePropertyLayout_->addRow("Enabled:", new QComboBox());
-    nodePropertyLayout_->addRow("Timeout:", new QSpinBox());
+    propIdEdit_ = new QLineEdit();
+    propIdEdit_->setReadOnly(true);
+    propTypeEdit_ = new QLineEdit();
+    propTypeEdit_->setReadOnly(true);
+    propXEdit_ = new QLineEdit();
+    propXEdit_->setReadOnly(true);
+    propYEdit_ = new QLineEdit();
+    propYEdit_->setReadOnly(true);
+
+    nodePropertyLayout_->addRow("Node ID:", propIdEdit_);
+    nodePropertyLayout_->addRow("Type:", propTypeEdit_);
+    nodePropertyLayout_->addRow("X:", propXEdit_);
+    nodePropertyLayout_->addRow("Y:", propYEdit_);
 
     layout->addWidget(nodePropertyGroup_);
     layout->addStretch();
 
+    ClearPropertyPanel();
     return container;
 }
 
@@ -383,43 +473,287 @@ QWidget* MainWindow::CreateOutputPanel()
 void MainWindow::CreateCanvas()
 {
     scene_ = new GraphScene(this);
-    graphicsView_ = new QGraphicsView(scene_);
+    graphicsView_ = new GraphView(scene_);
     graphicsView_->setRenderHint(QPainter::Antialiasing);
-    graphicsView_->setDragMode(QGraphicsView::RubberBandDrag);
-    graphicsView_->setRenderHint(QPainter::SmoothPixmapTransform);
     graphicsView_->setMinimumWidth(400);
-
-    auto* node1 = new NodeItem("file_input", "Input");
-    node1->setPos(-300, -50);
-    scene_->addItem(node1);
-
-    auto* node2 = new NodeItem("blur_filter", "Process");
-    node2->setPos(-50, -50);
-    scene_->addItem(node2);
-
-    auto* node3 = new NodeItem("sobel_filter", "Process");
-    node3->setPos(200, -100);
-    scene_->addItem(node3);
-
-    auto* node4 = new NodeItem("display", "Output");
-    node4->setPos(450, -50);
-    scene_->addItem(node4);
-
-    auto* node5 = new NodeItem("save_image", "Output");
-    node5->setPos(200, 100);
-    scene_->addItem(node5);
-
-    scene_->addItem(new EdgeItem(node1, node2));
-    scene_->addItem(new EdgeItem(node2, node3));
-    scene_->addItem(new EdgeItem(node3, node4));
-    scene_->addItem(new EdgeItem(node2, node5));
-
-    graphicsView_->centerOn(0, 0);
 }
 
 void MainWindow::CreateStatusBar()
 {
     statusBar_ = new QStatusBar(this);
-    statusBar_->showMessage("Ready  |  Nodes: 5  |  Edges: 4");
+    zoomLabel_ = new QLabel("Zoom: 100%");
+    zoomLabel_->setStyleSheet("color: #ffffff; padding: 0 8px;");
+    statusBar_->addPermanentWidget(zoomLabel_);
+    statusBar_->showMessage("Ready");
     setStatusBar(statusBar_);
+}
+
+// ---- ViewModel signal handlers ----
+
+void MainWindow::onTaskAdded(const NodeData& node)
+{
+    auto* item = new NodeItem(node.id, node.type);
+    item->setPos(node.x, node.y);
+    scene_->addItem(item);
+    nodeItems_[node.id] = item;
+}
+
+void MainWindow::onTaskRemoved(const QString& taskId)
+{
+    auto it = nodeItems_.find(taskId);
+    if (it != nodeItems_.end()) {
+        // Remove connected edges from tracking
+        // NodeItem destructor removes edges from scene, but we need to clean our hash
+        for (auto edgeIt = edgeItems_.begin(); edgeIt != edgeItems_.end();) {
+            if (edgeIt.key().startsWith(taskId + "->") || edgeIt.key().endsWith("->" + taskId)) {
+                edgeIt = edgeItems_.erase(edgeIt);
+            } else {
+                ++edgeIt;
+            }
+        }
+        scene_->removeItem(it.value());
+        delete it.value();
+        nodeItems_.erase(it);
+    }
+    ClearPropertyPanel();
+}
+
+void MainWindow::onEdgeAdded(const EdgeData& edge)
+{
+    auto* src = nodeItems_.value(edge.fromId);
+    auto* tgt = nodeItems_.value(edge.toId);
+    if (!src || !tgt)
+        return;
+
+    auto* edgeItem = new EdgeItem(src, tgt);
+    scene_->addItem(edgeItem);
+    edgeItems_[edgeKey(edge.fromId, edge.toId)] = edgeItem;
+}
+
+void MainWindow::onEdgeRemoved(const QString& fromId, const QString& toId)
+{
+    QString key = edgeKey(fromId, toId);
+    auto it = edgeItems_.find(key);
+    if (it != edgeItems_.end()) {
+        scene_->removeItem(it.value());
+        delete it.value();
+        edgeItems_.erase(it);
+    }
+}
+
+void MainWindow::onNodeMovedVm(const QString& id, qreal x, qreal y)
+{
+    auto* item = nodeItems_.value(id);
+    if (item) {
+        item->setPos(x, y);
+    }
+    // Update property panel if this node is selected
+    if (vm_.selectedNodeId() == id) {
+        UpdatePropertyPanel(id);
+    }
+}
+
+void MainWindow::onGraphReset()
+{
+    // Clear all scene items
+    edgeItems_.clear();
+    nodeItems_.clear();
+    scene_->clear();
+    ClearPropertyPanel();
+}
+
+void MainWindow::onLogMessage(const QString& msg)
+{
+    if (logWidget_)
+        logWidget_->appendPlainText(msg);
+}
+
+void MainWindow::onSelectionChangedVm(const QString& nodeId)
+{
+    UpdatePropertyPanel(nodeId);
+}
+
+// ---- Scene signal handlers ----
+
+void MainWindow::onSceneSelectionChanged()
+{
+    // Find selected node or edge
+    auto selected = scene_->selectedItems();
+    QString selectedNodeId;
+
+    for (auto* item : selected) {
+        if (item->type() == NodeItem::Type) {
+            selectedNodeId = static_cast<NodeItem*>(item)->nodeId();
+            break;
+        }
+    }
+
+    if (selectedNodeId.isEmpty()) {
+        vm_.clearSelection();
+    } else {
+        vm_.selectNode(selectedNodeId);
+    }
+}
+
+void MainWindow::onEdgeCreationRequested(const QString& fromId, const QString& toId)
+{
+    vm_.addEdge(fromId, toId);
+}
+
+void MainWindow::onNodeMovedScene(const QString& id, qreal x, qreal y)
+{
+    vm_.moveNode(id, x, y);
+}
+
+void MainWindow::onNodeDoubleClicked(const QString& id)
+{
+    vm_.selectNode(id);
+}
+
+// ---- Actions ----
+
+void MainWindow::DeleteSelected()
+{
+    auto selected = scene_->selectedItems();
+    QStringList nodesToDelete;
+    QStringList edgesToDelete; // pairs: from, to
+
+    for (auto* item : selected) {
+        if (item->type() == NodeItem::Type) {
+            nodesToDelete << static_cast<NodeItem*>(item)->nodeId();
+        } else if (item->type() == EdgeItem::Type) {
+            auto* edge = static_cast<EdgeItem*>(item);
+            if (edge->sourceNode() && edge->targetNode()) {
+                edgesToDelete << edge->fromId() << edge->toId();
+            }
+        }
+    }
+
+    // Delete edges first (so they don't reference deleted nodes)
+    for (int i = 0; i < edgesToDelete.size(); i += 2) {
+        vm_.removeEdge(edgesToDelete[i], edgesToDelete[i + 1]);
+    }
+    for (const auto& id : nodesToDelete) {
+        vm_.removeTask(id);
+    }
+}
+
+void MainWindow::CreateNodeAt(const QString& taskType, const QPointF& scenePos)
+{
+    vm_.addTask(taskType, scenePos.x(), scenePos.y());
+}
+
+void MainWindow::UpdateStatusBar()
+{
+    if (statusBar_) {
+        statusBar_->showMessage(QString("Nodes: %1  |  Edges: %2")
+                                    .arg(vm_.taskCount())
+                                    .arg(vm_.edgeCount()));
+    }
+}
+
+void MainWindow::UpdatePropertyPanel(const QString& nodeId)
+{
+    if (nodeId.isEmpty() || !vm_.hasNode(nodeId)) {
+        ClearPropertyPanel();
+        return;
+    }
+
+    NodeData data = vm_.nodeData(nodeId);
+    propIdEdit_->setText(data.id);
+    propTypeEdit_->setText(data.type);
+    propXEdit_->setText(QString::number(data.x, 'f', 1));
+    propYEdit_->setText(QString::number(data.y, 'f', 1));
+}
+
+void MainWindow::ClearPropertyPanel()
+{
+    if (propIdEdit_) {
+        propIdEdit_->setText("(none)");
+        propTypeEdit_->setText("(none)");
+        propXEdit_->setText("-");
+        propYEdit_->setText("-");
+    }
+}
+
+void MainWindow::ActionNew()
+{
+    vm_.clear();
+    currentFilePath_.clear();
+}
+
+void MainWindow::ActionOpen()
+{
+    QString path = QFileDialog::getOpenFileName(this, "Open Graph", QString(), "JSON Files (*.json);;All Files (*)");
+    if (path.isEmpty())
+        return;
+    if (vm_.loadFromFile(path)) {
+        currentFilePath_ = path;
+    }
+}
+
+void MainWindow::ActionSave()
+{
+    if (currentFilePath_.isEmpty()) {
+        ActionSaveAs();
+    } else {
+        vm_.saveToFile(currentFilePath_);
+    }
+}
+
+void MainWindow::ActionSaveAs()
+{
+    QString path = QFileDialog::getSaveFileName(this, "Save Graph", "graph.json", "JSON Files (*.json);;All Files (*)");
+    if (path.isEmpty())
+        return;
+    if (!path.endsWith(".json"))
+        path += ".json";
+    if (vm_.saveToFile(path)) {
+        currentFilePath_ = path;
+    }
+}
+
+void MainWindow::ActionAutoLayout()
+{
+    vm_.autoLayout();
+}
+
+void MainWindow::ActionZoomIn()
+{
+    graphicsView_->scale(1.2, 1.2);
+    if (zoomLabel_)
+        zoomLabel_->setText(QString("Zoom: %1%").arg(int(graphicsView_->transform().m11() * 100)));
+}
+
+void MainWindow::ActionZoomOut()
+{
+    graphicsView_->scale(1.0 / 1.2, 1.0 / 1.2);
+    if (zoomLabel_)
+        zoomLabel_->setText(QString("Zoom: %1%").arg(int(graphicsView_->transform().m11() * 100)));
+}
+
+void MainWindow::ActionFitToView()
+{
+    if (nodeItems_.isEmpty()) {
+        graphicsView_->resetTransform();
+        graphicsView_->centerOn(0, 0);
+    } else {
+        QRectF boundingRect;
+        for (auto* item : nodeItems_) {
+            boundingRect = boundingRect.united(item->mapToScene(item->boundingRect()).boundingRect());
+        }
+        graphicsView_->fitInView(boundingRect.adjusted(-50, -50, 50, 50), Qt::KeepAspectRatio);
+    }
+    if (zoomLabel_)
+        zoomLabel_->setText(QString("Zoom: %1%").arg(int(graphicsView_->transform().m11() * 100)));
+}
+
+void MainWindow::keyPressEvent(QKeyEvent* event)
+{
+    if (event->key() == Qt::Key_Delete || event->key() == Qt::Key_Backspace) {
+        DeleteSelected();
+        event->accept();
+        return;
+    }
+    QMainWindow::keyPressEvent(event);
 }
