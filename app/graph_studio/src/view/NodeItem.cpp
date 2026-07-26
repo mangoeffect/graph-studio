@@ -20,11 +20,10 @@ NodeItem::NodeItem(const QString& nodeId, const QString& nodeType, QGraphicsItem
 
 NodeItem::~NodeItem()
 {
-    // Detach edges before destruction
-    for (auto* edge : edges_) {
-        if (edge && edge->scene())
-            edge->scene()->removeItem(edge);
-    }
+    // 不在析构中操作 scene 或 edge 对象：QGraphicsScene::clear() 批量销毁
+    // items 时析构顺序不确定，交叉访问会导致 UAF。edge 的删除由
+    // MainWindow 在运行时统一管理（先删 edge 再删 node）。
+    edges_.clear();
 }
 
 QString NodeItem::nodeId() const { return nodeId_; }

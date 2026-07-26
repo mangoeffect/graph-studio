@@ -521,17 +521,27 @@ void MainWindow::onTaskAdded(const NodeData& node)
 
 void MainWindow::onTaskRemoved(const QString& taskId)
 {
+    // 先删除关联的 edge（完整删除对象 + 从两端 node 的 edges_ 注销）
+    QString prefix = taskId + "->";
+    QString suffix = "->" + taskId;
+    for (auto edgeIt = edgeItems_.begin(); edgeIt != edgeItems_.end();) {
+        const QString& key = edgeIt.key();
+        if (key.startsWith(prefix) || key.endsWith(suffix)) {
+            auto* edge = edgeIt.value();
+            if (edge) {
+                if (auto* s = edge->sourceNode()) s->unregisterEdge(edge);
+                if (auto* t = edge->targetNode()) t->unregisterEdge(edge);
+                scene_->removeItem(edge);
+                delete edge;
+            }
+            edgeIt = edgeItems_.erase(edgeIt);
+        } else {
+            ++edgeIt;
+        }
+    }
+    // 再删除 node 本身
     auto it = nodeItems_.find(taskId);
     if (it != nodeItems_.end()) {
-        // Remove connected edges from tracking
-        // NodeItem destructor removes edges from scene, but we need to clean our hash
-        for (auto edgeIt = edgeItems_.begin(); edgeIt != edgeItems_.end();) {
-            if (edgeIt.key().startsWith(taskId + "->") || edgeIt.key().endsWith("->" + taskId)) {
-                edgeIt = edgeItems_.erase(edgeIt);
-            } else {
-                ++edgeIt;
-            }
-        }
         scene_->removeItem(it.value());
         delete it.value();
         nodeItems_.erase(it);
@@ -556,8 +566,12 @@ void MainWindow::onEdgeRemoved(const QString& fromId, const QString& toId)
     QString key = edgeKey(fromId, toId);
     auto it = edgeItems_.find(key);
     if (it != edgeItems_.end()) {
-        scene_->removeItem(it.value());
-        delete it.value();
+        auto* edge = it.value();
+        // 从两端 node 的 edges_ 集合注销，避免悬空引用
+        if (auto* s = edge->sourceNode()) s->unregisterEdge(edge);
+        if (auto* t = edge->targetNode()) t->unregisterEdge(edge);
+        scene_->removeItem(edge);
+        delete edge;
         edgeItems_.erase(it);
     }
 }

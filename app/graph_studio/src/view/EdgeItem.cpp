@@ -31,7 +31,10 @@ EdgeItem::EdgeItem(NodeItem* source, const QPointF& freeEnd, QGraphicsItem* pare
 
 EdgeItem::~EdgeItem()
 {
-    unregisterFromNodes();
+    // 不访问 source_/target_：scene 批量销毁 items 时它们可能已析构。
+    // 运行时单个 edge 删除由 MainWindow 调用 unregisterEdge 显式维护关系。
+    source_ = nullptr;
+    target_ = nullptr;
 }
 
 NodeItem* EdgeItem::sourceNode() const { return source_; }
