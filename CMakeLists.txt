@@ -328,6 +328,15 @@ target_link_libraries(test_type_registry
         task_graph
 )
 
+add_executable(test_validate
+    tests/test_validate.cpp
+)
+
+target_link_libraries(test_validate
+    PRIVATE
+        task_graph
+)
+
 foreach(submodule ${SUBMODULES})
     if(TARGET ${submodule})
         target_link_libraries(test_subnode
@@ -342,3 +351,4 @@ add_test(NAME test_dag COMMAND test_dag)
 add_test(NAME test_plugin COMMAND test_plugin)
 add_test(NAME test_subnode COMMAND test_subnode)
 add_test(NAME test_type_registry COMMAND test_type_registry)
+add_test(NAME test_validate COMMAND test_validate)
