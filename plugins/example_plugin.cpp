@@ -12,33 +12,37 @@ namespace task_graph {
 class ExamplePluginTask : public IPluginTask {
 public:
     using IPluginTask::IPluginTask;
-    
-    const std::string& type() const override { 
+
+    const std::string& type() const override {
         static std::string type = "example_plugin_task";
         return type;
     }
-    
+
     TaskResult execute(TaskContext& ctx) override {
-        std::string key = id() + "_output";
-        ctx.set_value(key, 42);
+        (void)ctx;
         return TaskResult{.status = TaskStatus::COMPLETED, .value = 42};
     }
 };
 
+// DataProcessorTask: 声明一个 int 输入端口 "in"，输出 *10 后从默认 "out" 端口返回。
+// 跨 task 数据通过 TaskResult.value 流转；不再用 set_value 误导跨 task 黑板。
 class DataProcessorTask : public IPluginTask {
 public:
     using IPluginTask::IPluginTask;
-    
-    const std::string& type() const override { 
+
+    const std::string& type() const override {
         static std::string type = "data_processor";
         return type;
     }
-    
+
+    std::vector<PortSpec> input_specs() const override {
+        return {make_port<int>("in")};
+    }
+
     TaskResult execute(TaskContext& ctx) override {
-        auto input = ctx.get<int>("input_data");
+        auto input = ctx.input<int>("in");
         if (input) {
             int result = *input * 10;
-            ctx.set_value("processed_data", result);
             return TaskResult{.status = TaskStatus::COMPLETED, .value = result};
         }
         return TaskResult{.status = TaskStatus::FAILED};
@@ -56,17 +60,17 @@ extern "C" TG_EXPORT bool register_plugin() {
         "example_task_1",
         [](const std::string& id, const TaskConfig& config) { return std::make_shared<ExamplePluginTask>(id, config); }
     );
-    
+
     PluginRegistry::instance().register_task(
         "example_task_2",
         [](const std::string& id, const TaskConfig& config) { return std::make_shared<ExamplePluginTask>(id, config); }
     );
-    
+
     PluginRegistry::instance().register_task(
         "data_processor",
         [](const std::string& id, const TaskConfig& config) { return std::make_shared<DataProcessorTask>(id, config); }
     );
-    
+
     return true;
 }
 

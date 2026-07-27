@@ -139,10 +139,32 @@ void DAGExecutor::run(const DAG& dag) {
 
         std::vector<std::future<void>> futures;
 
+        // 统一的失败传播：写 FAILED 结果、触发事件、递减下游依赖计数、唤醒调度
+        auto fail_and_propagate = [&](const TaskId& tid,
+                                      const std::string& task_type,
+                                      const std::string& reason) {
+            TG_LOG_ERROR("Task '" + tid + "' failed: " + reason);
+            {
+                std::lock_guard<std::mutex> lock(results_mutex_);
+                results_[tid] = TaskResult{.status = TaskStatus::FAILED};
+            }
+            completed_count.fetch_add(1);
+            emit_task_event(tid, task_type, ProfilePhase::FAILED);
+            for (const TaskId& dependent : dependents[tid]) {
+                size_t remaining = remaining_dependencies[dependent].fetch_sub(1);
+                if (remaining == 1) {
+                    std::lock_guard<std::mutex> qlock(queue_mutex);
+                    ready_queue.push(dependent);
+                }
+            }
+            queue_cv.notify_one();
+        };
+
         // 任务提交闭包：封装单个任务的完整执行流程
         auto submit_task = [&](const TaskId& tid) {
             futures.push_back(thread_pool_->submit([this, &dag, tid, &remaining_dependencies, &dependents,
-                                                   &queue_mutex, &queue_cv, &ready_queue, &completed_count]() {
+                                                    &queue_mutex, &queue_cv, &ready_queue, &completed_count,
+                                                    &fail_and_propagate]() {
                 TaskPtr task = dag.get_task(tid);
 
                 if (cancelled_) {
@@ -159,81 +181,82 @@ void DAGExecutor::run(const DAG& dag) {
                 // READY：任务已被调度器取出，进入处理流程
                 emit_task_event(tid, task->type(), ProfilePhase::READY);
 
-                auto it = dag.reverse_adjacency().find(tid);
+                // === Step 1: 取上游 TaskResult，做成功性检查 ===
+                const auto in_edges = dag.incoming_edges(tid);
                 std::vector<TaskId> deps;
-                if (it != dag.reverse_adjacency().end()) {
-                    deps = std::vector<TaskId>(it->second.begin(), it->second.end());
+                deps.reserve(in_edges.size());
+                for (const auto& e : in_edges) {
+                    if (std::find(deps.begin(), deps.end(), e.from) == deps.end()) {
+                        deps.push_back(e.from);
+                    }
                 }
 
                 std::unordered_map<TaskId, TaskResult> input_results;
+                std::string failed_dep;
                 {
                     std::lock_guard<std::mutex> lock(results_mutex_);
-                    // 检查所有依赖任务是否已成功完成；任一未完成则当前任务失败
                     for (const auto& dep : deps) {
                         auto it = results_.find(dep);
                         if (it == results_.end() || it->second.status != TaskStatus::COMPLETED) {
-                            TG_LOG_ERROR("Task '" + tid + "' dependency '" + dep + "' not completed");
-                            results_[tid] = TaskResult{.status = TaskStatus::FAILED};
-                            completed_count.fetch_add(1);
-                            emit_task_event(tid, task->type(), ProfilePhase::FAILED);
-                            // 即使任务失败也需通知下游，避免调度死锁
-                            for (const TaskId& dependent : dependents[tid]) {
-                                size_t remaining = remaining_dependencies[dependent].fetch_sub(1);
-                                if (remaining == 1) {
-                                    std::lock_guard<std::mutex> qlock(queue_mutex);
-                                    ready_queue.push(dependent);
-                                }
-                            }
-                            queue_cv.notify_one();
-                            return;
+                            failed_dep = dep;
+                            break;
                         }
                         input_results[dep] = it->second;
                     }
                 }
-
-                // 收集上游任务的输出作为当前任务的输入数据
-                std::vector<std::any> inputs;
-                for (const auto& [dep, result] : input_results) {
-                    if (result.value.has_value()) {
-                        inputs.push_back(result.value);
-                    } else {
-                        inputs.push_back(std::any());
-                    }
+                // 锁外调用 fail_and_propagate（避免与 results_mutex_ 死锁）
+                if (!failed_dep.empty()) {
+                    fail_and_propagate(tid, task->type(),
+                        "dependency '" + failed_dep + "' not completed");
+                    return;
                 }
 
-                // 输入校验：检查数据数量与类型是否符合任务要求
-                CheckResult check_result = task->check_input(inputs);
+                // === Step 2: 按 Edge.to_port 构造绑定输入（确定性顺序，由 edge 顺序决定）===
+                // 上游输出的解析：优先 outputs[port]，回退 value（视为 "out"）。
+                // 若上游既无 outputs 也无 value，绑定空 any（task 可选用 nullopt 处理）。
+                auto resolve_upstream = [](const TaskResult& r,
+                                           const std::string& port) -> std::any {
+                    if (!r.outputs.empty()) {
+                        auto it = r.outputs.find(port);
+                        if (it != r.outputs.end()) return it->second;
+                        // outputs 非空但找不到 port：返回空 any（视为缺数据）
+                        return std::any{};
+                    }
+                    // outputs 为空：value 视为 "out" 端口（兼容旧 TaskResult）
+                    if (r.value.has_value()) return r.value;
+                    return std::any{};
+                };
+
+                std::unordered_map<std::string, std::any> inputs_by_port;
+                for (const auto& e : in_edges) {
+                    auto it = input_results.find(e.from);
+                    if (it == input_results.end()) {
+                        fail_and_propagate(tid, task->type(),
+                            "internal error: upstream '" + e.from + "' missing from snapshot");
+                        return;
+                    }
+                    inputs_by_port[e.to_port] = resolve_upstream(it->second, e.from_port);
+                }
+
+                // === Step 3: 输入校验（按 port 的 map） ===
+                CheckResult check_result = task->check_input(inputs_by_port);
                 if (!check_result.success) {
-                    TG_LOG_ERROR("Task '" + tid + "' input check failed: " + check_result.error_message);
-                    {
-                        std::lock_guard<std::mutex> lock(results_mutex_);
-                        results_[tid] = TaskResult{.status = TaskStatus::FAILED};
-                    }
-                    completed_count.fetch_add(1);
-                    emit_task_event(tid, task->type(), ProfilePhase::FAILED);
-                    // 校验失败同样需推进下游调度
-                    for (const TaskId& dependent : dependents[tid]) {
-                        size_t remaining = remaining_dependencies[dependent].fetch_sub(1);
-                        if (remaining == 1) {
-                            std::lock_guard<std::mutex> qlock(queue_mutex);
-                            ready_queue.push(dependent);
-                        }
-                    }
-                    queue_cv.notify_one();
+                    fail_and_propagate(tid, task->type(),
+                        "input check failed: " + check_result.error_message);
                     return;
                 }
 
                 TG_LOG_DEBUG("Submitting task '" + tid + "' for execution");
 
-                // STARTED：任务实际开始执行 execute()
+                // === Step 4: 构造 TaskContext 执行 ===
                 emit_task_event(tid, task->type(), ProfilePhase::STARTED);
                 auto exec_start = std::chrono::steady_clock::now();
 
-                TaskContext task_ctx(task->config().params, deps, input_results);
+                TaskContext task_ctx(task->config().params, deps, input_results,
+                                     std::move(inputs_by_port));
                 TaskResult result = task->execute(task_ctx);
 
                 auto exec_duration = std::chrono::steady_clock::now() - exec_start;
-                // 顺手填充 TaskResult.duration（框架已有字段，此前始终为 0）
                 result.duration = std::chrono::duration_cast<std::chrono::nanoseconds>(exec_duration);
 
                 {
@@ -246,7 +269,7 @@ void DAGExecutor::run(const DAG& dag) {
                                 result.is_success() ? ProfilePhase::COMPLETED : ProfilePhase::FAILED,
                                 result.duration);
 
-                // 关键调度节点：任务完成后递减下游依赖计数，归零则唤醒调度循环
+                // === Step 5: 推进下游调度 ===
                 for (const TaskId& dependent : dependents[tid]) {
                     size_t remaining = remaining_dependencies[dependent].fetch_sub(1);
                     if (remaining == 1) {
@@ -261,6 +284,7 @@ void DAGExecutor::run(const DAG& dag) {
                 queue_cv.notify_one();
             }));
         };
+
 
         TG_LOG_DEBUG("Starting task scheduling loop");
 

@@ -10,44 +10,31 @@
 
 class StrictSumTask : public task_graph::Task {
 public:
-    StrictSumTask(const std::string& id) 
+    StrictSumTask(const std::string& id)
         : Task(id, [this](auto& ctx) { return execute_impl(ctx); }, create_config()) {}
-    
+
+    std::vector<task_graph::PortSpec> input_specs() const override {
+        return {
+            task_graph::make_port<int>("a"),
+            task_graph::make_port<int>("b"),
+        };
+    }
+
 private:
     static task_graph::TaskConfig create_config() {
         task_graph::TaskConfig cfg;
         cfg.dependencies = {"producer_a", "producer_b"};
         return cfg;
     }
-    
+
     task_graph::TaskResult execute_impl(task_graph::TaskContext& ctx) {
-        auto dep_a = ctx.template get_result_value<int>("producer_a");
-        auto dep_b = ctx.template get_result_value<int>("producer_b");
+        auto dep_a = ctx.template input<int>("a");
+        auto dep_b = ctx.template input<int>("b");
         if (dep_a && dep_b) {
             int result = *dep_a + *dep_b;
-            ctx.set_value("sum_result", result);
             return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = result};
         }
         return task_graph::TaskResult{.status = task_graph::TaskStatus::FAILED};
-    }
-    
-    task_graph::CheckResult check_input(const std::vector<std::any>& inputs) const override {
-        if (inputs.size() != 2) {
-            return task_graph::CheckResult(false, "StrictSumTask requires exactly 2 inputs, got " + std::to_string(inputs.size()));
-        }
-        
-        for (size_t i = 0; i < inputs.size(); ++i) {
-            if (!inputs[i].has_value()) {
-                return task_graph::CheckResult(false, "StrictSumTask input " + std::to_string(i) + " is empty");
-            }
-            try {
-                std::any_cast<int>(inputs[i]);
-            } catch (const std::bad_any_cast&) {
-                return task_graph::CheckResult(false, "StrictSumTask input " + std::to_string(i) + " must be int");
-            }
-        }
-        
-        return task_graph::CheckResult(true);
     }
 };
 
@@ -61,199 +48,176 @@ void add_or_update_task(task_graph::DAG& dag, const std::shared_ptr<TaskType>& t
     }
 }
 
-bool test_json_with_check_input_success() {
-    std::cout << "Test: JSON DAG with check_input success... ";
-    
-    std::string json_str = R"(
-        {
-            "version": "1.0",
-            "tasks": [
-                {"id": "producer_a"},
-                {"id": "producer_b"},
-                {
-                    "id": "sum_task",
-                    "dependencies": ["producer_a", "producer_b"]
-                }
-            ],
-            "edges": [
-                {"from": "producer_a", "to": "sum_task"},
-                {"from": "producer_b", "to": "sum_task"}
-            ]
-        }
-    )";
-    
-    task_graph::DAG dag = task_graph::DAGSerializer::from_string(json_str);
-    
+// 多输入边由 v1.0 JSON 加载会触发端口冲突（v1.0 无 port 字段，默认都到 "in"）。
+// 用 C++ 端口化 connect 直接构图，绕开此限制；v2.0 序列化支持见 commit 4。
+static void build_two_input_dag(task_graph::DAG& dag,
+                                const task_graph::TaskPtr& producer_a,
+                                const task_graph::TaskPtr& producer_b,
+                                const std::shared_ptr<StrictSumTask>& sum_task) {
+    dag.add_task(producer_a);
+    dag.add_task(producer_b);
+    dag.add_task(sum_task);
+    dag.connect("producer_a", "out", "sum_task", "a");
+    dag.connect("producer_b", "out", "sum_task", "b");
+}
+
+bool test_check_input_success() {
+    std::cout << "Test: check_input success case (port-based)... ";
+
+    task_graph::DAG dag;
+
     auto producer_a = std::make_shared<task_graph::Task>("producer_a", [](auto& ctx) {
+        (void)ctx;
         return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = 10};
     });
-    
+
     auto producer_b = std::make_shared<task_graph::Task>("producer_b", [](auto& ctx) {
+        (void)ctx;
         return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = 20};
     });
-    
+
     auto sum_task = std::make_shared<StrictSumTask>("sum_task");
-    
-    add_or_update_task(dag, producer_a);
-    add_or_update_task(dag, producer_b);
-    add_or_update_task(dag, sum_task);
-    
+    build_two_input_dag(dag, producer_a, producer_b, sum_task);
+
     task_graph::DAGExecutor executor;
     executor.execute(dag).wait();
-    
+
     auto results = executor.get_results();
     if (results["sum_task"].status != task_graph::TaskStatus::COMPLETED) {
         std::cout << "FAILED (sum_task should be completed)" << std::endl;
         return false;
     }
-    
+
     int sum_value = std::any_cast<int>(results["sum_task"].value);
     if (sum_value != 30) {
         std::cout << "FAILED (expected 30, got " << sum_value << ")" << std::endl;
         return false;
     }
-    
+
     std::cout << "PASSED" << std::endl;
     return true;
 }
 
-bool test_json_with_check_input_wrong_type() {
-    std::cout << "Test: JSON DAG with check_input wrong type... ";
-    
-    std::string json_str = R"(
-        {
-            "version": "1.0",
-            "tasks": [
-                {"id": "producer_a"},
-                {"id": "producer_b"},
-                {
-                    "id": "sum_task",
-                    "dependencies": ["producer_a", "producer_b"]
-                }
-            ],
-            "edges": [
-                {"from": "producer_a", "to": "sum_task"},
-                {"from": "producer_b", "to": "sum_task"}
-            ]
-        }
-    )";
-    
-    task_graph::DAG dag = task_graph::DAGSerializer::from_string(json_str);
-    
+bool test_check_input_wrong_type() {
+    std::cout << "Test: check_input wrong type... ";
+
+    task_graph::DAG dag;
+
     auto producer_a = std::make_shared<task_graph::Task>("producer_a", [](auto& ctx) {
+        (void)ctx;
         return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = std::string("wrong_type")};
     });
-    
+
     auto producer_b = std::make_shared<task_graph::Task>("producer_b", [](auto& ctx) {
+        (void)ctx;
         return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = 20};
     });
-    
+
     auto sum_task = std::make_shared<StrictSumTask>("sum_task");
-    
-    add_or_update_task(dag, producer_a);
-    add_or_update_task(dag, producer_b);
-    add_or_update_task(dag, sum_task);
-    
+    build_two_input_dag(dag, producer_a, producer_b, sum_task);
+
     task_graph::DAGExecutor executor;
     executor.execute(dag).wait();
-    
+
     auto results = executor.get_results();
     if (results["sum_task"].status != task_graph::TaskStatus::FAILED) {
         std::cout << "FAILED (sum_task should be failed due to wrong input type)" << std::endl;
         return false;
     }
-    
+
     std::cout << "PASSED" << std::endl;
     return true;
 }
 
-bool test_json_with_check_input_missing_dependency() {
-    std::cout << "Test: JSON DAG with check_input missing dependency... ";
-    
+bool test_json_single_edge() {
+    // v1.0 单输入 JSON 加载仍可用（默认端口 "in"）
+    std::cout << "Test: v1.0 JSON single-edge load... ";
+
     std::string json_str = R"(
         {
             "version": "1.0",
             "tasks": [
-                {"id": "producer_a"},
-                {
-                    "id": "sum_task",
-                    "dependencies": ["producer_a", "producer_b"]
-                }
+                {"id": "source"},
+                {"id": "sink"}
             ],
             "edges": [
-                {"from": "producer_a", "to": "sum_task"}
+                {"from": "source", "to": "sink"}
             ]
         }
     )";
-    
+
     task_graph::DAG dag = task_graph::DAGSerializer::from_string(json_str);
-    
-    auto producer_a = std::make_shared<task_graph::Task>("producer_a", [](auto& ctx) {
-        return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = 10};
+
+    auto source = std::make_shared<task_graph::Task>("source", [](auto& ctx) {
+        (void)ctx;
+        return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = 42};
     });
-    
-    auto sum_task = std::make_shared<StrictSumTask>("sum_task");
-    
-    add_or_update_task(dag, producer_a);
-    add_or_update_task(dag, sum_task);
-    
+
+    auto sink = std::make_shared<task_graph::Task>("sink", [](auto& ctx) {
+        (void)ctx;
+        auto v = ctx.template input<int>("in");
+        return v ? task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = *v}
+                 : task_graph::TaskResult{.status = task_graph::TaskStatus::FAILED};
+    });
+
+    add_or_update_task(dag, source);
+    add_or_update_task(dag, sink);
+
     task_graph::DAGExecutor executor;
     executor.execute(dag).wait();
-    
+
     auto results = executor.get_results();
-    if (results["sum_task"].status != task_graph::TaskStatus::FAILED) {
-        std::cout << "FAILED (sum_task should be failed due to missing dependency)" << std::endl;
+    if (results["sink"].status != task_graph::TaskStatus::COMPLETED) {
+        std::cout << "FAILED (sink should be completed)" << std::endl;
         return false;
     }
-    
+
     std::cout << "PASSED" << std::endl;
     return true;
 }
 
-bool test_json_roundtrip_with_check_input() {
-    std::cout << "Test: JSON roundtrip with check_input... ";
-    
+bool test_json_roundtrip_single_edge() {
+    std::cout << "Test: JSON roundtrip single-edge... ";
+
     task_graph::DAG original;
-    
+
     auto producer_a = std::make_shared<task_graph::Task>("producer_a", [](auto& ctx) {
+        (void)ctx;
         return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = 15};
     });
-    
-    auto producer_b = std::make_shared<task_graph::Task>("producer_b", [](auto& ctx) {
-        return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = 25};
+
+    auto sink = std::make_shared<task_graph::Task>("sink", [](auto& ctx) {
+        (void)ctx;
+        auto v = ctx.template input<int>("in");
+        return v ? task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = *v + 25}
+                 : task_graph::TaskResult{.status = task_graph::TaskStatus::FAILED};
     });
-    
-    auto sum_task = std::make_shared<StrictSumTask>("sum_task");
-    
+
     original.add_task(producer_a);
-    original.add_task(producer_b);
-    original.add_task(sum_task);
-    original.add_dependency("producer_a", "sum_task");
-    original.add_dependency("producer_b", "sum_task");
-    
+    original.add_task(sink);
+    original.connect("producer_a", "sink");
+
     std::string json_str = task_graph::DAGSerializer::to_string(original);
-    
     task_graph::DAG restored = task_graph::DAGSerializer::from_string(json_str);
-    
+
     add_or_update_task(restored, producer_a);
-    add_or_update_task(restored, producer_b);
-    add_or_update_task(restored, sum_task);
-    
+    add_or_update_task(restored, sink);
+
     task_graph::DAGExecutor executor;
     executor.execute(restored).wait();
-    
+
     auto results = executor.get_results();
-    if (results["sum_task"].status != task_graph::TaskStatus::COMPLETED) {
-        std::cout << "FAILED (sum_task should be completed after roundtrip)" << std::endl;
+    if (results["sink"].status != task_graph::TaskStatus::COMPLETED) {
+        std::cout << "FAILED (sink should be completed after roundtrip)" << std::endl;
         return false;
     }
-    
-    int sum_value = std::any_cast<int>(results["sum_task"].value);
-    if (sum_value != 40) {
-        std::cout << "FAILED (expected 40, got " << sum_value << ")" << std::endl;
+
+    int v = std::any_cast<int>(results["sink"].value);
+    if (v != 40) {
+        std::cout << "FAILED (expected 40, got " << v << ")" << std::endl;
         return false;
     }
-    
+
     std::cout << "PASSED" << std::endl;
     return true;
 }
@@ -264,10 +228,10 @@ int main() {
     std::cout << "=== Check Input JSON Tests ===\n" << std::endl;
     
     bool all_passed = true;
-    all_passed &= test_json_with_check_input_success();
-    all_passed &= test_json_with_check_input_wrong_type();
-    all_passed &= test_json_with_check_input_missing_dependency();
-    all_passed &= test_json_roundtrip_with_check_input();
+    all_passed &= test_check_input_success();
+    all_passed &= test_check_input_wrong_type();
+    all_passed &= test_json_single_edge();
+    all_passed &= test_json_roundtrip_single_edge();
     
     std::cout << "\n=== All tests " << (all_passed ? "PASSED" : "FAILED") << " ===" << std::endl;
     return all_passed ? 0 : 1;

@@ -173,7 +173,7 @@ bool test_data_passing() {
     auto task_b = std::make_shared<task_graph::Task>(
         "B",
         [](task_graph::TaskContext& ctx) {
-            auto value = ctx.get_input<int>();
+            auto value = ctx.input<int>("in");
             if (value) {
                 return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = *value * 2};
             }

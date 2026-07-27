@@ -21,7 +21,7 @@ int main() {
         "process_data",
         [](task_graph::TaskContext& ctx) {
             std::cout << "[process_data] Processing data...\n";
-            auto data = ctx.get_input<std::string>();
+            auto data = ctx.input<std::string>("in");
             std::string processed = data ? *data + "_processed" : "";
             std::this_thread::sleep_for(std::chrono::milliseconds(150));
             return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = processed};
@@ -32,7 +32,7 @@ int main() {
         "save_result",
         [](task_graph::TaskContext& ctx) {
             std::cout << "[save_result] Saving result...\n";
-            auto data = ctx.get_input<std::string>();
+            auto data = ctx.input<std::string>("in");
             if (data) {
                 std::cout << "[save_result] Saved: " << *data << "\n";
             }

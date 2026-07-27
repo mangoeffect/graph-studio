@@ -109,21 +109,8 @@ public:
     ImageProcessingTask(const std::string& id)
         : Task(id, [this](auto& ctx) { return execute_impl(ctx); }, create_config()) {}
 
-    task_graph::CheckResult check_input(const std::vector<std::any>& inputs) const override {
-        if (inputs.size() != 1) {
-            return task_graph::CheckResult(false, "Expected 1 input, got " + std::to_string(inputs.size()));
-        }
-
-        if (!task_graph::is_image(inputs[0])) {
-            return task_graph::CheckResult(false, "Input must be Image type");
-        }
-
-        auto img_ptr = task_graph::any_cast_ptr_safe<task_graph::Image>(inputs[0]);
-        if (!img_ptr || !(*img_ptr)->valid()) {
-            return task_graph::CheckResult(false, "Input image is invalid");
-        }
-
-        return task_graph::CheckResult(true);
+    std::vector<task_graph::PortSpec> input_specs() const override {
+        return {task_graph::make_port<task_graph::Image>("in")};
     }
 
 private:

@@ -40,8 +40,8 @@ int main() {
         "generate_report",
         [](task_graph::TaskContext& ctx) {
             std::cout << "[generate_report] Generating report...\n";
-            auto health = ctx.get_input<int>("health_check");
-            auto analysis = ctx.get_input<std::string>("data_analysis");
+            auto health = ctx.input<int>("health");
+            auto analysis = ctx.input<std::string>("analysis");
             if (health && analysis) {
                 std::cout << "[generate_report] Report: Health=" << *health
                           << ", Analysis=" << *analysis << "\n";
@@ -56,10 +56,10 @@ int main() {
     dag.add_task(task_analysis);
     dag.add_task(task_report);
 
-    dag.add_dependency("init", "health_check");
-    dag.add_dependency("init", "data_analysis");
-    dag.add_dependency("health_check", "generate_report");
-    dag.add_dependency("data_analysis", "generate_report");
+    dag.connect("init", "health_check");
+    dag.connect("init", "data_analysis");
+    dag.connect("health_check", "out", "generate_report", "health");
+    dag.connect("data_analysis", "out", "generate_report", "analysis");
 
     std::cout << "DAG structure:\n";
     std::cout << "        init\n";

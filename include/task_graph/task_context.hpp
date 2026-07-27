@@ -7,6 +7,15 @@
 
 namespace task_graph {
 
+// TaskContext：单个 task 执行期间的上下文。
+//
+// 数据来源分三类：
+//   1) params_        —— 静态配置参数（构图期固定）
+//   2) results_       —— 上游 task 的结果快照（按 task_id 查）
+//   3) inputs_by_port_—— 按 port 绑定的上游输出（推荐入口，确定性）
+//
+// 跨 task 数据传递的唯一通道是 TaskResult.value/outputs，由 executor 在
+// task 启动前按 Edge 的 to_port 填充到 inputs_by_port_。
 class TaskContext : public IExecutionContext {
 public:
     TaskContext() = default;
@@ -14,6 +23,12 @@ public:
     TaskContext(const TaskParams& params, const std::vector<TaskId>& deps,
                 const std::unordered_map<TaskId, TaskResult>& results)
         : params_(params), dependencies_(deps), results_(results) {}
+
+    TaskContext(const TaskParams& params, const std::vector<TaskId>& deps,
+                const std::unordered_map<TaskId, TaskResult>& results,
+                std::unordered_map<std::string, std::any> inputs_by_port)
+        : params_(params), dependencies_(deps), results_(results),
+          inputs_by_port_(std::move(inputs_by_port)) {}
 
     // --- IExecutionContext pure virtual implementations ---
 
@@ -90,7 +105,7 @@ public:
 
     void set_params(const TaskParams& params) { params_ = params; }
 
-    // --- Convenience helpers (moved from IExecutionContext) ---
+    // --- Convenience helpers ---
 
     void trace(const std::string& msg) { log(LogLevel::TRACE, msg); }
     void debug(const std::string& msg) { log(LogLevel::DEBUG, msg); }
@@ -99,7 +114,59 @@ public:
     void error(const std::string& msg) { log(LogLevel::ERROR, msg); }
     void fatal(const std::string& msg) { log(LogLevel::FATAL, msg); }
 
-    template<typename T>
+    // ===== 推荐：按端口取上游输出（确定性） =====
+    template <typename T>
+    std::optional<T> input(const std::string& port_name) const {
+        auto it = inputs_by_port_.find(port_name);
+        if (it == inputs_by_port_.end() || !it->second.has_value()) {
+            return std::nullopt;
+        }
+        try {
+            return std::any_cast<T>(it->second);
+        } catch (const std::bad_any_cast&) {
+            return std::nullopt;
+        }
+    }
+
+    // 零拷贝只读版本：返回指向内部 any 的 const 指针，避免拷贝大型负载
+    template <typename T>
+    std::optional<const T*> input_ptr(const std::string& port_name) const {
+        auto it = inputs_by_port_.find(port_name);
+        if (it == inputs_by_port_.end() || !it->second.has_value()) {
+            return std::nullopt;
+        }
+        try {
+            return &std::any_cast<const T&>(it->second);
+        } catch (const std::bad_any_cast&) {
+            return std::nullopt;
+        }
+    }
+
+    // ===== 备用：按上游 task_id 取其完整 TaskResult 中的 value =====
+    // 仅在确需按 task_id 而非 port 取值时使用（少见，多输出场景应用 input<T>(port)）。
+    template <typename T>
+    std::optional<T> get_result_value(const TaskId& task_id) const {
+        auto opt = get_result(task_id);
+        if (!opt) {
+            return std::nullopt;
+        }
+        // 优先 outputs["out"]，回退 value 字段
+        const std::any* v = nullptr;
+        if (!opt->outputs.empty()) {
+            auto it = opt->outputs.find("out");
+            if (it != opt->outputs.end()) v = &it->second;
+        }
+        if (!v && opt->value.has_value()) v = &opt->value;
+        if (!v || !v->has_value()) return std::nullopt;
+        try {
+            return std::any_cast<T>(*v);
+        } catch (const std::bad_any_cast&) {
+            return std::nullopt;
+        }
+    }
+
+    // ===== values_ 黑板（task 内部局部状态；不跨 task） =====
+    template <typename T>
     std::optional<T> get(const std::string& key) const {
         auto opt = get_value(key);
         if (!opt) {
@@ -107,58 +174,6 @@ public:
         }
         try {
             return std::any_cast<T>(*opt);
-        } catch (const std::bad_any_cast&) {
-            return std::nullopt;
-        }
-    }
-
-    template<typename T>
-    std::optional<T> get_result_value(const TaskId& task_id) const {
-        auto opt = get_result(task_id);
-        if (!opt || !opt->value.has_value()) {
-            return std::nullopt;
-        }
-        try {
-            return std::any_cast<T>(opt->value);
-        } catch (const std::bad_any_cast&) {
-            return std::nullopt;
-        }
-    }
-
-    template<typename T>
-    std::optional<T> get_input(const std::string& data_name = "") const {
-        std::vector<std::pair<TaskId, std::any>> candidates;
-
-        for (const auto& dep : dependencies()) {
-            auto opt = get_result(dep);
-            if (opt && opt->status == TaskStatus::COMPLETED && opt->value.has_value()) {
-                try {
-                    std::any_cast<T>(opt->value);
-                    candidates.emplace_back(dep, opt->value);
-                } catch (const std::bad_any_cast&) {
-                    continue;
-                }
-            }
-        }
-
-        if (candidates.empty()) {
-            return std::nullopt;
-        }
-
-        if (!data_name.empty()) {
-            for (const auto& [task_id, value] : candidates) {
-                if (task_id == data_name) {
-                    try {
-                        return std::any_cast<T>(value);
-                    } catch (const std::bad_any_cast&) {
-                        continue;
-                    }
-                }
-            }
-        }
-
-        try {
-            return std::any_cast<T>(candidates[0].second);
         } catch (const std::bad_any_cast&) {
             return std::nullopt;
         }
@@ -187,6 +202,8 @@ private:
     std::unordered_map<std::string, std::any> values_;
 
     mutable std::mutex dependencies_mutex_;
+
+    std::unordered_map<std::string, std::any> inputs_by_port_;  // 由 executor 按 Edge.to_port 填充
 };
 
 }

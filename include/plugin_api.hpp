@@ -70,9 +70,13 @@ enum class TaskPriority {
 
 struct TaskResult {
     TaskStatus status{TaskStatus::PENDING};
-    std::any value;
     std::exception_ptr exception{nullptr};
     std::chrono::nanoseconds duration{0};
+
+    // 单输出快捷字段（90% 场景）。executor 视为端口名 "out"。
+    std::any value;
+    // 多输出命名端口（opt-in）。非空时优先于 value 使用。
+    std::unordered_map<std::string, std::any> outputs;
 
     bool is_success() const { return status == TaskStatus::COMPLETED; }
     bool is_failed() const { return status == TaskStatus::FAILED; }
@@ -147,18 +151,22 @@ class IPluginTask {
 public:
     IPluginTask(const std::string& id, const TaskConfig& config = TaskConfig())
         : id_(id), config_(config) {}
-    
+
     virtual ~IPluginTask() noexcept = default;
-    
+
     const std::string& id() const { return id_; }
     virtual const std::string& type() const = 0;
     virtual TaskResult execute(TaskContext& ctx) = 0;
     const TaskConfig& config() const { return config_; }
-    
-    virtual CheckResult check_input(const std::vector<std::any>& inputs) const {
-        (void)inputs;
-        return CheckResult(true);
-    }
+
+    // 端口契约声明（默认空，等价于"无约束"）。子类应重写以参与构图期校验。
+    virtual std::vector<PortSpec> input_specs()  const { return {}; }
+    virtual std::vector<PortSpec> output_specs() const { return {}; }
+
+    // 输入校验：按端口名取值的 map。默认实现基于 input_specs() 自动校验
+    // （必填端口存在 + 类型名匹配）。子类一般无需重写。
+    virtual CheckResult check_input(
+        const std::unordered_map<std::string, std::any>& inputs_by_port) const;
 
 protected:
     std::string id_;
