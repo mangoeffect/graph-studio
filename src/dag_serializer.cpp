@@ -6,32 +6,86 @@
 
 namespace task_graph {
 
+namespace {
+
+// 公共：从 task_json 读取 TaskConfig 字段（priority/max_retries/timeout/skip_on_fail/
+// dependencies/params）。v1.0 与 v2.0 共享此逻辑。
+TaskConfig parse_task_config(const nlohmann::json& task_json) {
+    TaskConfig config;
+    if (task_json.contains("priority")) {
+        config.priority = static_cast<TaskPriority>(task_json["priority"].get<int>());
+    }
+    if (task_json.contains("max_retries")) {
+        config.max_retries = task_json["max_retries"].get<size_t>();
+    }
+    if (task_json.contains("timeout_ms")) {
+        config.timeout = std::chrono::milliseconds(task_json["timeout_ms"].get<int>());
+    }
+    if (task_json.contains("skip_on_fail")) {
+        config.skip_on_fail = task_json["skip_on_fail"].get<bool>();
+    }
+    if (task_json.contains("dependencies")) {
+        for (const auto& dep : task_json["dependencies"]) {
+            config.dependencies.push_back(dep.get<std::string>());
+        }
+    }
+    if (task_json.contains("params")) {
+        for (const auto& [key, value] : task_json["params"].get<nlohmann::json::object_t>()) {
+            if (value.is_number_integer()) {
+                config.params.set_int(key, static_cast<int>(value.get<int64_t>()));
+            } else if (value.is_number_float()) {
+                config.params.set_float(key, static_cast<float>(value.get<double>()));
+            } else if (value.is_string()) {
+                config.params.set_string(key, value.get<std::string>());
+            }
+        }
+    }
+    return config;
+}
+
+nlohmann::json serialize_specs(const std::vector<PortSpec>& specs) {
+    auto arr = nlohmann::json::array();
+    for (const auto& s : specs) {
+        nlohmann::json o;
+        o["name"] = s.name;
+        if (!s.type_name.empty()) o["type"] = s.type_name;
+        o["required"] = s.required;
+        arr.push_back(std::move(o));
+    }
+    return arr;
+}
+
+}  // namespace
+
+// ====================== v2.0 序列化 ======================
+// 与 v1.0 的差异：
+//   - version: "2.0"
+//   - edges: {from, from_port, to, to_port}
+//   - tasks: 新增 input_specs / output_specs（仅当非空时写入）
 nlohmann::json DAGSerializer::serialize(const DAG& dag) {
     nlohmann::json j;
-    
-    j["version"] = "1.0";
+
+    j["version"] = "2.0";
     j["tasks"] = nlohmann::json::array();
-    
+
     for (const auto& [id, task] : dag.tasks()) {
         nlohmann::json task_json;
         task_json["id"] = id;
-        
+
         if (!task->type().empty() && task->type() != id) {
             task_json["type"] = task->type();
         }
-        
+
         const auto& config = task->config();
-        task_json["priority"] = static_cast<int>(config.priority);
+        task_json["priority"]    = static_cast<int>(config.priority);
         task_json["max_retries"] = config.max_retries;
-        task_json["timeout_ms"] = config.timeout.count();
+        task_json["timeout_ms"]  = config.timeout.count();
         task_json["skip_on_fail"] = config.skip_on_fail;
-        
+
         nlohmann::json deps_json = nlohmann::json::array();
-        for (const auto& dep : config.dependencies) {
-            deps_json.push_back(dep);
-        }
+        for (const auto& dep : config.dependencies) deps_json.push_back(dep);
         task_json["dependencies"] = deps_json;
-        
+
         nlohmann::json params_json = nlohmann::json::object();
         for (const auto& [key, value] : config.params.params()) {
             if (value.type() == typeid(int)) {
@@ -42,129 +96,63 @@ nlohmann::json DAGSerializer::serialize(const DAG& dag) {
                 params_json[key] = std::any_cast<std::string>(value);
             }
         }
-        if (!params_json.empty()) {
-            task_json["params"] = params_json;
-        }
-        
-        j["tasks"].push_back(task_json);
+        if (!params_json.empty()) task_json["params"] = params_json;
+
+        // 端口契约：仅当 task 声明了 specs 时写入，便于 GUI 渲染端口锚点
+        auto in_specs  = task->input_specs();
+        auto out_specs = task->output_specs();
+        if (!in_specs.empty())  task_json["input_specs"]  = serialize_specs(in_specs);
+        if (!out_specs.empty()) task_json["output_specs"] = serialize_specs(out_specs);
+
+        j["tasks"].push_back(std::move(task_json));
     }
-    
+
     j["edges"] = nlohmann::json::array();
-    
-    for (const auto& [from, to_set] : dag.adjacency()) {
-        for (const auto& to : to_set) {
-            nlohmann::json edge_json;
-            edge_json["from"] = from;
-            edge_json["to"] = to;
-            j["edges"].push_back(edge_json);
-        }
+    for (const auto& e : dag.edges()) {
+        nlohmann::json edge_json;
+        edge_json["from"]       = e.from;
+        edge_json["from_port"]  = e.from_port;
+        edge_json["to"]         = e.to;
+        edge_json["to_port"]    = e.to_port;
+        j["edges"].push_back(std::move(edge_json));
     }
-    
+
     return j;
 }
 
+// ====================== 反序列化：自动识别 v1.0 / v2.0 ======================
 DAG DAGSerializer::deserialize(const nlohmann::json& j) {
-    DAG dag;
-    
     if (!j.contains("version")) {
         throw std::runtime_error("Missing version in DAG JSON");
     }
-    
     std::string version = j["version"].get<std::string>();
-    if (version != "1.0") {
-        throw std::runtime_error("Unsupported DAG version: " + version);
-    }
-    
+
+    DAG dag;
+
     if (!j.contains("tasks")) {
         throw std::runtime_error("Missing tasks in DAG JSON");
     }
-    
+
+    // ---- tasks：v1.0/v2.0 共用 ----
     for (const auto& task_json : j["tasks"]) {
         std::string id = task_json["id"].get<std::string>();
         std::string type;
-        
         if (task_json.contains("type")) {
             type = task_json["type"].get<std::string>();
         } else {
             type = id;
         }
-        
+
+        TaskConfig config = parse_task_config(task_json);
+
         bool is_plugin_task = PluginRegistry::instance().has_task(type);
-        
         if (is_plugin_task) {
-            TaskConfig config;
-            
-            if (task_json.contains("priority")) {
-                config.priority = static_cast<TaskPriority>(task_json["priority"].get<int>());
-            }
-            if (task_json.contains("max_retries")) {
-                config.max_retries = task_json["max_retries"].get<size_t>();
-            }
-            if (task_json.contains("timeout_ms")) {
-                config.timeout = std::chrono::milliseconds(task_json["timeout_ms"].get<int>());
-            }
-            if (task_json.contains("skip_on_fail")) {
-                config.skip_on_fail = task_json["skip_on_fail"].get<bool>();
-            }
-            if (task_json.contains("dependencies")) {
-                const auto& deps_json = task_json["dependencies"];
-                for (const auto& dep : deps_json) {
-                    config.dependencies.push_back(dep.get<std::string>());
-                }
-            }
-            
-            if (task_json.contains("params")) {
-                const auto& params_json = task_json["params"];
-                for (const auto& [key, value] : params_json.get<nlohmann::json::object_t>()) {
-                    if (value.is_number_integer()) {
-                        config.params.set_int(key, static_cast<int>(value.get<int64_t>()));
-                    } else if (value.is_number_float()) {
-                        config.params.set_float(key, static_cast<float>(value.get<double>()));
-                    } else if (value.is_string()) {
-                        config.params.set_string(key, value.get<std::string>());
-                    }
-                }
-            }
-            
             dag.add_plugin_task(id, type, config);
         } else {
-            TaskConfig config;
-            if (task_json.contains("priority")) {
-                config.priority = static_cast<TaskPriority>(task_json["priority"].get<int>());
-            }
-            if (task_json.contains("max_retries")) {
-                config.max_retries = task_json["max_retries"].get<size_t>();
-            }
-            if (task_json.contains("timeout_ms")) {
-                config.timeout = std::chrono::milliseconds(task_json["timeout_ms"].get<int>());
-            }
-            if (task_json.contains("skip_on_fail")) {
-                config.skip_on_fail = task_json["skip_on_fail"].get<bool>();
-            }
-            if (task_json.contains("dependencies")) {
-                const auto& deps_json = task_json["dependencies"];
-                for (const auto& dep : deps_json) {
-                    config.dependencies.push_back(dep.get<std::string>());
-                }
-            }
-            
-            if (task_json.contains("params")) {
-                const auto& params_json = task_json["params"];
-                for (const auto& [key, value] : params_json.get<nlohmann::json::object_t>()) {
-                    if (value.is_number_integer()) {
-                        config.params.set_int(key, static_cast<int>(value.get<int64_t>()));
-                    } else if (value.is_number_float()) {
-                        config.params.set_float(key, static_cast<float>(value.get<double>()));
-                    } else if (value.is_string()) {
-                        config.params.set_string(key, value.get<std::string>());
-                    }
-                }
-            }
-            
             auto task = std::make_shared<Task>(
-                id,
-                type,
-                [id](TaskContext& ctx) {
+                id, type,
+                [id](TaskContext&) {
+                    (void)id;
                     return TaskResult{.status = TaskStatus::COMPLETED};
                 },
                 config
@@ -172,15 +160,32 @@ DAG DAGSerializer::deserialize(const nlohmann::json& j) {
             dag.add_task(task);
         }
     }
-    
+
+    // ---- edges：v1.0/v2.0 格式不同 ----
     if (j.contains("edges")) {
-        for (const auto& edge_json : j["edges"]) {
-            std::string from = edge_json["from"].get<std::string>();
-            std::string to = edge_json["to"].get<std::string>();
-            dag.add_dependency(from, to);
+        if (version == "1.0") {
+            // v1.0 迁移：默认端口 "out"/"in"。同一 (to, "in") 多源会被 connect()
+            // 打 warning（last-write-wins），用户应升级到 v2.0 用命名端口。
+            for (const auto& edge_json : j["edges"]) {
+                std::string from = edge_json["from"].get<std::string>();
+                std::string to   = edge_json["to"].get<std::string>();
+                dag.connect(from, "out", to, "in");
+            }
+        } else if (version == "2.0") {
+            for (const auto& edge_json : j["edges"]) {
+                std::string from      = edge_json["from"].get<std::string>();
+                std::string to        = edge_json["to"].get<std::string>();
+                std::string from_port = edge_json.contains("from_port")
+                                        ? edge_json["from_port"].get<std::string>() : "out";
+                std::string to_port   = edge_json.contains("to_port")
+                                        ? edge_json["to_port"].get<std::string>()   : "in";
+                dag.connect(from, from_port, to, to_port);
+            }
+        } else {
+            throw std::runtime_error("Unsupported DAG version: " + version);
         }
     }
-    
+
     return dag;
 }
 

@@ -337,6 +337,15 @@ target_link_libraries(test_validate
         task_graph
 )
 
+add_executable(test_serializer_v2
+    tests/test_serializer_v2.cpp
+)
+
+target_link_libraries(test_serializer_v2
+    PRIVATE
+        task_graph
+)
+
 foreach(submodule ${SUBMODULES})
     if(TARGET ${submodule})
         target_link_libraries(test_subnode
@@ -352,3 +361,4 @@ add_test(NAME test_plugin COMMAND test_plugin)
 add_test(NAME test_subnode COMMAND test_subnode)
 add_test(NAME test_type_registry COMMAND test_type_registry)
 add_test(NAME test_validate COMMAND test_validate)
+add_test(NAME test_serializer_v2 COMMAND test_serializer_v2)
