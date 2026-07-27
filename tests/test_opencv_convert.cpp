@@ -69,8 +69,9 @@ bool test_roundtrip() {
     
     task_graph::Image img = task_graph::Image::from_mat(original);
     cv::Mat restored = img.to_mat();
-    
-    if (cv::countNonZero(original != restored) > 0) {
+
+    // OpenCV 5.0 的 countNonZero 仅支持单通道；多通道差异用 norm 比较（0 表示完全一致）
+    if (cv::norm(original, restored, cv::NORM_INF) != 0.0) {
         std::cout << "FAILED (data mismatch after roundtrip)" << std::endl;
         return false;
     }

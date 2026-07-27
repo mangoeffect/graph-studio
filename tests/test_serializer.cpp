@@ -1,141 +1,165 @@
-﻿#include <task_graph/task_graph.hpp>
+﻿// DAG 序列化测试。合并自 test_serializer.cpp 与 test_serializer_v2.cpp。
+// 覆盖：v2.0 序列化输出、v1.0 反序列化迁移、roundtrip、TaskConfig 持久化、
+//       端口/specs 持久化、v1.0 多输入迁移、缺省端口字段。
+#include <task_graph/task_graph.hpp>
 #include <task_graph/dag_serializer.hpp>
+#include <task_graph/data_types.hpp>
 #include <task_graph/plugin.hpp>
-#include <iostream>
 #include <string>
-#include <vector>
-#include <algorithm>
-#include <filesystem>
+#include "test_util.hpp"
 
-bool test_dag_serialize() {
-    std::cout << "Test: DAG serialization... ";
+using namespace task_graph;
 
-    task_graph::DAG dag;
-    
-    auto task_a = std::make_shared<task_graph::Task>("A", [](auto& ctx) {
-        return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED};
-    });
-    
-    auto task_b = std::make_shared<task_graph::Task>("B", [](auto& ctx) {
-        return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED};
-    });
-    
-    dag.add_task(task_a);
-    dag.add_task(task_b);
-    dag.add_dependency("A", "B");
-
-    std::string json_str = task_graph::DAGSerializer::to_string(dag);
-    
-    bool has_tasks = json_str.find("tasks") != std::string::npos;
-    bool has_edges = json_str.find("edges") != std::string::npos;
-    bool has_A = json_str.find("\"A\"") != std::string::npos;
-    bool has_B = json_str.find("\"B\"") != std::string::npos;
-
-    std::cout << (has_tasks && has_edges && has_A && has_B ? "PASSED" : "FAILED") << std::endl;
-    return has_tasks && has_edges && has_A && has_B;
+static TaskPtr noop(const std::string& id, TaskConfig cfg = {}) {
+    return std::make_shared<Task>(id, [](TaskContext&) {
+        return TaskResult{.status = TaskStatus::COMPLETED};
+    }, std::move(cfg));
 }
 
-bool test_dag_deserialize() {
-    std::cout << "Test: DAG deserialization... ";
+// 声明 specs 的任务，验证 specs 落盘
+class ImageProducer : public Task {
+public:
+    ImageProducer(const std::string& id) : Task(id, [](auto&) {
+        return TaskResult{.status = TaskStatus::COMPLETED};
+    }) {}
+    std::vector<PortSpec> output_specs() const override {
+        return {make_port<Image>("out")};
+    }
+};
 
-    std::string json_str = R"(
-        {
-            "version": "1.0",
-            "tasks": [
-                {"id": "A"},
-                {"id": "B"}
-            ],
-            "edges": [
-                {"from": "A", "to": "B"}
-            ]
-        }
-    )";
+class DualInputTask : public Task {
+public:
+    DualInputTask(const std::string& id) : Task(id, [](auto&) {
+        return TaskResult{.status = TaskStatus::COMPLETED};
+    }) {}
+    std::vector<PortSpec> input_specs() const override {
+        return {make_port<Image>("image"), make_port<Image>("mask")};
+    }
+};
 
-    task_graph::DAG dag = task_graph::DAGSerializer::from_string(json_str);
-    
-    bool has_A = dag.has_task("A");
-    bool has_B = dag.has_task("B");
-    bool has_dep = dag.adjacency().at("A").contains("B");
+// ---- 基础 serialize / deserialize / roundtrip ----
 
-    std::cout << (has_A && has_B && has_dep ? "PASSED" : "FAILED") << std::endl;
-    return has_A && has_B && has_dep;
+TEST_CASE(serialize_contains_tasks_and_edges) {
+    DAG dag;
+    dag.add_task(noop("A"));
+    dag.add_task(noop("B"));
+    dag.connect("A", "B");
+
+    std::string json = DAGSerializer::to_string(dag);
+    EXPECT_CONTAINS(json, "tasks");
+    EXPECT_CONTAINS(json, "edges");
+    EXPECT_CONTAINS(json, "\"A\"");
+    EXPECT_CONTAINS(json, "\"B\"");
+    EXPECT_CONTAINS(json, "\"version\": \"2.0\"");
 }
 
-bool test_dag_roundtrip() {
-    std::cout << "Test: DAG roundtrip... ";
-
-    task_graph::DAG original;
-    
-    auto task_a = std::make_shared<task_graph::Task>("A", [](auto& ctx) {
-        return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED};
-    });
-    
-    auto task_b = std::make_shared<task_graph::Task>("B", [](auto& ctx) {
-        return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED};
-    });
-    
-    auto task_c = std::make_shared<task_graph::Task>("C", [](auto& ctx) {
-        return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED};
-    });
-    
-    original.add_task(task_a);
-    original.add_task(task_b);
-    original.add_task(task_c);
-    original.add_dependency("A", "B");
-    original.add_dependency("B", "C");
-
-    std::string json_str = task_graph::DAGSerializer::to_string(original);
-    task_graph::DAG restored = task_graph::DAGSerializer::from_string(json_str);
-    
-    bool same_tasks = original.num_tasks() == restored.num_tasks();
-    bool same_edges = original.num_edges() == restored.num_edges();
-    bool has_all_tasks = restored.has_task("A") && restored.has_task("B") && restored.has_task("C");
-
-    std::cout << (same_tasks && same_edges && has_all_tasks ? "PASSED" : "FAILED") << std::endl;
-    return same_tasks && same_edges && has_all_tasks;
+TEST_CASE(deserialize_v1_single_edge) {
+    std::string json = R"({
+        "version": "1.0",
+        "tasks": [{"id": "A"}, {"id": "B"}],
+        "edges": [{"from": "A", "to": "B"}]
+    })";
+    DAG dag = DAGSerializer::from_string(json);
+    EXPECT_TRUE(dag.has_task("A"));
+    EXPECT_TRUE(dag.has_task("B"));
+    EXPECT_TRUE(dag.adjacency().at("A").contains("B"));
 }
 
-bool test_dag_with_config() {
-    std::cout << "Test: DAG with task config... ";
+TEST_CASE(roundtrip_preserves_structure) {
+    DAG original;
+    original.add_task(noop("A"));
+    original.add_task(noop("B"));
+    original.add_task(noop("C"));
+    original.connect("A", "B");
+    original.connect("B", "C");
 
-    task_graph::TaskConfig config;
-    config.priority = task_graph::TaskPriority::HIGH;
+    std::string json = DAGSerializer::to_string(original);
+    DAG restored = DAGSerializer::from_string(json);
+
+    EXPECT_EQ(original.num_tasks(), restored.num_tasks());
+    EXPECT_EQ(original.num_edges(), restored.num_edges());
+    EXPECT_TRUE(restored.has_task("A"));
+    EXPECT_TRUE(restored.has_task("B"));
+    EXPECT_TRUE(restored.has_task("C"));
+}
+
+TEST_CASE(roundtrip_preserves_task_config) {
+    TaskConfig config;
+    config.priority = TaskPriority::HIGH;
     config.max_retries = 3;
     config.timeout = std::chrono::milliseconds(5000);
     config.skip_on_fail = true;
 
-    task_graph::DAG original;
-    
-    auto task_a = std::make_shared<task_graph::Task>("A", [](auto& ctx) {
-        return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED};
-    }, config);
-    
-    original.add_task(task_a);
+    DAG original;
+    original.add_task(noop("A", config));
+    std::string json = DAGSerializer::to_string(original);
+    DAG restored = DAGSerializer::from_string(json);
 
-    std::string json_str = task_graph::DAGSerializer::to_string(original);
-    task_graph::DAG restored = task_graph::DAGSerializer::from_string(json_str);
-    
-    auto restored_task = restored.get_task("A");
-    bool priority_ok = restored_task->config().priority == task_graph::TaskPriority::HIGH;
-    bool retries_ok = restored_task->config().max_retries == 3;
-    bool timeout_ok = restored_task->config().timeout == std::chrono::milliseconds(5000);
-    bool skip_ok = restored_task->config().skip_on_fail == true;
-
-    std::cout << (priority_ok && retries_ok && timeout_ok && skip_ok ? "PASSED" : "FAILED") << std::endl;
-    return priority_ok && retries_ok && timeout_ok && skip_ok;
+    auto t = restored.get_task("A");
+    EXPECT_TRUE(t->config().priority == TaskPriority::HIGH);
+    EXPECT_EQ(t->config().max_retries, size_t(3));
+    EXPECT_TRUE(t->config().timeout == std::chrono::milliseconds(5000));
+    EXPECT_TRUE(t->config().skip_on_fail);
 }
 
-int main() {
-    std::vector<bool> results;
+// ---- v2.0 端口与 specs ----
 
-    results.push_back(test_dag_serialize());
-    results.push_back(test_dag_deserialize());
-    results.push_back(test_dag_roundtrip());
-    results.push_back(test_dag_with_config());
+TEST_CASE(v2_ports_and_specs_roundtrip) {
+    DAG dag;
+    dag.add_task(std::make_shared<ImageProducer>("P1"));
+    dag.add_task(std::make_shared<ImageProducer>("P2"));
+    dag.add_task(std::make_shared<DualInputTask>("C"));
+    dag.connect("P1", "out", "C", "image");
+    dag.connect("P2", "out", "C", "mask");
 
-    std::cout << "\n--- Summary ---" << std::endl;
-    int passed = std::count(results.begin(), results.end(), true);
-    std::cout << passed << "/" << results.size() << " tests passed" << std::endl;
+    std::string json = DAGSerializer::to_string(dag);
+    EXPECT_CONTAINS(json, "from_port");
+    EXPECT_CONTAINS(json, "to_port");
+    EXPECT_CONTAINS(json, "input_specs");
+    EXPECT_CONTAINS(json, "output_specs");
 
-    return passed == results.size() ? 0 : 1;
+    DAG restored = DAGSerializer::from_string(json);
+    EXPECT_EQ(restored.num_edges(), size_t(2));
+
+    auto c_in = restored.incoming_edges("C");
+    EXPECT_EQ(c_in.size(), size_t(2));
+    bool has_image = false, has_mask = false;
+    for (const auto& e : c_in) {
+        if (e.to_port == "image") has_image = true;
+        if (e.to_port == "mask") has_mask = true;
+    }
+    EXPECT_TRUE(has_image);
+    EXPECT_TRUE(has_mask);
 }
+
+TEST_CASE(v1_multi_input_migration_no_throw) {
+    std::string json = R"({
+        "version": "1.0",
+        "tasks": [{"id": "A"}, {"id": "B"}, {"id": "C"}],
+        "edges": [{"from": "A", "to": "C"}, {"from": "B", "to": "C"}]
+    })";
+    bool threw = false;
+    DAG dag;
+    try {
+        dag = DAGSerializer::from_string(json);
+    } catch (...) {
+        threw = true;
+    }
+    EXPECT_FALSE(threw);
+    EXPECT_EQ(dag.num_tasks(), size_t(3));
+}
+
+TEST_CASE(v2_missing_port_fields_default) {
+    std::string json = R"({
+        "version": "2.0",
+        "tasks": [{"id": "A"}, {"id": "B"}],
+        "edges": [{"from": "A", "to": "B"}]
+    })";
+    DAG dag = DAGSerializer::from_string(json);
+    auto edges = dag.edges();
+    EXPECT_EQ(edges.size(), size_t(1));
+    EXPECT_TRUE(edges[0].from_port == "out");
+    EXPECT_TRUE(edges[0].to_port == "in");
+}
+
+TEST_MAIN("Serializer Tests")

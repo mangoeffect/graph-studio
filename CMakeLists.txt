@@ -94,289 +94,101 @@ target_compile_options(task_graph
         -O2
 )
 
-add_executable(test_dag
-    tests/test_dag.cpp
-)
+# ============================================================
+# 库测试目标（合并精简后）
+# ============================================================
+# 一个 helper：tests/test_util.hpp（纯头文件，无需目标）
 
-target_link_libraries(test_dag
-    PRIVATE
-        task_graph
-)
+# 便捷宏：定义一个链接 task_graph 的测试可执行文件
+function(add_tg_test name)
+    add_executable(${name} tests/${name}.cpp)
+    target_link_libraries(${name} PRIVATE task_graph)
+endfunction()
 
-add_executable(test_plugin
-    tests/test_plugin.cpp
-)
+add_tg_test(test_dag)
+add_tg_test(test_ports)
+add_tg_test(test_serializer)
+add_tg_test(test_data_types)
+add_tg_test(test_gpu_image)
+add_tg_test(test_task_params)
+add_tg_test(test_profiler)
+add_tg_test(test_type_registry)
+add_tg_test(test_logger)
 
-target_link_libraries(test_plugin
-    PRIVATE
-        task_graph
-)
-
+# test_plugin 合并了 subnode 内置插件测试，需链接子模块 + filesystem
+add_tg_test(test_plugin)
 if(UNIX AND NOT APPLE AND NOT EMSCRIPTEN)
-    target_link_libraries(test_plugin
-        PRIVATE
-            stdc++fs
-    )
+    target_link_libraries(test_plugin PRIVATE stdc++fs)
 endif()
-
-add_executable(test_serializer
-    tests/test_serializer.cpp
-)
-
-target_link_libraries(test_serializer
-    PRIVATE
-        task_graph
-)
-
-add_executable(test_json_debug
-    tests/test_json_debug.cpp
-)
-
-target_link_libraries(test_json_debug
-    PRIVATE
-        task_graph
-)
-
-add_executable(test_logger
-    tests/test_logger.cpp
-)
-
-target_link_libraries(test_logger
-    PRIVATE
-        task_graph
-)
-
-add_executable(test_dependency_injection
-    tests/test_dependency_injection.cpp
-)
-
-target_link_libraries(test_dependency_injection
-    PRIVATE
-        task_graph
-)
-
-add_executable(test_check_input
-    tests/test_check_input.cpp
-)
-
-target_link_libraries(test_check_input
-    PRIVATE
-        task_graph
-)
-
-add_executable(test_check_input_json
-    tests/test_check_input_json.cpp
-)
-
-target_link_libraries(test_check_input_json
-    PRIVATE
-        task_graph
-)
-
-add_executable(test_data_types
-    tests/test_data_types.cpp
-)
-
-target_link_libraries(test_data_types
-    PRIVATE
-        task_graph
-)
-
-add_executable(test_gpu_image
-    tests/test_gpu_image.cpp
-)
-
-target_link_libraries(test_gpu_image
-    PRIVATE
-        task_graph
-)
 
 if(TASK_GRAPH_ENABLE_OPENCV)
-    add_executable(test_opencv_convert
-        tests/test_opencv_convert.cpp
-    )
+    add_executable(test_opencv_convert tests/test_opencv_convert.cpp)
+    target_link_libraries(test_opencv_convert PRIVATE task_graph ${OpenCV_LIBS})
 
-    target_link_libraries(test_opencv_convert
-        PRIVATE
-            task_graph
-            ${OpenCV_LIBS}
-    )
-    
-    add_executable(test_opencv_image_filtering
-        tests/test_opencv_image_filtering.cpp
-    )
-
-    target_link_libraries(test_opencv_image_filtering
-        PRIVATE
-            task_graph
-            ${OpenCV_LIBS}
-            image_filtering
-    )
+    add_executable(test_opencv_image_filtering tests/test_opencv_image_filtering.cpp)
+    target_link_libraries(test_opencv_image_filtering PRIVATE task_graph ${OpenCV_LIBS} image_filtering)
 endif()
 
-add_executable(example_basic
-    examples/basic.cpp
-)
+# ============================================================
+# 示例
+# ============================================================
+add_executable(example_basic examples/basic.cpp)
+target_link_libraries(example_basic PRIVATE task_graph)
 
-target_link_libraries(example_basic
-    PRIVATE
-        task_graph
-)
+add_executable(example_parallel examples/parallel.cpp)
+target_link_libraries(example_parallel PRIVATE task_graph)
 
-add_executable(example_parallel
-    examples/parallel.cpp
-)
+add_executable(example_plugin examples/plugin.cpp)
+target_link_libraries(example_plugin PRIVATE task_graph)
 
-target_link_libraries(example_parallel
-    PRIVATE
-        task_graph
-)
+add_executable(example_multi_output examples/multi_output.cpp)
+target_link_libraries(example_multi_output PRIVATE task_graph)
 
-add_executable(example_plugin
-    examples/plugin.cpp
-)
-
-target_link_libraries(example_plugin
-    PRIVATE
-        task_graph
-)
-
-add_executable(example_multi_output
-    examples/multi_output.cpp
-)
-
-target_link_libraries(example_multi_output
-    PRIVATE
-        task_graph
-)
-
-add_library(task_plugin_example MODULE
-    plugins/example_plugin.cpp
-)
-
-target_include_directories(task_plugin_example
-    PRIVATE
-        ${PROJECT_SOURCE_DIR}/include
-)
-
-target_link_libraries(task_plugin_example
-    PRIVATE
-        task_graph
-)
-
-set_target_properties(task_plugin_example
-    PROPERTIES
-        PREFIX ""
-        SUFFIX ".so"
-)
-
+# ============================================================
+# 示例插件动态库
+# ============================================================
+add_library(task_plugin_example MODULE plugins/example_plugin.cpp)
+target_include_directories(task_plugin_example PRIVATE ${PROJECT_SOURCE_DIR}/include)
+target_link_libraries(task_plugin_example PRIVATE task_graph)
+set_target_properties(task_plugin_example PROPERTIES PREFIX "" SUFFIX ".so")
 if(APPLE)
-    set_target_properties(task_plugin_example
-        PROPERTIES
-            SUFFIX ".dylib"
-    )
+    set_target_properties(task_plugin_example PROPERTIES SUFFIX ".dylib")
 endif()
-
 if(WIN32)
-    set_target_properties(task_plugin_example
-        PROPERTIES
-            SUFFIX ".dll"
-    )
+    set_target_properties(task_plugin_example PROPERTIES SUFFIX ".dll")
 endif()
 
+# ============================================================
+# 子模块（subnode）：编译期链接的内置插件
+# ============================================================
 include(Subnode)
-
 parse_subnode_json("${PROJECT_SOURCE_DIR}/subnode.json")
-
 foreach(submodule ${SUBMODULES})
     add_subnode_module(${submodule})
 endforeach()
 
-add_executable(test_subnode
-    tests/test_subnode.cpp
-)
-
-target_link_libraries(test_subnode
-    PRIVATE
-        task_graph
-)
-
-add_executable(test_task_type_id
-    tests/test_task_type_id.cpp
-)
-
-target_link_libraries(test_task_type_id
-    PRIVATE
-        task_graph
-)
-
-add_executable(test_task_params
-    tests/test_task_params.cpp
-)
-
-target_link_libraries(test_task_params
-    PRIVATE
-        task_graph
-)
-
-add_executable(test_profiler
-    tests/test_profiler.cpp
-)
-
-target_link_libraries(test_profiler
-    PRIVATE
-        task_graph
-)
-
-add_executable(test_type_registry
-    tests/test_type_registry.cpp
-)
-
-target_link_libraries(test_type_registry
-    PRIVATE
-        task_graph
-)
-
-add_executable(test_validate
-    tests/test_validate.cpp
-)
-
-target_link_libraries(test_validate
-    PRIVATE
-        task_graph
-)
-
-add_executable(test_serializer_v2
-    tests/test_serializer_v2.cpp
-)
-
-target_link_libraries(test_serializer_v2
-    PRIVATE
-        task_graph
-)
-
+# test_plugin 依赖 subnode 内置插件（task1/task2/task_processor）
 foreach(submodule ${SUBMODULES})
     if(TARGET ${submodule})
-        target_link_libraries(test_subnode
-            PRIVATE
-                ${submodule}
-        )
+        target_link_libraries(test_plugin PRIVATE ${submodule})
     endif()
 endforeach()
 
+# ============================================================
+# ctest 注册（全部核心测试）
+# ============================================================
 enable_testing()
 add_test(NAME test_dag COMMAND test_dag)
-add_test(NAME test_plugin COMMAND test_plugin)
-add_test(NAME test_subnode COMMAND test_subnode)
-add_test(NAME test_type_registry COMMAND test_type_registry)
-add_test(NAME test_validate COMMAND test_validate)
-add_test(NAME test_serializer_v2 COMMAND test_serializer_v2)
+add_test(NAME test_ports COMMAND test_ports)
 add_test(NAME test_serializer COMMAND test_serializer)
-add_test(NAME test_check_input COMMAND test_check_input)
-add_test(NAME test_check_input_json COMMAND test_check_input_json)
 add_test(NAME test_data_types COMMAND test_data_types)
-add_test(NAME test_dependency_injection COMMAND test_dependency_injection)
+add_test(NAME test_gpu_image COMMAND test_gpu_image)
 add_test(NAME test_task_params COMMAND test_task_params)
 add_test(NAME test_profiler COMMAND test_profiler)
-add_test(NAME test_task_type_id COMMAND test_task_type_id)
-add_test(NAME test_gpu_image COMMAND test_gpu_image)
+add_test(NAME test_type_registry COMMAND test_type_registry)
+add_test(NAME test_logger COMMAND test_logger)
+add_test(NAME test_plugin COMMAND test_plugin)
+if(TASK_GRAPH_ENABLE_OPENCV)
+    add_test(NAME test_opencv_convert COMMAND test_opencv_convert)
+    add_test(NAME test_opencv_image_filtering COMMAND test_opencv_image_filtering)
+endif()

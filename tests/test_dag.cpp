@@ -1,215 +1,146 @@
+// DAG 构建、调度与执行的核心行为测试。
+// 合并自 test_dag.cpp 与 test_dependency_injection.cpp 的执行相关用例。
 #include <task_graph/task_graph.hpp>
-#include <iostream>
-#include <string>
-#include <vector>
+#include <task_graph/executor.hpp>
+#include <task_graph/task_context.hpp>
 #include <atomic>
 #include <chrono>
+#include <mutex>
+#include <thread>
 #include <any>
-#include <task_graph/task_context.hpp>
+#include "test_util.hpp"
 
-bool test_basic_dag() {
-    std::cout << "Test: Basic DAG execution... ";
+using namespace task_graph;
 
-    task_graph::DAG dag;
+static TaskPtr make_task(const std::string& id, TaskFunction fn, TaskConfig cfg = {}) {
+    return std::make_shared<Task>(id, std::move(fn), std::move(cfg));
+}
 
+// 基础执行：菱形依赖 A,B -> C，全部完成
+TEST_CASE(basic_dag_execution) {
+    DAG dag;
     std::atomic<int> counter{0};
+    auto body = [&](TaskContext&) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        counter++;
+        return TaskResult{.status = TaskStatus::COMPLETED};
+    };
+    dag.add_task(make_task("A", body));
+    dag.add_task(make_task("B", body));
+    dag.add_task(make_task("C", body));
+    dag.connect("A", "C");
+    dag.connect("B", "C");
 
-    auto task_a = std::make_shared<task_graph::Task>(
-        "A",
-        [&](task_graph::TaskContext& ctx) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
-            counter++;
-            return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = 1};
-        }
-    );
-
-    auto task_b = std::make_shared<task_graph::Task>(
-        "B",
-        [&](task_graph::TaskContext& ctx) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
-            counter++;
-            return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = 2};
-        }
-    );
-
-    auto task_c = std::make_shared<task_graph::Task>(
-        "C",
-        [&](task_graph::TaskContext& ctx) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
-            counter++;
-            return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = 3};
-        }
-    );
-
-    dag.add_task(task_a);
-    dag.add_task(task_b);
-    dag.add_task(task_c);
-    dag.add_dependency("A", "C");
-    dag.add_dependency("B", "C");
-
-    task_graph::DAGExecutor executor;
+    DAGExecutor executor;
     executor.execute(dag).wait();
 
     auto results = executor.get_results();
-    bool success = results.size() == 3 && counter == 3;
-
-    std::cout << (success ? "PASSED" : "FAILED") << std::endl;
-    return success;
+    EXPECT_EQ(results.size(), size_t(3));
+    EXPECT_EQ(counter.load(), 3);
 }
 
-bool test_cycle_detection() {
-    std::cout << "Test: Cycle detection... ";
+// 环检测
+TEST_CASE(cycle_detection) {
+    DAG dag;
+    dag.add_task(make_task("A", [](TaskContext&) {
+        return TaskResult{.status = TaskStatus::COMPLETED};
+    }));
+    dag.add_task(make_task("B", [](TaskContext&) {
+        return TaskResult{.status = TaskStatus::COMPLETED};
+    }));
+    dag.connect("A", "B");
+    dag.connect("B", "A");
 
-    task_graph::DAG dag;
-
-    auto task_a = std::make_shared<task_graph::Task>(
-        "A",
-        [](task_graph::TaskContext& ctx) {
-            return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED};
-        }
-    );
-
-    auto task_b = std::make_shared<task_graph::Task>(
-        "B",
-        [](task_graph::TaskContext& ctx) {
-            return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED};
-        }
-    );
-
-    dag.add_task(task_a);
-    dag.add_task(task_b);
-    dag.add_dependency("A", "B");
-    dag.add_dependency("B", "A");
-
-    task_graph::DAGCompiler compiler;
-    bool has_cycle = compiler.has_cycle(dag);
-
-    std::cout << (has_cycle ? "PASSED" : "FAILED") << std::endl;
-    return has_cycle;
+    DAGCompiler compiler;
+    EXPECT_TRUE(compiler.has_cycle(dag));
 }
 
-bool test_parallel_execution() {
-    std::cout << "Test: Parallel execution... ";
-
-    task_graph::DAG dag;
-
+// 并行执行：无依赖的三个任务应能并发运行
+TEST_CASE(parallel_execution) {
+    DAG dag;
     std::atomic<int> parallel_count{0};
     std::atomic<int> max_parallel{0};
     std::mutex mtx;
-
-    auto task_a = std::make_shared<task_graph::Task>(
-        "A",
-        [&](task_graph::TaskContext& ctx) {
-            int count = parallel_count.fetch_add(1);
-            {
-                std::lock_guard<std::mutex> lock(mtx);
-                if (count + 1 > max_parallel) {
-                    max_parallel = count + 1;
-                }
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
-            parallel_count.fetch_sub(1);
-            return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED};
+    auto body = [&](TaskContext&) {
+        int count = parallel_count.fetch_add(1) + 1;
+        {
+            std::lock_guard<std::mutex> lock(mtx);
+            if (count > max_parallel) max_parallel = count;
         }
-    );
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        parallel_count.fetch_sub(1);
+        return TaskResult{.status = TaskStatus::COMPLETED};
+    };
+    dag.add_task(make_task("A", body));
+    dag.add_task(make_task("B", body));
+    dag.add_task(make_task("C", body));
 
-    auto task_b = std::make_shared<task_graph::Task>(
-        "B",
-        [&](task_graph::TaskContext& ctx) {
-            int count = parallel_count.fetch_add(1);
-            {
-                std::lock_guard<std::mutex> lock(mtx);
-                if (count + 1 > max_parallel) {
-                    max_parallel = count + 1;
-                }
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
-            parallel_count.fetch_sub(1);
-            return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED};
-        }
-    );
-
-    auto task_c = std::make_shared<task_graph::Task>(
-        "C",
-        [&](task_graph::TaskContext& ctx) {
-            int count = parallel_count.fetch_add(1);
-            {
-                std::lock_guard<std::mutex> lock(mtx);
-                if (count + 1 > max_parallel) {
-                    max_parallel = count + 1;
-                }
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
-            parallel_count.fetch_sub(1);
-            return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED};
-        }
-    );
-
-    dag.add_task(task_a);
-    dag.add_task(task_b);
-    dag.add_task(task_c);
-
-    task_graph::DAGExecutor executor;
+    DAGExecutor executor;
     executor.execute(dag).wait();
 
-    bool success = max_parallel >= 2;
-
-    std::cout << (success ? "PASSED" : "FAILED") << std::endl;
-    return success;
+    EXPECT_TRUE(max_parallel >= 2);
 }
 
-bool test_data_passing() {
-    std::cout << "Test: Data passing between tasks... ";
+// 数据传递：A 输出 42，B 通过端口 "in" 读取并 *2
+TEST_CASE(data_passing_between_tasks) {
+    DAG dag;
+    dag.add_task(make_task("A", [](TaskContext&) {
+        return TaskResult{.status = TaskStatus::COMPLETED, .value = 42};
+    }));
+    dag.add_task(make_task("B", [](TaskContext& ctx) {
+        auto v = ctx.input<int>("in");
+        return v ? TaskResult{.status = TaskStatus::COMPLETED, .value = *v * 2}
+                 : TaskResult{.status = TaskStatus::FAILED};
+    }));
+    dag.connect("A", "B");
 
-    task_graph::DAG dag;
-
-    auto task_a = std::make_shared<task_graph::Task>(
-        "A",
-        [](task_graph::TaskContext& ctx) {
-            return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = 42};
-        }
-    );
-
-    auto task_b = std::make_shared<task_graph::Task>(
-        "B",
-        [](task_graph::TaskContext& ctx) {
-            auto value = ctx.input<int>("in");
-            if (value) {
-                return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = *value * 2};
-            }
-            return task_graph::TaskResult{.status = task_graph::TaskStatus::FAILED};
-        }
-    );
-
-    dag.add_task(task_a);
-    dag.add_task(task_b);
-    dag.add_dependency("A", "B");
-
-    task_graph::DAGExecutor executor;
+    DAGExecutor executor;
     executor.execute(dag).wait();
 
     auto results = executor.get_results();
-    bool success = results["B"].is_success();
-    if (success) {
-        auto result_value = std::any_cast<int>(results["B"].value);
-        success &= (result_value == 84);
-    }
-
-    std::cout << (success ? "PASSED" : "FAILED") << std::endl;
-    return success;
+    EXPECT_TRUE(results["B"].is_success());
+    EXPECT_EQ(std::any_cast<int>(results["B"].value), 84);
 }
 
-int main() {
-    std::vector<bool> results;
+// 依赖失败传播：A 失败 -> B 应被标记失败
+TEST_CASE(dependency_failure_propagation) {
+    DAG dag;
+    dag.add_task(make_task("A", [](TaskContext&) {
+        return TaskResult{.status = TaskStatus::FAILED};
+    }));
+    dag.add_task(make_task("B", [](TaskContext&) {
+        return TaskResult{.status = TaskStatus::COMPLETED};
+    }));
+    dag.connect("A", "B");
 
-    results.push_back(test_basic_dag());
-    results.push_back(test_cycle_detection());
-    results.push_back(test_parallel_execution());
-    results.push_back(test_data_passing());
+    DAGExecutor executor;
+    executor.execute(dag).wait();
 
-    std::cout << "\n--- Summary ---" << std::endl;
-    int passed = std::count(results.begin(), results.end(), true);
-    std::cout << passed << "/" << results.size() << " tests passed" << std::endl;
-
-    return passed == results.size() ? 0 : 1;
+    auto results = executor.get_results();
+    EXPECT_TRUE(results["A"].is_failed());
+    EXPECT_TRUE(results["B"].is_failed());
 }
+
+// executor 端到端依赖：A 产出 10，B 读取 *2 = 20
+TEST_CASE(executor_dependency_dataflow) {
+    DAG dag;
+    dag.add_task(make_task("A", [](TaskContext&) {
+        return TaskResult{.status = TaskStatus::COMPLETED, .value = 10};
+    }));
+    dag.add_task(make_task("B", [](TaskContext& ctx) {
+        auto a = ctx.input<int>("in");
+        return a ? TaskResult{.status = TaskStatus::COMPLETED, .value = *a * 2}
+                 : TaskResult{.status = TaskStatus::FAILED};
+    }));
+    dag.connect("A", "B");
+
+    DAGExecutor executor;
+    executor.execute(dag).wait();
+
+    auto results = executor.get_results();
+    EXPECT_TRUE(results["A"].is_success());
+    EXPECT_TRUE(results["B"].is_success());
+    EXPECT_EQ(std::any_cast<int>(results["B"].value), 20);
+}
+
+TEST_MAIN("DAG Tests")

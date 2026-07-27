@@ -1,113 +1,53 @@
+// 日志系统测试。校验日志级别 get/set roundtrip、级别过滤边界，
+// 以及日志 API / 宏在各级别下可安全调用（不崩溃）。
 #include <plugin_api.hpp>
 #include <task_graph/task_graph.hpp>
-#include <task_graph/executor.hpp>
-#include <iostream>
+#include "test_util.hpp"
 
-bool test_logger_basic() {
-    std::cout << "Test: Logger basic functionality... ";
-    
-    task_graph::tg_set_log_level(task_graph::LogLevel::DEBUG);
-    
-    task_graph::tg_log(task_graph::LogLevel::TRACE, "This is a TRACE message");
-    task_graph::tg_log(task_graph::LogLevel::DEBUG, "This is a DEBUG message");
-    task_graph::tg_log(task_graph::LogLevel::INFO, "This is an INFO message");
-    task_graph::tg_log(task_graph::LogLevel::WARN, "This is a WARN message");
-    task_graph::tg_log(task_graph::LogLevel::ERROR, "This is an ERROR message");
-    task_graph::tg_log(task_graph::LogLevel::FATAL, "This is a FATAL message");
-    
-    std::cout << "PASSED" << std::endl;
-    return true;
+using namespace task_graph;
+
+TEST_CASE(log_level_get_set_roundtrip) {
+    tg_set_log_level(LogLevel::DEBUG);
+    EXPECT_TRUE(tg_get_log_level() == LogLevel::DEBUG);
+
+    tg_set_log_level(LogLevel::WARN);
+    EXPECT_TRUE(tg_get_log_level() == LogLevel::WARN);
+
+    tg_set_log_level(LogLevel::ERROR);
+    EXPECT_TRUE(tg_get_log_level() == LogLevel::ERROR);
 }
 
-bool test_logger_level_filter() {
-    std::cout << "Test: Logger level filtering... ";
-    
-    task_graph::tg_set_log_level(task_graph::LogLevel::WARN);
-    
-    task_graph::tg_log(task_graph::LogLevel::TRACE, "Should NOT be visible");
-    task_graph::tg_log(task_graph::LogLevel::DEBUG, "Should NOT be visible");
-    task_graph::tg_log(task_graph::LogLevel::INFO, "Should NOT be visible");
-    task_graph::tg_log(task_graph::LogLevel::WARN, "Should be visible - WARN");
-    task_graph::tg_log(task_graph::LogLevel::ERROR, "Should be visible - ERROR");
-    task_graph::tg_log(task_graph::LogLevel::FATAL, "Should be visible - FATAL");
-    
-    task_graph::tg_set_log_level(task_graph::LogLevel::DEBUG);
-    
-    std::cout << "PASSED" << std::endl;
-    return true;
+TEST_CASE(log_level_ordering) {
+    // 级别数值单调递增，保证过滤比较正确
+    EXPECT_TRUE(static_cast<int>(LogLevel::TRACE) < static_cast<int>(LogLevel::DEBUG));
+    EXPECT_TRUE(static_cast<int>(LogLevel::DEBUG) < static_cast<int>(LogLevel::INFO));
+    EXPECT_TRUE(static_cast<int>(LogLevel::INFO) < static_cast<int>(LogLevel::WARN));
+    EXPECT_TRUE(static_cast<int>(LogLevel::WARN) < static_cast<int>(LogLevel::ERROR));
+    EXPECT_TRUE(static_cast<int>(LogLevel::ERROR) < static_cast<int>(LogLevel::FATAL));
 }
 
-bool test_logger_macros() {
-    std::cout << "Test: Logger macros... ";
-    
-    TG_LOG_TRACE("Macro TRACE");
-    TG_LOG_DEBUG("Macro DEBUG");
-    TG_LOG_INFO("Macro INFO");
-    TG_LOG_WARN("Macro WARN");
-    TG_LOG_ERROR("Macro ERROR");
-    TG_LOG_FATAL("Macro FATAL");
-    
-    std::cout << "PASSED" << std::endl;
-    return true;
+TEST_CASE(log_api_all_levels_safe) {
+    tg_set_log_level(LogLevel::TRACE);
+    tg_log(LogLevel::TRACE, "trace");
+    tg_log(LogLevel::DEBUG, "debug");
+    tg_log(LogLevel::INFO, "info");
+    tg_log(LogLevel::WARN, "warn");
+    tg_log(LogLevel::ERROR, "error");
+    tg_log(LogLevel::FATAL, "fatal");
+    // 恢复默认，确认设置生效
+    tg_set_log_level(LogLevel::WARN);
+    EXPECT_TRUE(tg_get_log_level() == LogLevel::WARN);
 }
 
-bool test_dag_logging() {
-    std::cout << "Test: DAG logging... ";
-    
-    task_graph::DAG dag;
-    
-    auto task_a = std::make_shared<task_graph::Task>("A", [](auto& ctx) {
-        return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED};
-    });
-    
-    auto task_b = std::make_shared<task_graph::Task>("B", [](auto& ctx) {
-        return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED};
-    });
-    
-    dag.add_task(task_a);
-    dag.add_task(task_b);
-    dag.add_dependency("A", "B");
-    
-    std::cout << "PASSED" << std::endl;
-    return true;
+TEST_CASE(log_macros_safe) {
+    tg_set_log_level(LogLevel::TRACE);
+    TG_LOG_TRACE("macro trace");
+    TG_LOG_DEBUG("macro debug");
+    TG_LOG_INFO("macro info");
+    TG_LOG_WARN("macro warn");
+    TG_LOG_ERROR("macro error");
+    TG_LOG_FATAL("macro fatal");
+    EXPECT_TRUE(true);  // 到此未崩溃即通过
 }
 
-bool test_executor_logging() {
-    std::cout << "Test: Executor logging... ";
-    
-    task_graph::DAG dag;
-    
-    auto task_a = std::make_shared<task_graph::Task>("A", [](auto& ctx) {
-        return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED};
-    });
-    
-    auto task_b = std::make_shared<task_graph::Task>("B", [](auto& ctx) {
-        return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED};
-    });
-    
-    dag.add_task(task_a);
-    dag.add_task(task_b);
-    dag.add_dependency("A", "B");
-    
-    task_graph::DAGExecutor executor;
-    auto future = executor.execute(dag);
-    future.wait();
-    
-    std::cout << "PASSED" << std::endl;
-    return true;
-}
-
-int main() {
-    task_graph::tg_set_log_level(task_graph::LogLevel::DEBUG);
-    
-    std::cout << "=== Logger Tests ===\n" << std::endl;
-    
-    test_logger_basic();
-    test_logger_level_filter();
-    test_logger_macros();
-    test_dag_logging();
-    test_executor_logging();
-    
-    std::cout << "\n=== All tests completed ===" << std::endl;
-    return 0;
-}
+TEST_MAIN("Logger Tests")
