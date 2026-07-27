@@ -6,6 +6,8 @@
 #include <QList>
 #include <QHash>
 #include <QStringList>
+#include <QVariantMap>
+#include <QVariantList>
 
 #include "../model/GraphModel.h"
 
@@ -16,6 +18,7 @@ struct NodeData {
     QString type;
     qreal x = 0;
     qreal y = 0;
+    QVariantMap params;   // 当前参数值（key -> value），与 task param_specs 对应
 };
 
 struct EdgeData {
@@ -57,6 +60,16 @@ public:
     Q_INVOKABLE bool hasNode(const QString& taskId) const;
     Q_INVOKABLE NodeData nodeData(const QString& taskId) const;
 
+    // 参数 schema 与读写：UI 通过 paramSpecs 拿到某 task type 的可编辑参数
+    // （类型/默认值/范围/枚举），通过 nodeParams / setNodeParam 读写节点实例值。
+    // 桥接层把 lib 侧的 task_graph::ParamSpec 拆成明确类型的 QVariantMap，避免
+    // std::any 跨 lib/GUI 边界的 ABI 风险。
+    Q_INVOKABLE QVariantList paramSpecs(const QString& taskType) const;
+    Q_INVOKABLE QVariantMap nodeParams(const QString& taskId) const;
+    Q_INVOKABLE bool setNodeParam(const QString& taskId, const QString& key, const QVariant& value);
+    // 可用 task 类型（从 PluginRegistry 动态获取，替代硬编码列表）
+    Q_INVOKABLE QStringList availableTaskTypes() const;
+
     // Graph operations
     Q_INVOKABLE void clear();
     Q_INVOKABLE bool saveToFile(const QString& filePath);
@@ -74,6 +87,7 @@ signals:
     void taskCountChanged();
     void edgeCountChanged();
     void selectionChanged(const QString& nodeId);
+    void nodeParamsChanged(const QString& nodeId);
     void graphReset();
     void logMessage(const QString& msg);
 

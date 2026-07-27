@@ -18,9 +18,26 @@ public:
     // Incremental building (forwarded to DAG)
     bool add_task(const std::string& task_id, const std::string& task_type, const task_graph::TaskConfig& config = {});
     bool add_edge(const std::string& from_id, const std::string& to_id);
+    // Update params of an existing task in-place (used by parameter edits).
+    // Note: DAG stores task config by value; this replaces the task with a
+    // re-created instance carrying the new config so edits take effect before
+    // the next rebuild. Caller should follow up with rebuild() at the next
+    // structural change to keep schema/params consistent.
+    bool update_task_params(const std::string& task_id, const task_graph::TaskParams& params);
+    task_graph::TaskParams task_params(const std::string& task_id) const;
+
+    // 节点结构：rebuild 时携带 id/type/config（含 params），避免删除重建丢参数
+    struct NodeSpec {
+        std::string id;
+        std::string type;
+        task_graph::TaskConfig config;
+    };
 
     // DAG is immutable for deletion, so rebuild from scratch
     void clear();
+    void rebuild(const std::vector<NodeSpec>& tasks,
+                 const std::vector<std::pair<std::string, std::string>>& edges);
+    // 旧签名（不带 config）保留为 wrapper，便于过渡
     void rebuild(const std::vector<std::pair<std::string, std::string>>& tasks,
                  const std::vector<std::pair<std::string, std::string>>& edges);
 

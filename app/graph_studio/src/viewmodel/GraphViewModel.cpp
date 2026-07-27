@@ -6,8 +6,126 @@
 #include <QQueue>
 #include <QStack>
 #include <algorithm>
+#include <task_graph/plugin.hpp>
+#include <plugin_api.hpp>
 
 using namespace graph_studio;
+
+// ---- ParamSpec 桥接：把 lib 侧 ParamSpec 拆成 QVariantMap（明确类型） ----
+// 避免 std::any 跨 lib/GUI 边界；GUI 侧只消费 QVariant。
+namespace {
+QVariantMap paramSpecToVariant(const task_graph::ParamSpec& s) {
+    QVariantMap m;
+    m["name"] = QString::fromStdString(s.name);
+    m["description"] = QString::fromStdString(s.description);
+    switch (s.type) {
+        case task_graph::ParamType::Int:    m["type"] = QStringLiteral("int");    break;
+        case task_graph::ParamType::Float:  m["type"] = QStringLiteral("float");  break;
+        case task_graph::ParamType::String: m["type"] = QStringLiteral("string"); break;
+        case task_graph::ParamType::Bool:   m["type"] = QStringLiteral("bool");   break;
+        case task_graph::ParamType::Enum:   m["type"] = QStringLiteral("enum");   break;
+    }
+    if (s.min_value) m["min"] = *s.min_value;
+    if (s.max_value) m["max"] = *s.max_value;
+    if (s.step)      m["step"] = *s.step;
+    // 默认值按类型取
+    try {
+        switch (s.type) {
+            case task_graph::ParamType::Int:
+            case task_graph::ParamType::Enum:
+                m["default"] = std::any_cast<int>(s.default_value); break;
+            case task_graph::ParamType::Float:
+                m["default"] = std::any_cast<float>(s.default_value); break;
+            case task_graph::ParamType::String:
+                m["default"] = QString::fromStdString(std::any_cast<std::string>(s.default_value)); break;
+            case task_graph::ParamType::Bool:
+                m["default"] = std::any_cast<bool>(s.default_value); break;
+        }
+    } catch (const std::bad_any_cast&) { /* default 留空 */ }
+    // 枚举可选值
+    if (s.type == task_graph::ParamType::Enum && !s.enum_values.empty()) {
+        QVariantList labels, values;
+        for (const auto& [label, value] : s.enum_values) {
+            labels.append(QString::fromStdString(label));
+            values.append(value);
+        }
+        m["enumLabels"] = labels;
+        m["enumValues"] = values;
+    }
+    return m;
+}
+
+// 取某 task type 的 param_specs（实例化临时 task 读 schema）
+std::vector<task_graph::ParamSpec> queryParamSpecs(const std::string& task_type) {
+    if (!task_graph::PluginRegistry::instance().has_task(task_type)) return {};
+    auto probe = task_graph::PluginRegistry::instance().create_task(task_type);
+    return probe ? probe->param_specs() : std::vector<task_graph::ParamSpec>{};
+}
+
+// 用声明 specs 的默认值初始化 params 容器
+QVariantMap defaultParamsForType(const std::string& task_type) {
+    QVariantMap out;
+    for (const auto& s : queryParamSpecs(task_type)) {
+        QVariantMap vm = paramSpecToVariant(s);
+        if (vm.contains("default")) out[QString::fromStdString(s.name)] = vm["default"];
+    }
+    return out;
+}
+
+// 把 TaskParams（any）转成 QVariantMap（明确类型），供 UI 读取
+QVariantMap taskParamsToVariant(const task_graph::TaskParams& p,
+                                const std::vector<task_graph::ParamSpec>& specs) {
+    QVariantMap out;
+    std::unordered_map<std::string, const task_graph::ParamSpec*> by_name;
+    for (const auto& s : specs) by_name[s.name] = &s;
+    for (const auto& [key, value] : p.params()) {
+        QString k = QString::fromStdString(key);
+        auto it = by_name.find(key);
+        if (it != by_name.end()) {
+            const auto& s = *it->second;
+            try {
+                switch (s.type) {
+                    case task_graph::ParamType::Int:
+                    case task_graph::ParamType::Enum:
+                        out[k] = std::any_cast<int>(value); break;
+                    case task_graph::ParamType::Float:
+                        out[k] = std::any_cast<float>(value); break;
+                    case task_graph::ParamType::String:
+                        out[k] = QString::fromStdString(std::any_cast<std::string>(value)); break;
+                    case task_graph::ParamType::Bool:
+                        out[k] = std::any_cast<bool>(value); break;
+                }
+            } catch (const std::bad_any_cast&) { /* skip */ }
+        } else {
+            // 未声明：按运行时类型尽力转换
+            if (value.type() == typeid(int))         out[k] = std::any_cast<int>(value);
+            else if (value.type() == typeid(float))  out[k] = std::any_cast<float>(value);
+            else if (value.type() == typeid(bool))   out[k] = std::any_cast<bool>(value);
+            else if (value.type() == typeid(std::string))
+                out[k] = QString::fromStdString(std::any_cast<std::string>(value));
+        }
+    }
+    return out;
+}
+
+// 把 QVariant 值按 spec 类型写回 TaskParams
+void applyVariantToParams(const QString& key, const QVariant& value,
+                          const task_graph::ParamSpec& spec,
+                          task_graph::TaskParams& out) {
+    const std::string k = key.toStdString();
+    switch (spec.type) {
+        case task_graph::ParamType::Int:
+        case task_graph::ParamType::Enum:
+            out.set_int(k, value.toInt()); break;
+        case task_graph::ParamType::Float:
+            out.set_float(k, value.toFloat()); break;
+        case task_graph::ParamType::String:
+            out.set_string(k, value.toString().toStdString()); break;
+        case task_graph::ParamType::Bool:
+            out.set_bool(k, value.toBool()); break;
+    }
+}
+}  // namespace
 
 GraphViewModel::GraphViewModel(GraphModel& model, QObject* parent)
     : QObject(parent), model_(model)
@@ -49,6 +167,8 @@ QString GraphViewModel::addTask(const QString& taskType, qreal x, qreal y, const
     data.type = taskType;
     data.x = x;
     data.y = y;
+    // 按该 type 声明的 param_specs 用默认值初始化 params
+    data.params = defaultParamsForType(taskType.toStdString());
     nodeList_.append(data);
     emit taskAdded(data);
     emit taskCountChanged();
@@ -187,6 +307,54 @@ NodeData GraphViewModel::nodeData(const QString& taskId) const
     return {};
 }
 
+QVariantList GraphViewModel::paramSpecs(const QString& taskType) const
+{
+    QVariantList out;
+    for (const auto& s : queryParamSpecs(taskType.toStdString())) {
+        out.append(paramSpecToVariant(s));
+    }
+    return out;
+}
+
+QVariantMap GraphViewModel::nodeParams(const QString& taskId) const
+{
+    for (const auto& n : nodeList_) {
+        if (n.id == taskId) return n.params;
+    }
+    return {};
+}
+
+bool GraphViewModel::setNodeParam(const QString& taskId, const QString& key, const QVariant& value)
+{
+    for (auto& n : nodeList_) {
+        if (n.id != taskId) continue;
+        n.params[key] = value;
+        // 同步到 Model/DAG（按声明类型写回）
+        auto specs = queryParamSpecs(n.type.toStdString());
+        for (const auto& s : specs) {
+            if (s.name == key.toStdString()) {
+                task_graph::TaskParams params = model_.task_params(taskId.toStdString());
+                applyVariantToParams(key, value, s, params);
+                model_.update_task_params(taskId.toStdString(), params);
+                break;
+            }
+        }
+        emit nodeParamsChanged(taskId);
+        emit logMessage("[INFO] Param updated: " + taskId + "." + key);
+        return true;
+    }
+    return false;
+}
+
+QStringList GraphViewModel::availableTaskTypes() const
+{
+    QStringList out;
+    for (const auto& t : task_graph::PluginRegistry::instance().available_tasks()) {
+        out.append(QString::fromStdString(t));
+    }
+    return out;
+}
+
 void GraphViewModel::clear()
 {
     nodeList_.clear();
@@ -265,6 +433,9 @@ bool GraphViewModel::loadFromFile(const QString& filePath)
         NodeData nd;
         nd.id = QString::fromStdString(id);
         nd.type = QString::fromStdString(taskPtr->type());
+        // 从 DAG task config 恢复 params（按声明类型桥接为 QVariantMap）
+        nd.params = taskParamsToVariant(taskPtr->config().params,
+                                        queryParamSpecs(taskPtr->type()));
         nodeList_.append(nd);
     }
     for (const auto& [from, targets] : dag.adjacency()) {
@@ -376,10 +547,24 @@ void GraphViewModel::autoLayout()
 
 void GraphViewModel::rebuildDag()
 {
-    std::vector<std::pair<std::string, std::string>> tasks;
+    std::vector<graph_studio::GraphModel::NodeSpec> tasks;
     std::vector<std::pair<std::string, std::string>> edges;
     for (const auto& n : nodeList_) {
-        tasks.emplace_back(n.id.toStdString(), n.type.toStdString());
+        graph_studio::GraphModel::NodeSpec spec;
+        spec.id = n.id.toStdString();
+        spec.type = n.type.toStdString();
+        // 把 NodeData.params 写入 TaskConfig.params（按该 type 的声明类型转换）
+        auto specs = queryParamSpecs(spec.type);
+        std::unordered_map<std::string, const task_graph::ParamSpec*> by_name;
+        for (const auto& s : specs) by_name[s.name] = &s;
+        for (auto it = n.params.begin(); it != n.params.end(); ++it) {
+            std::string k = it.key().toStdString();
+            auto sit = by_name.find(k);
+            if (sit != by_name.end()) {
+                applyVariantToParams(it.key(), it.value(), *sit->second, spec.config.params);
+            }
+        }
+        tasks.push_back(std::move(spec));
     }
     for (const auto& e : edgeList_) {
         edges.emplace_back(e.fromId.toStdString(), e.toId.toStdString());
