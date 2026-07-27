@@ -241,6 +241,15 @@ target_link_libraries(example_plugin
         task_graph
 )
 
+add_executable(example_multi_output
+    examples/multi_output.cpp
+)
+
+target_link_libraries(example_multi_output
+    PRIVATE
+        task_graph
+)
+
 add_library(task_plugin_example MODULE
     plugins/example_plugin.cpp
 )
