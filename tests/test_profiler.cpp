@@ -248,13 +248,13 @@ bool test_profiler_trace_export() {
         }
     }
 
-    // 验证文件落盘
-    bool save_trace_ok = executor.profiler().save_trace_report("build/profiler_trace.json");
+    // 验证文件落盘（写到当前工作目录，避免硬编码 build/ 路径导致 CWD 依赖）
+    bool save_trace_ok = executor.profiler().save_trace_report("profiler_trace.json");
 
     bool success = has_trace_events && has_metadata && has_complete_event && save_trace_ok;
     std::cout << (success ? "PASSED" : "FAILED") << std::endl;
     if (save_trace_ok) {
-        std::cout << "  -> Trace 已生成: build/profiler_trace.json (用 chrome://tracing 打开)" << std::endl;
+        std::cout << "  -> Trace 已生成: profiler_trace.json (用 chrome://tracing 打开)" << std::endl;
     }
     return success;
 }

@@ -24,12 +24,13 @@ bool test_subnode_dag_execution() {
 
     task_graph::DAG dag;
 
-    dag.add_plugin_task("example_task_1");
-    dag.add_plugin_task("example_task_2");
-    dag.add_plugin_task("data_processor");
-    
-    dag.add_dependency("example_task_1", "data_processor");
-    dag.add_dependency("example_task_2", "data_processor");
+    dag.add_plugin_task("example_task_1", "example_task_1");
+    dag.add_plugin_task("example_task_2", "example_task_2");
+    dag.add_plugin_task("data_processor", "data_processor");
+
+    // example_task_1/2 的输出分别喂给 data_processor 的命名端口 "a"/"b"
+    dag.connect("example_task_1", "out", "data_processor", "a");
+    dag.connect("example_task_2", "out", "data_processor", "b");
 
     task_graph::DAGExecutor executor;
     executor.execute(dag).wait();
@@ -49,9 +50,9 @@ bool test_individual_task_execution() {
     std::cout << "Test: Individual task execution... ";
 
     task_graph::DAG dag;
-    
-    dag.add_plugin_task("example_task_1");
-    
+
+    dag.add_plugin_task("example_task_1", "example_task_1");
+
     task_graph::DAGExecutor executor;
     executor.execute(dag).wait();
 

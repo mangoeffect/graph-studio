@@ -9,6 +9,8 @@
 #define dlclose(handle) FreeLibrary((HMODULE)handle)
 #define dlsym(handle, symbol) GetProcAddress((HMODULE)handle, symbol)
 #define dlerror() "Windows error"
+#define RTLD_LAZY 0
+#define RTLD_NODELETE 0
 #endif
 
 namespace task_graph {
@@ -28,7 +30,11 @@ PluginLoader::~PluginLoader() {
 }
 
 bool PluginLoader::load(const std::string& path) {
-    void* handle = dlopen(path.c_str(), RTLD_LAZY);
+    // RTLD_NODELETE：dlclose 时不真正卸载代码段，避免插件内 C++ 静态对象
+    // 的析构函数（__cxa_atexit 注册）在 dlclose 与进程退出时被重复调用，
+    // 或注册到主库单例中的 std::function（其 vtable/代码位于插件地址空间）
+    // 在插件卸载后悬空导致退出期 SIGSEGV。
+    void* handle = dlopen(path.c_str(), RTLD_LAZY | RTLD_NODELETE);
     if (!handle) {
         return false;
     }
