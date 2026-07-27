@@ -78,9 +78,11 @@ fi
 
 if [[ "${NO_BUILD}" -eq 0 ]]; then
     # ---- 1) 构建根库 task_graph（GraphStudio 依赖 build/libtask_graph）----
-    echo "${C_BOLD}==> 构建 task_graph 库${C_RESET}"
+    # 同时构建 subnode 模块：GraphStudio 启动时通过 dlopen 加载 build/submodules/*
+    # 下的插件 .dylib，需要这些产物先存在（否则任务库面板为空）。
+    echo "${C_BOLD}==> 构建 task_graph 库 + subnode 插件${C_RESET}"
     cmake -B "${LIB_BUILD}" -DCMAKE_BUILD_TYPE=Debug >/dev/null
-    cmake --build "${LIB_BUILD}" --target task_graph -j "${JOBS}"
+    cmake --build "${LIB_BUILD}" -j "${JOBS}"
 
     # ---- 2) 配置 + 构建 graph_studio ----
     CMAKE_ARGS=(-S "${GS_DIR}" -B "${GS_BUILD}" -DCMAKE_BUILD_TYPE=Debug)

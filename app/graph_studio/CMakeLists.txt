@@ -55,6 +55,7 @@ set(PROJECT_HEADERS
 
 set(PROJECT_SOURCES
     src/platform/macos/entry.cpp
+    src/PluginBootstrap.cpp
     src/model/GraphModel.cpp
     src/viewmodel/GraphViewModel.cpp
     src/command/CommandStack.cpp
