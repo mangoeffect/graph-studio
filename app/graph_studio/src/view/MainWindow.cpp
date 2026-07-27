@@ -18,6 +18,7 @@
 #include <QComboBox>
 #include <QGroupBox>
 #include <QFormLayout>
+#include <QTimer>
 #include <QScrollArea>
 #include <QPainter>
 #include <QFileDialog>
@@ -223,10 +224,18 @@ void MainWindow::ConnectSignals()
     connect(&vm_, &GraphViewModel::logMessage, this, &MainWindow::onLogMessage);
     connect(&vm_, &GraphViewModel::selectionChanged, this, &MainWindow::onSelectionChangedVm);
     connect(&vm_, &GraphViewModel::nodeParamsChanged, this, [this](const QString& id){
-        // 当前选中节点的参数被改（含 undo/redo、外部调用）后，同步刷新参数控件
-        if (!id.isEmpty() && id == vm_.selectedNodeId()) {
-            RebuildParamWidgets(id);
-        }
+        // 当前选中节点的参数被改（含 undo/redo、外部调用）后，同步刷新参数控件。
+        // 注意：必须用 QTimer::singleShot(0,...) defer 到下一轮事件循环，
+        // 避免在 widget 自己的 signal/event 处理栈里删除 widget（use-after-free）。
+        // 另：由 OnParamWidgetChanged 触发的（selfParamEdit_）说明控件已是新值，
+        // 跳过刷新即可，不需要重建。
+        if (selfParamEdit_) return;
+        QString target = id;
+        QTimer::singleShot(0, this, [this, target]() {
+            if (!target.isEmpty() && target == vm_.selectedNodeId()) {
+                RebuildParamWidgets(target);
+            }
+        });
     });
     connect(&vm_, &GraphViewModel::taskCountChanged, this, &MainWindow::UpdateStatusBar);
     connect(&vm_, &GraphViewModel::edgeCountChanged, this, &MainWindow::UpdateStatusBar);
@@ -842,6 +851,7 @@ void MainWindow::RebuildParamWidgets(const QString& nodeId)
 }
 
 // 控件值变化 -> 走 ChangeParamCommand（支持 undo/redo）-> VM.setNodeParam
+// 置位 selfParamEdit_ 防止 nodeParamsChanged 回响重建控件（避免删除正在编辑的自己）
 void MainWindow::OnParamWidgetChanged(const QString& key)
 {
     QString nodeId = vm_.selectedNodeId();
@@ -854,7 +864,9 @@ void MainWindow::OnParamWidgetChanged(const QString& key)
     else if (auto* cb = qobject_cast<QCheckBox*>(w)) newValue = cb->isChecked();
     else if (auto* combo = qobject_cast<QComboBox*>(w)) newValue = combo->currentData();
 
+    selfParamEdit_ = true;
     commandStack_.push(std::make_unique<ChangeParamCommand>(vm_, nodeId, key, newValue));
+    selfParamEdit_ = false;
 }
 
 void MainWindow::ActionNew()

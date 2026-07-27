@@ -125,6 +125,9 @@ private:
     QFormLayout* paramsLayout_ = nullptr;
     QGroupBox* paramsGroup_ = nullptr;
     QHash<QString, QWidget*> paramWidgets_;  // key -> 当前生成的控件
+    // 标记参数变更由当前正在编辑的控件触发（OnParamWidgetChanged 路径），
+    // 避免其回响 nodeParamsChanged 时又 RebuildParamWidgets 删除自己（use-after-free）。
+    bool selfParamEdit_ = false;
     QPlainTextEdit* logWidget_ = nullptr;
     QPlainTextEdit* outputWidget_ = nullptr;
     QLabel* zoomLabel_ = nullptr;
