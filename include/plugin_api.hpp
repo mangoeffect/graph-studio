@@ -98,10 +98,12 @@ public:
     void set_int(const std::string& key, int value);
     void set_float(const std::string& key, float value);
     void set_string(const std::string& key, const std::string& value);
+    void set_bool(const std::string& key, bool value);
     
     std::optional<int> get_int(const std::string& key) const;
     std::optional<float> get_float(const std::string& key) const;
     std::optional<std::string> get_string(const std::string& key) const;
+    std::optional<bool> get_bool(const std::string& key) const;
     
     bool has_param(const std::string& key) const;
     void clear();
@@ -162,6 +164,10 @@ public:
     // 端口契约声明（默认空，等价于"无约束"）。子类应重写以参与构图期校验。
     virtual std::vector<PortSpec> input_specs()  const { return {}; }
     virtual std::vector<PortSpec> output_specs() const { return {}; }
+
+    // 参数契约声明（默认空）。子类重写以声明可配置参数的类型/默认值/范围/枚举，
+    // 供 UI / 工具链自动发现（对齐 input_specs/output_specs 的做法）。
+    virtual std::vector<ParamSpec> param_specs() const { return {}; }
 
     // 输入校验：按端口名取值的 map。默认实现基于 input_specs() 自动校验
     // （必填端口存在 + 类型名匹配）。子类一般无需重写。

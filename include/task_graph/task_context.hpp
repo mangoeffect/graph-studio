@@ -191,6 +191,10 @@ public:
         return params().get_string(key);
     }
 
+    std::optional<bool> get_param_bool(const std::string& key) const {
+        return params().get_bool(key);
+    }
+
 private:
     TaskParams params_;
     std::vector<TaskId> dependencies_;

@@ -26,6 +26,7 @@ public:
     // 端口契约委托（用于 plugin 包装场景）
     std::vector<PortSpec> input_specs()  const override;
     std::vector<PortSpec> output_specs() const override;
+    std::vector<ParamSpec> param_specs() const override;
 
     void set_spec_delegate(std::shared_ptr<IPluginTask> delegate) {
         spec_delegate_ = std::move(delegate);

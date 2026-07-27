@@ -279,4 +279,87 @@ inline PortSpec make_port(std::string name, bool required = true) {
     return PortSpec{std::move(name), type_name<T>(), required};
 }
 
+// ====================== ParamSpec ======================
+// 参数契约：task 显式声明的可配置参数元信息，供 UI / 工具链自动发现
+// 参数名、类型、默认值、取值范围与枚举可选值。与 PortSpec 对等。
+enum class ParamType {
+    Int,
+    Float,
+    String,
+    Bool,
+    Enum,   // 底层以 int 存储，enum_values 给出 label->value 映射
+};
+
+struct ParamSpec {
+    std::string name;                 // 参数键名，如 "kernel_size"
+    ParamType   type{ParamType::Int};
+    std::string description;          // 可选，UI tooltip
+    std::any    default_value;        // 按 type 取用 int/float/std::string/bool
+
+    // 数值范围（仅 Int/Float 有意义；nullopt 表示无约束）
+    std::optional<double> min_value;
+    std::optional<double> max_value;
+    std::optional<double> step;       // UI 步进，可选
+
+    // 枚举可选值（type==Enum 时使用：label -> int 值）
+    std::vector<std::pair<std::string, int>> enum_values;
+
+    bool required{false};
+};
+
+// ---- 工厂函数 ----
+inline ParamSpec make_int_param(std::string name, int default_value,
+                                std::optional<double> min_value = std::nullopt,
+                                std::optional<double> max_value = std::nullopt,
+                                std::optional<double> step = std::nullopt) {
+    ParamSpec s;
+    s.name = std::move(name);
+    s.type = ParamType::Int;
+    s.default_value = default_value;
+    s.min_value = min_value;
+    s.max_value = max_value;
+    s.step = step;
+    return s;
+}
+
+inline ParamSpec make_float_param(std::string name, float default_value,
+                                  std::optional<double> min_value = std::nullopt,
+                                  std::optional<double> max_value = std::nullopt,
+                                  std::optional<double> step = std::nullopt) {
+    ParamSpec s;
+    s.name = std::move(name);
+    s.type = ParamType::Float;
+    s.default_value = default_value;
+    s.min_value = min_value;
+    s.max_value = max_value;
+    s.step = step;
+    return s;
+}
+
+inline ParamSpec make_string_param(std::string name, std::string default_value) {
+    ParamSpec s;
+    s.name = std::move(name);
+    s.type = ParamType::String;
+    s.default_value = std::move(default_value);
+    return s;
+}
+
+inline ParamSpec make_bool_param(std::string name, bool default_value) {
+    ParamSpec s;
+    s.name = std::move(name);
+    s.type = ParamType::Bool;
+    s.default_value = default_value;
+    return s;
+}
+
+inline ParamSpec make_enum_param(std::string name, int default_value,
+                                 std::vector<std::pair<std::string, int>> enum_values) {
+    ParamSpec s;
+    s.name = std::move(name);
+    s.type = ParamType::Enum;
+    s.default_value = default_value;
+    s.enum_values = std::move(enum_values);
+    return s;
+}
+
 }

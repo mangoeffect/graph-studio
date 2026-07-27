@@ -8,8 +8,10 @@ namespace task_graph {
 
 namespace {
 
-// 公共：从 task_json 读取 TaskConfig 字段（priority/max_retries/timeout/skip_on_fail/
-// dependencies/params）。v1.0 与 v2.0 共享此逻辑。
+// 公共：从 task_json 读取 TaskConfig 非 params 字段（priority/max_retries/timeout/
+// skip_on_fail/dependencies）。params 单独按声明的 param_specs 解析（见下），
+// 以避免 v1.0 时代按 JSON 字面量猜类型导致的隐蔽 bug（如把 float "sigma":2
+// 存成 int，使后续 get_param_float 静默失败）。
 TaskConfig parse_task_config(const nlohmann::json& task_json) {
     TaskConfig config;
     if (task_json.contains("priority")) {
@@ -29,18 +31,67 @@ TaskConfig parse_task_config(const nlohmann::json& task_json) {
             config.dependencies.push_back(dep.get<std::string>());
         }
     }
-    if (task_json.contains("params")) {
-        for (const auto& [key, value] : task_json["params"].get<nlohmann::json::object_t>()) {
-            if (value.is_number_integer()) {
-                config.params.set_int(key, static_cast<int>(value.get<int64_t>()));
-            } else if (value.is_number_float()) {
-                config.params.set_float(key, static_cast<float>(value.get<double>()));
-            } else if (value.is_string()) {
-                config.params.set_string(key, value.get<std::string>());
+    return config;
+}
+
+// 按声明的 ParamSpec 将 JSON params 解析到 TaskParams，类型严格遵循声明：
+//   - Int/Enum: 接受任意数字，转为 int
+//   - Float:    接受任意数字，转为 float
+//   - String:   接受字符串
+//   - Bool:     接受 bool；兼容数字（非 0 为 true）与 "true"/"1" 字符串
+// 未在 specs 中声明的 key 按旧逻辑按 JSON 字面量类型回退（保持渐进迁移友好）。
+TaskParams parse_params_with_specs(const nlohmann::json& params_json,
+                                   const std::vector<ParamSpec>& specs) {
+    TaskParams params;
+    std::unordered_map<std::string, const ParamSpec*> spec_by_name;
+    for (const auto& s : specs) spec_by_name[s.name] = &s;
+
+    for (const auto& [key, value] : params_json.get<nlohmann::json::object_t>()) {
+        auto it = spec_by_name.find(key);
+        if (it != spec_by_name.end()) {
+            const ParamSpec* spec = it->second;
+            try {
+                switch (spec->type) {
+                    case ParamType::Int:
+                    case ParamType::Enum:
+                        if (value.is_number())
+                            params.set_int(key, static_cast<int>(value.get<double>()));
+                        break;
+                    case ParamType::Float:
+                        if (value.is_number())
+                            params.set_float(key, static_cast<float>(value.get<double>()));
+                        break;
+                    case ParamType::String:
+                        if (value.is_string())
+                            params.set_string(key, value.get<std::string>());
+                        break;
+                    case ParamType::Bool:
+                        if (value.is_boolean())
+                            params.set_bool(key, value.get<bool>());
+                        else if (value.is_number())
+                            params.set_bool(key, value.get<double>() != 0.0);
+                        else if (value.is_string()) {
+                            const auto& s = value.get<std::string>();
+                            params.set_bool(key, s == "true" || s == "1");
+                        }
+                        break;
+                }
+            } catch (const std::exception&) {
+                // 转换失败：跳过该 key，task 内部会回退到声明默认值
             }
+        } else {
+            // 未声明的 key：按 JSON 字面量类型回退
+            if (value.is_number_integer())
+                params.set_int(key, static_cast<int>(value.get<int64_t>()));
+            else if (value.is_number_float())
+                params.set_float(key, static_cast<float>(value.get<double>()));
+            else if (value.is_string())
+                params.set_string(key, value.get<std::string>());
+            else if (value.is_boolean())
+                params.set_bool(key, value.get<bool>());
         }
     }
-    return config;
+    return params;
 }
 
 nlohmann::json serialize_specs(const std::vector<PortSpec>& specs) {
@@ -94,6 +145,8 @@ nlohmann::json DAGSerializer::serialize(const DAG& dag) {
                 params_json[key] = static_cast<double>(std::any_cast<float>(value));
             } else if (value.type() == typeid(std::string)) {
                 params_json[key] = std::any_cast<std::string>(value);
+            } else if (value.type() == typeid(bool)) {
+                params_json[key] = std::any_cast<bool>(value);
             }
         }
         if (!params_json.empty()) task_json["params"] = params_json;
@@ -144,6 +197,18 @@ DAG DAGSerializer::deserialize(const nlohmann::json& j) {
         }
 
         TaskConfig config = parse_task_config(task_json);
+
+        // 按 task 声明的 param_specs 解析 params（修复 v1.0 按字面量猜类型的 bug）
+        if (task_json.contains("params")) {
+            std::vector<ParamSpec> specs;
+            if (PluginRegistry::instance().has_task(type)) {
+                // 实例化一个临时 task 读取声明的 param_specs
+                if (auto probe = PluginRegistry::instance().create_task(type)) {
+                    specs = probe->param_specs();
+                }
+            }
+            config.params = parse_params_with_specs(task_json["params"], specs);
+        }
 
         bool is_plugin_task = PluginRegistry::instance().has_task(type);
         if (is_plugin_task) {
