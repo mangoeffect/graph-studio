@@ -1,9 +1,48 @@
 ﻿# task_graph 脚本
 
-本目录包含两个脚本：
+本目录包含三个脚本：
 
 - `run_tests.sh` — 配置、构建并运行全部单元测试
+- `run_graph_studio.sh` — 构建并启动 GraphStudio (Qt6 GUI)
 - `generate_submodule.py` — 插件子模块脚手架生成器
+
+---
+
+## run_graph_studio.sh — GraphStudio 运行器
+
+一键构建根库 `task_graph`（GUI 运行时依赖 `build/libtask_graph.dylib`），再构建 `app/graph_studio` 并启动。macOS 启动 `.app` bundle，其它平台启动可执行文件。
+
+```bash
+# 构建并启动
+scripts/run_graph_studio.sh
+
+# 清空构建目录后全新构建再启动
+scripts/run_graph_studio.sh -c
+
+# 只构建不启动
+scripts/run_graph_studio.sh --build-only
+
+# 跳过构建，直接启动现有产物
+scripts/run_graph_studio.sh --no-build
+
+# 运行 GraphStudio 单元测试
+scripts/run_graph_studio.sh -t
+
+# 手动指定 Qt6 前缀（含 lib/cmake/Qt6）
+scripts/run_graph_studio.sh --qt /opt/homebrew/Cellar/qtbase/6.11.1
+```
+
+| 参数 | 缩写 | 说明 |
+|---|---|---|
+| `--jobs` | `-j` | 并行编译线程数（默认 CPU 核数） |
+| `--clean` | `-c` | 先清空构建目录再全新构建 |
+| `--no-build` | | 跳过构建，直接启动 |
+| `--build-only` | | 只构建，不启动 |
+| `--test` | `-t` | 运行 GraphStudio 单元测试（ctest） |
+| `--qt` | | 手动指定 Qt6 前缀路径 |
+| `--help` | `-h` | 显示帮助 |
+
+> 需要本机已安装 Qt6（macOS 可用 Homebrew：`brew install qt`）。若 CMake 找不到 Qt6，用 `--qt` 指定前缀或设置环境变量 `QT_PREFIX_PATH`。
 
 ---
 
