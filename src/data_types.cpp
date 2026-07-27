@@ -7,6 +7,22 @@
 
 namespace task_graph {
 
+// ====================== 内置类型注册 ======================
+TG_REGISTER_TYPE(Image,        "task_graph::Image");
+TG_REGISTER_TYPE(PointCloud,   "task_graph::PointCloud");
+TG_REGISTER_TYPE(Coordinate2D, "task_graph::Coordinate2D");
+TG_REGISTER_TYPE(Coordinate3D, "task_graph::Coordinate3D");
+TG_REGISTER_TYPE(Point,        "task_graph::Point");
+TG_REGISTER_TYPE(int,          "int");
+TG_REGISTER_TYPE(float,        "float");
+TG_REGISTER_TYPE(double,       "double");
+TG_REGISTER_TYPE(std::string,  "std::string");
+TG_REGISTER_TYPE(bool,         "bool");
+
+#ifdef TASK_GRAPH_ENABLE_OPENCV
+TG_REGISTER_TYPE(cv::Mat,      "cv::Mat");
+#endif
+
 Image::Image(int w, int h, int c, PixelFormat format)
     : width(w), height(h), channels(c), pixel_format(format) {
     size_t size = static_cast<size_t>(w) * h * c;

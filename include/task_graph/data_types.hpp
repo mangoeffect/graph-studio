@@ -6,6 +6,9 @@
 #include <any>
 #include <optional>
 #include <typeinfo>
+#include <typeindex>
+#include <unordered_map>
+#include <mutex>
 
 #ifdef TASK_GRAPH_ENABLE_OPENCV
 #include <opencv2/opencv.hpp>
@@ -205,6 +208,75 @@ std::optional<const T*> any_cast_ptr_safe(const std::any& value) {
     } catch (const std::bad_any_cast&) {
         return std::nullopt;
     }
+}
+
+// ====================== Type Registry ======================
+// 跨 so / 跨编译器稳定的类型名注册表。用 TG_REGISTER_TYPE 注册领域类型，
+// 框架在构图期校验 PortSpec.type_name 时使用稳定名称，而非 typeid().name()。
+namespace detail {
+
+class TypeRegistry {
+public:
+    static TypeRegistry& instance() {
+        static TypeRegistry r;
+        return r;
+    }
+
+    void register_type(std::type_index idx, std::string name) {
+        std::lock_guard<std::mutex> lock(mtx_);
+        names_[idx] = std::move(name);
+    }
+
+    // 返回注册的稳定名称；未注册则返回空串（校验时按"未约束"处理）。
+    std::string name_of(std::type_index idx) const {
+        std::lock_guard<std::mutex> lock(mtx_);
+        auto it = names_.find(idx);
+        if (it != names_.end()) {
+            return it->second;
+        }
+        return {};
+    }
+
+private:
+    TypeRegistry() = default;
+    mutable std::mutex mtx_;
+    std::unordered_map<std::type_index, std::string> names_;
+};
+
+}  // namespace detail
+
+// 在使用 T 的 cpp 文件作用域调用：TG_REGISTER_TYPE(MyType, "ns::MyType")
+// 静态初始化期写入注册表，main() 执行前完成。
+// 实现注意：T 可能含 "::"（如 std::string），不能直接 token-paste；
+// 用 __LINE__ 保证同 TU 内多次调用产生的变量名唯一。
+#define TG_TYPE_REG_PASTE2(a, b) a##b
+#define TG_TYPE_REG_PASTE(a, b) TG_TYPE_REG_PASTE2(a, b)
+#define TG_REGISTER_TYPE(T, name)                                              \
+    namespace {                                                                \
+    inline const bool TG_TYPE_REG_PASTE(_tg_type_reg_, __LINE__) = [] {        \
+        ::task_graph::detail::TypeRegistry::instance().register_type(          \
+            std::type_index(typeid(T)), std::string(name));                    \
+        return true;                                                           \
+    }();                                                                       \
+    }
+
+template <typename T>
+inline std::string type_name() {
+    return detail::TypeRegistry::instance().name_of(std::type_index(typeid(T)));
+}
+
+// ====================== PortSpec ======================
+// 端口契约：task 显式声明的输入/输出端口规格。type_name 为 type_name<T>()
+// 返回的稳定名；为空表示不校验类型，仅校验端口存在性。
+struct PortSpec {
+    std::string name;
+    std::string type_name;
+    bool required = true;
+};
+
+template <typename T>
+inline PortSpec make_port(std::string name, bool required = true) {
+    return PortSpec{std::move(name), type_name<T>(), required};
 }
 
 }
