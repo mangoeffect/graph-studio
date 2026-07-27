@@ -92,6 +92,8 @@ private:
     void UpdateStatusBar();
     void UpdatePropertyPanel(const QString& nodeId);
     void ClearPropertyPanel();
+    void RebuildParamWidgets(const QString& nodeId);
+    void OnParamWidgetChanged(const QString& key);
 
     // Actions
     void ActionNew();
@@ -119,6 +121,10 @@ private:
     QLabel* imageResultLabel_ = nullptr;
     QFormLayout* nodePropertyLayout_ = nullptr;
     QGroupBox* nodePropertyGroup_ = nullptr;
+    // 动态参数表单：选中节点时按 paramSpecs 重建控件
+    QFormLayout* paramsLayout_ = nullptr;
+    QGroupBox* paramsGroup_ = nullptr;
+    QHash<QString, QWidget*> paramWidgets_;  // key -> 当前生成的控件
     QPlainTextEdit* logWidget_ = nullptr;
     QPlainTextEdit* outputWidget_ = nullptr;
     QLabel* zoomLabel_ = nullptr;

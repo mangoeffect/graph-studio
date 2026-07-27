@@ -13,7 +13,11 @@
 #include <QHeaderView>
 #include <QLineEdit>
 #include <QSpinBox>
+#include <QDoubleSpinBox>
+#include <QCheckBox>
 #include <QComboBox>
+#include <QGroupBox>
+#include <QFormLayout>
 #include <QScrollArea>
 #include <QPainter>
 #include <QFileDialog>
@@ -218,6 +222,12 @@ void MainWindow::ConnectSignals()
     connect(&vm_, &GraphViewModel::graphReset, this, &MainWindow::onGraphReset);
     connect(&vm_, &GraphViewModel::logMessage, this, &MainWindow::onLogMessage);
     connect(&vm_, &GraphViewModel::selectionChanged, this, &MainWindow::onSelectionChangedVm);
+    connect(&vm_, &GraphViewModel::nodeParamsChanged, this, [this](const QString& id){
+        // 当前选中节点的参数被改（含 undo/redo、外部调用）后，同步刷新参数控件
+        if (!id.isEmpty() && id == vm_.selectedNodeId()) {
+            RebuildParamWidgets(id);
+        }
+    });
     connect(&vm_, &GraphViewModel::taskCountChanged, this, &MainWindow::UpdateStatusBar);
     connect(&vm_, &GraphViewModel::edgeCountChanged, this, &MainWindow::UpdateStatusBar);
 
@@ -352,13 +362,28 @@ void MainWindow::PopulateTaskLibrary()
 {
     if (!taskList_) return;
 
-    const QStringList inputTasks = {"file_input", "camera_input", "image_load"};
-    const QStringList processTasks = {"data_processor", "opencv_blur_filter", "opencv_gaussian_blur_filter",
-                                       "opencv_sobel_filter", "opencv_laplacian_filter", "resize", "convert_color"};
-    const QStringList outputTasks = {"file_output", "display", "save_image"};
+    // 从 PluginRegistry 动态获取已注册的 task 类型，按名称前缀分组显示
+    QStringList allTypes = vm_.availableTaskTypes();
+    allTypes.sort();
+
+    auto classify = [](const QString& type) -> QString {
+        if (type.startsWith("opencv_"))   return "OpenCV Filter";
+        if (type.contains("input") || type.contains("load"))  return "Input";
+        if (type.contains("output") || type.contains("save") || type.contains("display")) return "Output";
+        return "Process";
+    };
+
+    // 分组（保留首次出现顺序）
+    QStringList sections;
+    QHash<QString, QStringList> bySection;
+    for (const auto& t : allTypes) {
+        const QString s = classify(t);
+        if (!bySection.contains(s)) sections.append(s);
+        bySection[s].append(t);
+    }
 
     auto addSection = [this](const QString& title) {
-        auto* item = new QListWidgetItem(title);
+        auto* item = new QListWidgetItem("-- " + title + " --");
         item->setFlags(item->flags() & ~Qt::ItemIsEnabled & ~Qt::ItemIsSelectable & ~Qt::ItemIsDragEnabled);
         item->setForeground(QColor("#888888"));
         taskList_->addItem(item);
@@ -370,14 +395,18 @@ void MainWindow::PopulateTaskLibrary()
         taskList_->addItem(item);
     };
 
-    addSection("-- Input --");
-    for (const auto& t : inputTasks) addTaskItem(t);
+    for (const auto& s : sections) {
+        addSection(s);
+        for (const auto& t : bySection[s]) addTaskItem(t);
+    }
 
-    addSection("-- Process --");
-    for (const auto& t : processTasks) addTaskItem(t);
-
-    addSection("-- Output --");
-    for (const auto& t : outputTasks) addTaskItem(t);
+    // 若注册表为空，给出提示
+    if (allTypes.isEmpty()) {
+        auto* item = new QListWidgetItem("(no tasks registered)");
+        item->setFlags(item->flags() & ~Qt::ItemIsEnabled & ~Qt::ItemIsSelectable & ~Qt::ItemIsDragEnabled);
+        item->setForeground(QColor("#888888"));
+        taskList_->addItem(item);
+    }
 }
 
 QWidget* MainWindow::CreateImageResultPanel()
@@ -439,6 +468,11 @@ QWidget* MainWindow::CreateNodePropertyPanel()
     nodePropertyLayout_->addRow("Y:", propYEdit_);
 
     layout->addWidget(nodePropertyGroup_);
+
+    // 参数表单容器：选中节点时按 paramSpecs 动态填充控件
+    paramsGroup_ = new QGroupBox("Parameters");
+    paramsLayout_ = new QFormLayout(paramsGroup_);
+    layout->addWidget(paramsGroup_);
     layout->addStretch();
 
     ClearPropertyPanel();
@@ -711,6 +745,8 @@ void MainWindow::UpdatePropertyPanel(const QString& nodeId)
     propTypeEdit_->setText(data.type);
     propXEdit_->setText(QString::number(data.x, 'f', 1));
     propYEdit_->setText(QString::number(data.y, 'f', 1));
+
+    RebuildParamWidgets(nodeId);
 }
 
 void MainWindow::ClearPropertyPanel()
@@ -719,6 +755,106 @@ void MainWindow::ClearPropertyPanel()
     if (propTypeEdit_) propTypeEdit_->setText("(none)");
     if (propXEdit_) propXEdit_->setText("-");
     if (propYEdit_) propYEdit_->setText("-");
+    // 清空动态参数控件
+    if (paramsLayout_) {
+        while (paramsLayout_->rowCount() > 0) {
+            paramsLayout_->removeRow(0);
+        }
+    }
+    paramWidgets_.clear();
+}
+
+// 按选中节点的 paramSpecs 动态生成参数控件（int→SpinBox、float→DoubleSpinBox、
+// string→LineEdit、bool→CheckBox、enum→ComboBox）。
+void MainWindow::RebuildParamWidgets(const QString& nodeId)
+{
+    if (!paramsLayout_) return;
+    // 清空旧控件
+    while (paramsLayout_->rowCount() > 0) {
+        paramsLayout_->removeRow(0);
+    }
+    paramWidgets_.clear();
+    if (nodeId.isEmpty() || !vm_.hasNode(nodeId)) return;
+
+    NodeData data = vm_.nodeData(nodeId);
+    QVariantList specs = vm_.paramSpecs(data.type);
+    QVariantMap current = vm_.nodeParams(nodeId);
+
+    for (const QVariant& sv : specs) {
+        QVariantMap s = sv.toMap();
+        QString name = s.value("name").toString();
+        QString type = s.value("type").toString();
+        QWidget* w = nullptr;
+
+        if (type == "int") {
+            auto* sb = new QSpinBox();
+            if (s.contains("min")) sb->setMinimum(int(s.value("min").toDouble()));
+            if (s.contains("max")) sb->setMaximum(int(s.value("max").toDouble()));
+            if (s.contains("step")) sb->setSingleStep(int(s.value("step").toDouble()));
+            sb->setValue(current.value(name, s.value("default")).toInt());
+            connect(sb, qOverload<int>(&QSpinBox::valueChanged), this,
+                    [this, name](int){ OnParamWidgetChanged(name); });
+            w = sb;
+        } else if (type == "float") {
+            auto* sb = new QDoubleSpinBox();
+            sb->setDecimals(3);
+            if (s.contains("min")) sb->setMinimum(s.value("min").toDouble());
+            if (s.contains("max")) sb->setMaximum(s.value("max").toDouble());
+            if (s.contains("step")) sb->setSingleStep(s.value("step").toDouble());
+            sb->setValue(current.value(name, s.value("default")).toDouble());
+            connect(sb, qOverload<double>(&QDoubleSpinBox::valueChanged), this,
+                    [this, name](double){ OnParamWidgetChanged(name); });
+            w = sb;
+        } else if (type == "string") {
+            auto* le = new QLineEdit();
+            le->setText(current.value(name, s.value("default")).toString());
+            connect(le, &QLineEdit::editingFinished, this, [this, name, le](){
+                OnParamWidgetChanged(name);
+            });
+            w = le;
+        } else if (type == "bool") {
+            auto* cb = new QCheckBox();
+            cb->setChecked(current.value(name, s.value("default")).toBool());
+            connect(cb, &QCheckBox::toggled, this, [this, name](bool){
+                OnParamWidgetChanged(name);
+            });
+            w = cb;
+        } else if (type == "enum") {
+            auto* combo = new QComboBox();
+            QVariantList labels = s.value("enumLabels").toList();
+            QVariantList values = s.value("enumValues").toList();
+            int curVal = current.value(name, s.value("default")).toInt();
+            int selectIdx = 0;
+            for (int i = 0; i < labels.size() && i < values.size(); ++i) {
+                combo->addItem(labels[i].toString(), values[i]);
+                if (values[i].toInt() == curVal) selectIdx = i;
+            }
+            combo->setCurrentIndex(selectIdx);
+            connect(combo, qOverload<int>(&QComboBox::currentIndexChanged), this,
+                    [this, name](int){ OnParamWidgetChanged(name); });
+            w = combo;
+        }
+        if (w) {
+            paramsLayout_->addRow(name + ":", w);
+            paramWidgets_[name] = w;
+        }
+    }
+}
+
+// 控件值变化 -> 走 ChangeParamCommand（支持 undo/redo）-> VM.setNodeParam
+void MainWindow::OnParamWidgetChanged(const QString& key)
+{
+    QString nodeId = vm_.selectedNodeId();
+    if (nodeId.isEmpty() || !paramWidgets_.contains(key)) return;
+    QWidget* w = paramWidgets_[key];
+    QVariant newValue;
+    if (auto* sb = qobject_cast<QSpinBox*>(w)) newValue = sb->value();
+    else if (auto* dsb = qobject_cast<QDoubleSpinBox*>(w)) newValue = dsb->value();
+    else if (auto* le = qobject_cast<QLineEdit*>(w)) newValue = le->text();
+    else if (auto* cb = qobject_cast<QCheckBox*>(w)) newValue = cb->isChecked();
+    else if (auto* combo = qobject_cast<QComboBox*>(w)) newValue = combo->currentData();
+
+    commandStack_.push(std::make_unique<ChangeParamCommand>(vm_, nodeId, key, newValue));
 }
 
 void MainWindow::ActionNew()

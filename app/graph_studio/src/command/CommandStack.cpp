@@ -53,6 +53,10 @@ void RemoveTaskCommand::undo()
 {
     // Restore node (use original id)
     vm_.addTask(node_.type, node_.x, node_.y, node_.id);
+    // Restore params（addTask 用的是声明默认值；这里覆盖回删除前的实际值）
+    for (auto it = node_.params.begin(); it != node_.params.end(); ++it) {
+        vm_.setNodeParam(node_.id, it.key(), it.value());
+    }
     // Restore edges
     for (const auto& e : connectedEdges_) {
         vm_.addEdge(e.fromId, e.toId);
@@ -91,6 +95,30 @@ void RemoveEdgeCommand::execute()
 void RemoveEdgeCommand::undo()
 {
     vm_.addEdge(fromId_, toId_);
+}
+
+// ---- ChangeParamCommand ----
+
+ChangeParamCommand::ChangeParamCommand(GraphViewModel& vm, const QString& taskId,
+                                       const QString& key, const QVariant& newValue)
+    : vm_(vm), taskId_(taskId), key_(key), newValue_(newValue)
+{
+}
+
+void ChangeParamCommand::execute()
+{
+    if (!snapshotTaken_) {
+        // 记录旧值（仅首次执行；redo 时复用同一旧值）
+        QVariantMap params = vm_.nodeParams(taskId_);
+        oldValue_ = params.value(key_);
+        snapshotTaken_ = true;
+    }
+    vm_.setNodeParam(taskId_, key_, newValue_);
+}
+
+void ChangeParamCommand::undo()
+{
+    vm_.setNodeParam(taskId_, key_, oldValue_);
 }
 
 // ---- MacroCommand ----

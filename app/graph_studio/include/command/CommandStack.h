@@ -3,6 +3,7 @@
 
 #include <QObject>
 #include <QString>
+#include <QVariant>
 #include <memory>
 #include <vector>
 
@@ -81,6 +82,24 @@ private:
     GraphViewModel& vm_;
     QString fromId_;
     QString toId_;
+};
+
+// Change a single parameter value on a node. Records old value for undo.
+class ChangeParamCommand : public Command {
+public:
+    ChangeParamCommand(GraphViewModel& vm, const QString& taskId,
+                       const QString& key, const QVariant& newValue);
+    void execute() override;
+    void undo() override;
+    QString description() const override { return "Change Parameter"; }
+
+private:
+    GraphViewModel& vm_;
+    QString taskId_;
+    QString key_;
+    QVariant oldValue_;
+    QVariant newValue_;
+    bool snapshotTaken_ = false;
 };
 
 // Macro command: groups multiple commands (e.g. delete selection)

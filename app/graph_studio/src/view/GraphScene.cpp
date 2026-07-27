@@ -2,11 +2,13 @@
 #include "view/NodeItem.h"
 #include "view/EdgeItem.h"
 
+#include <task_graph/plugin.hpp>
 #include <QPainter>
 #include <QGraphicsItem>
 #include <QKeyEvent>
 #include <QMenu>
 #include <QAction>
+#include <QHash>
 
 using namespace graph_studio;
 
@@ -193,26 +195,36 @@ void GraphScene::contextMenuEvent(QGraphicsSceneContextMenuEvent* event)
         });
     };
 
-    addSection("Input");
-    addTask("file_input");
-    addTask("camera_input");
-    addTask("image_load");
-
-    menu.addSeparator();
-    addSection("Process");
-    addTask("data_processor");
-    addTask("opencv_blur_filter");
-    addTask("opencv_gaussian_blur_filter");
-    addTask("opencv_sobel_filter");
-    addTask("opencv_laplacian_filter");
-    addTask("resize");
-    addTask("convert_color");
-
-    menu.addSeparator();
-    addSection("Output");
-    addTask("file_output");
-    addTask("display");
-    addTask("save_image");
+    // 从 PluginRegistry 动态获取可用 task 类型
+    QStringList allTypes;
+    for (const auto& t : task_graph::PluginRegistry::instance().available_tasks()) {
+        allTypes.append(QString::fromStdString(t));
+    }
+    allTypes.sort();
+    if (allTypes.isEmpty()) {
+        menu.addAction("(no tasks registered)")->setEnabled(false);
+        menu.exec(event->screenPos());
+        event->accept();
+        return;
+    }
+    auto classify = [](const QString& type) -> QString {
+        if (type.startsWith("opencv_"))   return "OpenCV Filter";
+        if (type.contains("input") || type.contains("load"))  return "Input";
+        if (type.contains("output") || type.contains("save") || type.contains("display")) return "Output";
+        return "Process";
+    };
+    QStringList sections;
+    QHash<QString, QStringList> bySection;
+    for (const auto& t : allTypes) {
+        const QString s = classify(t);
+        if (!bySection.contains(s)) sections.append(s);
+        bySection[s].append(t);
+    }
+    for (int i = 0; i < sections.size(); ++i) {
+        if (i > 0) menu.addSeparator();
+        addSection(sections[i]);
+        for (const auto& t : bySection[sections[i]]) addTask(t);
+    }
 
     menu.exec(event->screenPos());
     event->accept();
