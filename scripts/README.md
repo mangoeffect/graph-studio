@@ -1,4 +1,53 @@
-﻿# task_graph 子模块脚手架生成器
+﻿# task_graph 脚本
+
+本目录包含两个脚本：
+
+- `run_tests.sh` — 配置、构建并运行全部单元测试
+- `generate_submodule.py` — 插件子模块脚手架生成器
+
+---
+
+## run_tests.sh — 单元测试运行器
+
+一键在 `build/` 目录用 CMake 配置 + 构建，再用 `ctest` 运行全部单元测试。退出码 `0` 表示全部通过。
+
+```bash
+# 构建并运行全部测试
+scripts/run_tests.sh
+
+# 先清空 build 目录再全新构建
+scripts/run_tests.sh -c
+
+# 只跑名字匹配 regex 的测试（如 port / serializer）
+scripts/run_tests.sh -R ports
+
+# 列出所有测试后退出，不运行
+scripts/run_tests.sh -l
+
+# 跳过构建，直接跑现有二进制
+scripts/run_tests.sh --no-build
+
+# 打开 OpenCV 相关测试
+scripts/run_tests.sh --opencv
+```
+
+| 参数 | 缩写 | 说明 |
+|---|---|---|
+| `--build-dir` | `-b` | 构建目录（默认 `build`） |
+| `--jobs` | `-j` | 并行编译线程数（默认 CPU 核数） |
+| `--filter` | `-R` | 只运行名字匹配 regex 的测试 |
+| `--clean` | `-c` | 先清空构建目录再全新构建 |
+| `--list` | `-l` | 列出所有测试后退出 |
+| `--no-build` | | 跳过配置/构建，直接运行 |
+| `--opencv` | | 打开 `TASK_GRAPH_ENABLE_OPENCV` |
+| `--verbose` | `-v` | ctest 详细输出 |
+| `--help` | `-h` | 显示帮助 |
+
+> 失败时自动打印失败用例的完整输出（`ctest --output-on-failure`）。
+
+---
+
+## generate_submodule.py — 子模块脚手架生成器
 
 `generate_submodule.py` 用于快速生成符合 task_graph 框架规范的插件子模块骨架，免去手动搭建目录结构、编写 CMakeLists、声明任务类、实现插件注册的重复工作。
 
