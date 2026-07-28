@@ -178,10 +178,21 @@ if(EMSCRIPTEN)
         if(EXISTS "${TG_ROOT}/submodules/${submodule}/CMakeLists.txt")
             add_subdirectory("${TG_ROOT}/submodules/${submodule}"
                              "${CMAKE_BINARY_DIR}/submodules/${submodule}")
-        elseif(submodule STREQUAL "image_filtering"
-               AND EXISTS "${TG_ROOT}/submodules/opencv/image_processing/image_filtering/CMakeLists.txt")
-            # image_filtering 依赖 OpenCV，WASM 下 TASK_GRAPH_ENABLE_OPENCV 未开启，跳过
-            message(STATUS "WASM: skipping image_filtering (OpenCV disabled)")
+        elseif(submodule STREQUAL "image_filtering")
+            # image_filtering 依赖 OpenCV。WASM 下若 OpenCV 静态库已用
+            # scripts/build_opencv_wasm.sh 构建到 build_wasm/opencv/install/，
+            # 则自动启用；否则跳过。
+            set(_OPENCV_WASM_INSTALL "${TG_ROOT}/build_wasm/opencv/install")
+            if(EXISTS "${_OPENCV_WASM_INSTALL}/lib/cmake/opencv4")
+                message(STATUS "WASM: OpenCV found at ${_OPENCV_WASM_INSTALL}, enabling image_filtering")
+                set(OpenCV_DIR "${_OPENCV_WASM_INSTALL}/lib/cmake/opencv4")
+                find_package(OpenCV REQUIRED COMPONENTS core imgproc)
+                add_subdirectory("${TG_ROOT}/submodules/opencv/image_processing/image_filtering"
+                                 "${CMAKE_BINARY_DIR}/submodules/image_filtering")
+                target_link_libraries(graph_studio PRIVATE image_filtering ${OpenCV_LIBS})
+            else()
+                message(STATUS "WASM: skipping image_filtering (OpenCV not built; run scripts/build_opencv_wasm.sh)")
+            endif()
         endif()
         if(TARGET ${submodule})
             target_link_libraries(graph_studio PRIVATE ${submodule})

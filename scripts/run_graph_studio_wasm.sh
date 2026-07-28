@@ -112,6 +112,17 @@ fi
 WASM_SIZE=$(du -h "${GS_BUILD}/graph_studio.wasm" | cut -f1)
 echo "${C_GREEN}${C_BOLD}==> 构建完成：${GS_BUILD}/graph_studio.wasm (${WASM_SIZE})${C_RESET}"
 
+# 预压缩 .wasm / .js / .html（dev server 会按 Accept-Encoding 返回 .br 版本）
+if command -v brotli >/dev/null 2>&1; then
+    echo "${C_BOLD}==> brotli 预压缩${C_RESET}"
+    for ext in wasm js html; do
+        f="${GS_BUILD}/graph_studio.${ext}"
+        [[ -f "$f" ]] && brotli -q 11 -k -f "$f" 2>/dev/null
+    done
+    BR_SIZE=$(du -h "${GS_BUILD}/graph_studio.wasm.br" 2>/dev/null | cut -f1)
+    [[ -n "$BR_SIZE" ]] && echo "    brotli: graph_studio.wasm.br (${BR_SIZE})"
+fi
+
 if [[ "${BUILD_ONLY}" -eq 1 ]]; then
     exit 0
 fi

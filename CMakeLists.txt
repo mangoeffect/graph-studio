@@ -30,6 +30,10 @@ endif()
 option(TASK_GRAPH_ENABLE_OPENCV "Enable OpenCV support for image conversion" OFF)
 
 if(TASK_GRAPH_ENABLE_OPENCV)
+    # WASM 下优先用 emcmake 构建的 OpenCV 静态库
+    if(EMSCRIPTEN AND EXISTS "${CMAKE_SOURCE_DIR}/build_wasm/opencv/install/lib/cmake/opencv4")
+        set(OpenCV_DIR "${CMAKE_SOURCE_DIR}/build_wasm/opencv/install/lib/cmake/opencv4")
+    endif()
     find_package(OpenCV REQUIRED)
     include_directories(${OpenCV_INCLUDE_DIRS})
     add_definitions(-DTASK_GRAPH_ENABLE_OPENCV)
