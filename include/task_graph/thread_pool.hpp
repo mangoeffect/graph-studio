@@ -32,6 +32,10 @@ public:
 
         std::future<ReturnType> future = task->get_future();
 
+#if defined(__EMSCRIPTEN__) && !defined(__EMSCRIPTEN_PTHREADS__)
+        // WASM 单线程：inline 同步执行，无需队列/notify
+        (*task)();
+#else
         {
             std::lock_guard<std::mutex> lock(queue_mutex_);
             if (stopped_) {
@@ -41,16 +45,18 @@ public:
         }
 
         condition_.notify_one();
+#endif
 
         return future;
     }
 
-    size_t num_threads() const { return threads_.size(); }
+    size_t num_threads() const { return num_threads_; }
     size_t pending_tasks() const;
 
 private:
     void worker();
 
+    size_t num_threads_{0};
     std::vector<std::thread> threads_;
     std::queue<std::function<void()>> tasks_;
     mutable std::mutex queue_mutex_;

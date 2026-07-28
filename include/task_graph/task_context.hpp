@@ -121,11 +121,12 @@ public:
         if (it == inputs_by_port_.end() || !it->second.has_value()) {
             return std::nullopt;
         }
-        try {
-            return std::any_cast<T>(it->second);
-        } catch (const std::bad_any_cast&) {
+        // type-check-first：WASM -fno-exceptions 下 any_cast 失败会 abort，
+        // 因此先用 type_info 比对，仅匹配时再 cast（桌面平台同样安全）。
+        if (it->second.type() != typeid(T)) {
             return std::nullopt;
         }
+        return std::any_cast<T>(it->second);
     }
 
     // 零拷贝只读版本：返回指向内部 any 的 const 指针，避免拷贝大型负载
@@ -135,11 +136,10 @@ public:
         if (it == inputs_by_port_.end() || !it->second.has_value()) {
             return std::nullopt;
         }
-        try {
-            return &std::any_cast<const T&>(it->second);
-        } catch (const std::bad_any_cast&) {
+        if (it->second.type() != typeid(T)) {
             return std::nullopt;
         }
+        return &std::any_cast<const T&>(it->second);
     }
 
     // ===== 备用：按上游 task_id 取其完整 TaskResult 中的 value =====
@@ -157,26 +157,18 @@ public:
             if (it != opt->outputs.end()) v = &it->second;
         }
         if (!v && opt->value.has_value()) v = &opt->value;
-        if (!v || !v->has_value()) return std::nullopt;
-        try {
-            return std::any_cast<T>(*v);
-        } catch (const std::bad_any_cast&) {
-            return std::nullopt;
-        }
+        if (!v || !v->has_value() || v->type() != typeid(T)) return std::nullopt;
+        return std::any_cast<T>(*v);
     }
 
     // ===== values_ 黑板（task 内部局部状态；不跨 task） =====
     template <typename T>
     std::optional<T> get(const std::string& key) const {
         auto opt = get_value(key);
-        if (!opt) {
+        if (!opt || opt->type() != typeid(T)) {
             return std::nullopt;
         }
-        try {
-            return std::any_cast<T>(*opt);
-        } catch (const std::bad_any_cast&) {
-            return std::nullopt;
-        }
+        return std::any_cast<T>(*opt);
     }
 
     std::optional<int> get_param_int(const std::string& key) const {

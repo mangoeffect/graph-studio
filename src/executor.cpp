@@ -64,7 +64,23 @@ std::shared_future<void> DAGExecutor::execute(const DAG& dag) {
     cancelled_ = false;
     results_.clear();
 
+#ifdef __EMSCRIPTEN__
+    // WASM：直接同步执行（避免主线程 std::async 在 singlethread build 下 abort；
+    // 即便 wasm_multithread 也建议由 ThreadPool 在 Worker 内并行，主入口走同步）。
+    // run() 内部仍可通过 ThreadPool 在 pthreads build 中并行调度 task。
+    try {
+        run(dag);
+    } catch (...) {
+        running_ = false;
+        throw;
+    }
+    running_ = false;
+    std::promise<void> done;
+    done.set_value();
+    execution_future_ = done.get_future().share();
+#else
     execution_future_ = std::async(std::launch::async, &DAGExecutor::run, this, std::cref(dag));
+#endif
     return std::move(execution_future_);
 }
 

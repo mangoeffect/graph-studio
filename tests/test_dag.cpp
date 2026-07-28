@@ -78,7 +78,12 @@ TEST_CASE(parallel_execution) {
     DAGExecutor executor;
     executor.execute(dag).wait();
 
+#ifdef __EMSCRIPTEN__
+    // WASM 单线程 build 下 ThreadPool 退化为 inline 执行，并行度恒为 1
+    EXPECT_TRUE(max_parallel >= 1);
+#else
     EXPECT_TRUE(max_parallel >= 2);
+#endif
 }
 
 // 数据传递：A 输出 42，B 通过端口 "in" 读取并 *2

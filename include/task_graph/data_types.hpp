@@ -193,11 +193,11 @@ inline bool is_pointcloud(const std::any& value) {
 
 template<typename T>
 std::optional<T> any_cast_safe(const std::any& value) {
-    try {
-        return std::any_cast<T>(value);
-    } catch (const std::bad_any_cast&) {
+    // type-check-first：WASM -fno-exceptions 下 any_cast 失败会 abort
+    if (!value.has_value() || value.type() != typeid(T)) {
         return std::nullopt;
     }
+    return std::any_cast<T>(value);
 }
 
 template<typename T>
@@ -217,10 +217,8 @@ namespace detail {
 
 class TypeRegistry {
 public:
-    static TypeRegistry& instance() {
-        static TypeRegistry r;
-        return r;
-    }
+    // 非 inline：定义在 data_types.cpp，强制链接器拉入该 TU（含 TG_REGISTER_TYPE 注册）
+    static TypeRegistry& instance();
 
     void register_type(std::type_index idx, std::string name) {
         std::lock_guard<std::mutex> lock(mtx_);
@@ -253,6 +251,7 @@ private:
 #define TG_TYPE_REG_PASTE(a, b) TG_TYPE_REG_PASTE2(a, b)
 #define TG_REGISTER_TYPE(T, name)                                              \
     namespace {                                                                \
+    __attribute__((used))                                                      \
     inline const bool TG_TYPE_REG_PASTE(_tg_type_reg_, __LINE__) = [] {        \
         ::task_graph::detail::TypeRegistry::instance().register_type(          \
             std::type_index(typeid(T)), std::string(name));                    \

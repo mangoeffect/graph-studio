@@ -23,6 +23,17 @@ TG_REGISTER_TYPE(bool,         "bool");
 TG_REGISTER_TYPE(cv::Mat,      "cv::Mat");
 #endif
 
+// TypeRegistry::instance() 在此定义（非 inline），强制链接器拉入本 TU，
+// 使上面的 TG_REGISTER_TYPE 静态初始化器在进程启动时执行（包括 WASM 单线程 build）。
+}  // namespace task_graph
+namespace task_graph::detail {
+TypeRegistry& TypeRegistry::instance() {
+    static TypeRegistry r;
+    return r;
+}
+}  // namespace task_graph::detail
+namespace task_graph {
+
 Image::Image(int w, int h, int c, PixelFormat format)
     : width(w), height(h), channels(c), pixel_format(format) {
     size_t size = static_cast<size_t>(w) * h * c;

@@ -4,6 +4,13 @@
 namespace task_graph {
 
 ThreadPool::ThreadPool(size_t num_threads) {
+#if defined(__EMSCRIPTEN__) && !defined(__EMSCRIPTEN_PTHREADS__)
+    // WASM 单线程 build：std::thread 构造会 abort。退化为 inline 模式
+    // （submit 时同步执行），num_threads_ 保持 0。
+    (void)num_threads;
+    num_threads_ = 0;
+    return;
+#else
     if (num_threads == 0) {
         num_threads = std::thread::hardware_concurrency();
         if (num_threads == 0) {
@@ -11,9 +18,11 @@ ThreadPool::ThreadPool(size_t num_threads) {
         }
     }
 
+    num_threads_ = num_threads;
     for (size_t i = 0; i < num_threads; ++i) {
         threads_.emplace_back(&ThreadPool::worker, this);
     }
+#endif
 }
 
 ThreadPool::~ThreadPool() {
