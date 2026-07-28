@@ -66,10 +66,47 @@ set(PROJECT_SOURCES
     src/view/GraphView.cpp
 )
 
-qt_add_executable(graph_studio
-    ${PROJECT_HEADERS}
-    ${PROJECT_SOURCES}
+set(PROJECT_SOURCES
+    src/platform/macos/entry.cpp
+    src/PluginBootstrap.cpp
+    src/model/GraphModel.cpp
+    src/viewmodel/GraphViewModel.cpp
+    src/command/CommandStack.cpp
+    src/view/MainWindow.cpp
+    src/view/NodeItem.cpp
+    src/view/EdgeItem.cpp
+    src/view/GraphScene.cpp
+    src/view/GraphView.cpp
 )
+
+if(EMSCRIPTEN)
+    # WASM：用 qt_add_executable 才能自动生成 .html + qtloader.js。
+    # 多线程 + ASYNCIFY 兜底（即便 MainWindow 已改异步，QMessageBox.about 仍可能需要）。
+    qt_add_executable(graph_studio
+        ${PROJECT_HEADERS}
+        ${PROJECT_SOURCES}
+    )
+    target_link_options(graph_studio PRIVATE
+        "-pthread"
+        "-sUSE_PTHREADS=1"
+        "-sPROXY_TO_PTHREAD=1"          # main 跑在 worker，避免阻塞浏览器 UI 线程
+        "-sEXIT_RUNTIME=1"
+        "-sASYNCIFY=1"                  # 兼容 QMessageBox::about 等同步阻塞 API
+        "-sINITIAL_MEMORY=200MB"
+        "-sALLOW_MEMORY_GROWTH=1"
+        "-sEXPORTED_RUNTIME_METHODS=['ccall','cwrap','FS','stringToUTF8']"
+        "--bind"
+    )
+    set_target_properties(graph_studio PROPERTIES
+        QT_WASM_INITIAL_MEMORY "200MB"
+        QT_WASM_PTHREAD_POOL_SIZE "4"
+    )
+else()
+    qt_add_executable(graph_studio
+        ${PROJECT_HEADERS}
+        ${PROJECT_SOURCES}
+    )
+endif()
 
 target_link_libraries(graph_studio PRIVATE
     Qt6::Widgets
@@ -124,4 +161,30 @@ qt_add_executable(test_integration
 )
 target_link_libraries(test_integration PRIVATE Qt6::Test task_graph)
 add_test(NAME test_integration COMMAND test_integration)
+endif()
+
+# ============================================================
+# WASM：subnode 内置插件静态链接进主 wasm
+# 用 __attribute__((constructor)) 在 main 前注册到 PluginRegistry。
+# ============================================================
+if(EMSCRIPTEN)
+    set(TG_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../)
+    include(${TG_ROOT}/cmake/Subnode.cmake)
+    parse_subnode_json("${TG_ROOT}/subnode.json")
+    # Subnode 路径相对 CMAKE_SOURCE_DIR 解析（这里指向 graph_studio 子目录），
+    # 因此需要临时让 ABS_PATH 基于 TG_ROOT 计算：手动处理每个 local 子模块。
+    foreach(submodule ${SUBMODULES})
+        # 直接基于 subnode.json 中已知结构，从 TG_ROOT 解析 local 子模块路径
+        if(EXISTS "${TG_ROOT}/submodules/${submodule}/CMakeLists.txt")
+            add_subdirectory("${TG_ROOT}/submodules/${submodule}"
+                             "${CMAKE_BINARY_DIR}/submodules/${submodule}")
+        elseif(submodule STREQUAL "image_filtering"
+               AND EXISTS "${TG_ROOT}/submodules/opencv/image_processing/image_filtering/CMakeLists.txt")
+            # image_filtering 依赖 OpenCV，WASM 下 TASK_GRAPH_ENABLE_OPENCV 未开启，跳过
+            message(STATUS "WASM: skipping image_filtering (OpenCV disabled)")
+        endif()
+        if(TARGET ${submodule})
+            target_link_libraries(graph_studio PRIVATE ${submodule})
+        endif()
+    endforeach()
 endif()

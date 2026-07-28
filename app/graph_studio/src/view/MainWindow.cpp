@@ -878,12 +878,30 @@ void MainWindow::ActionNew()
 
 void MainWindow::ActionOpen()
 {
+#ifdef __EMSCRIPTEN__
+    // WASM：浏览器不允许同步模态文件选择，必须异步回调。
+    // 上传内容写到 MEMFS 临时文件，再交给 VM 加载。
+    QFileDialog::getOpenFileContent("JSON Files (*.json);;All Files (*)",
+        [this](const QString& fileName, const QByteArray& content) {
+            if (fileName.isEmpty() || content.isEmpty()) return;
+            const QString tmpPath = "/tmp/_graph_studio_loaded.json";
+            {
+                QFile f(tmpPath);
+                if (!f.open(QIODevice::WriteOnly)) return;
+                f.write(content);
+            }
+            if (vm_.loadFromFile(tmpPath)) {
+                currentFilePath_ = fileName;  // 记录用户选择的展示名
+            }
+        });
+#else
     QString path = QFileDialog::getOpenFileName(this, "Open Graph", QString(), "JSON Files (*.json);;All Files (*)");
     if (path.isEmpty())
         return;
     if (vm_.loadFromFile(path)) {
         currentFilePath_ = path;
     }
+#endif
 }
 
 void MainWindow::ActionSave()
@@ -891,12 +909,28 @@ void MainWindow::ActionSave()
     if (currentFilePath_.isEmpty()) {
         ActionSaveAs();
     } else {
+#ifdef __EMSCRIPTEN__
+        // WASM：currentFilePath_ 是上次"另存为"用的展示名，重做下载
+        ActionSaveAs();
+#else
         vm_.saveToFile(currentFilePath_);
+#endif
     }
 }
 
 void MainWindow::ActionSaveAs()
 {
+#ifdef __EMSCRIPTEN__
+    // WASM：先写 MEMFS 临时文件，再读出来触发浏览器下载
+    const QString tmpPath = "/tmp/_graph_studio_save.json";
+    if (!vm_.saveToFile(tmpPath)) return;
+    QFile f(tmpPath);
+    if (!f.open(QIODevice::ReadOnly)) return;
+    QByteArray content = f.readAll();
+    QString displayName = currentFilePath_.isEmpty() ? QStringLiteral("graph.json")
+                                                     : QFileInfo(currentFilePath_).fileName();
+    QFileDialog::saveFileContent(content, displayName);
+#else
     QString path = QFileDialog::getSaveFileName(this, "Save Graph", "graph.json", "JSON Files (*.json);;All Files (*)");
     if (path.isEmpty())
         return;
@@ -905,6 +939,7 @@ void MainWindow::ActionSaveAs()
     if (vm_.saveToFile(path)) {
         currentFilePath_ = path;
     }
+#endif
 }
 
 void MainWindow::ActionAutoLayout()

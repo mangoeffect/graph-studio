@@ -61,6 +61,19 @@ QString deduceRepoRoot() {
 PluginLoadResult LoadBuiltinPlugins()
 {
     PluginLoadResult result;
+
+#ifdef __EMSCRIPTEN__
+    // WASM：插件已通过 subnode __attribute__((constructor)) 静态注册（构建期
+    // add_subdirectory + target_link_libraries 链入主 wasm）。不做 dlopen
+    // （emscripten 单/多线程 dlopen 都受限，且与 ASYNCIFY/pthread 兼容性差）。
+    // 仅枚举当前 registry 内容，方便 UI 启动期日志确认。
+    for (const auto& name : task_graph::PluginRegistry::instance().available_tasks()) {
+        result.loaded.append(QString::fromStdString(name));
+    }
+    TG_LOG_INFO(("WASM: " + std::to_string(result.loaded.size()) +
+                 " statically-registered tasks available").c_str());
+    return result;
+#else
     QStringList candidates;
     QSet<QString> seen;
 
@@ -121,6 +134,7 @@ PluginLoadResult LoadBuiltinPlugins()
                  std::to_string(result.failed.size()) + " failed").c_str());
 
     return result;
+#endif  // __EMSCRIPTEN__
 }
 
 }  // namespace graph_studio
