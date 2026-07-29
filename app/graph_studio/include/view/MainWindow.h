@@ -71,6 +71,12 @@ private slots:
     void onNodeMovedScene(const QString& id, qreal x, qreal y);
     void onNodeDoubleClicked(const QString& id);
 
+    // 执行相关槽（由 ViewModel 排队信号驱动，均在 UI 线程执行）
+    void onNodeStatusChanged(const QString& id, int phase, double durationMs);
+    void onExecutionStarted();
+    void onExecutionFinished();
+    void onExecutingChanged();
+
 private:
     void InitializeLayout();
     void ApplyDarkTheme();
@@ -107,7 +113,10 @@ private:
     void ActionFitToView();
     void ActionUndo();
     void ActionRedo();
+    void ActionRun();
+    void ActionStop();
     void UpdateUndoRedoActions();
+    void UpdateRunActions();
 
     GraphViewModel& vm_;
     QSplitter* mainSplitter_ = nullptr;
@@ -148,6 +157,8 @@ private:
     CommandStack commandStack_;
     QAction* undoAction_ = nullptr;
     QAction* redoAction_ = nullptr;
+    QAction* runAction_ = nullptr;
+    QAction* stopAction_ = nullptr;
 };
 
 } // namespace graph_studio

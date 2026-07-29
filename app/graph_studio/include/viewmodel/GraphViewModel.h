@@ -9,7 +9,15 @@
 #include <QVariantMap>
 #include <QVariantList>
 
+#include <memory>
+
 #include "../model/GraphModel.h"
+
+class QTimer;
+
+namespace task_graph {
+class DAGExecutor;
+}
 
 namespace graph_studio {
 
@@ -32,6 +40,7 @@ class GraphViewModel : public QObject
     Q_PROPERTY(int taskCount READ taskCount NOTIFY taskCountChanged)
     Q_PROPERTY(int edgeCount READ edgeCount NOTIFY edgeCountChanged)
     Q_PROPERTY(QString selectedNodeId READ selectedNodeId NOTIFY selectionChanged)
+    Q_PROPERTY(bool executing READ isExecuting NOTIFY executingChanged)
 
 public:
     explicit GraphViewModel(GraphModel& model, QObject* parent = nullptr);
@@ -40,6 +49,7 @@ public:
     int taskCount() const;
     int edgeCount() const;
     QString selectedNodeId() const;
+    bool isExecuting() const;
 
     // Node operations - generate unique id if empty
     Q_INVOKABLE QString addTask(const QString& taskType, qreal x = 0, qreal y = 0, const QString& taskId = QString());
@@ -78,6 +88,11 @@ public:
     // Auto layout: compute positions by topological layers
     Q_INVOKABLE void autoLayout();
 
+    // 执行：异步跑当前 DAG。profile_callback 在 executor 后台线程触发，
+    // 通过排队信号 marshal 回 UI 线程；完成检测用 QTimer 轮询 future。
+    Q_INVOKABLE void execute();
+    Q_INVOKABLE void stop();
+
 signals:
     void taskAdded(const NodeData& node);
     void taskRemoved(const QString& taskId);
@@ -90,18 +105,31 @@ signals:
     void nodeParamsChanged(const QString& nodeId);
     void graphReset();
     void logMessage(const QString& msg);
+    // 执行相关：phase 取值与 task_graph::ProfilePhase 对应（0=READY,1=STARTED,
+    // 2=COMPLETED,3=FAILED,4=SKIPPED）。durationMs 仅 COMPLETED/FAILED 有效。
+    void nodeStatusChanged(const QString& taskId, int phase, double durationMs);
+    void executionStarted();
+    void executionFinished();
+    void executingChanged();
 
 private:
     QString generateUniqueId(const QString& taskType) const;
     void rebuildDag();
     void removeEdgesOfNode(const QString& taskId);
     bool canReach(const QString& from, const QString& to) const;
+    void finishExecution();
+    void ensureExecutor();
 
     GraphModel& model_;
     QList<NodeData> nodeList_;
     QList<EdgeData> edgeList_;
     QString selectedNodeId_;
     mutable QHash<QString, int> typeCounter_;
+
+    // 执行状态：executor_ 持有后台执行；completionTimer_ 轮询 future 完成。
+    std::unique_ptr<task_graph::DAGExecutor> executor_;
+    QTimer* completionTimer_ = nullptr;
+    bool executing_ = false;
 };
 
 } // namespace graph_studio

@@ -30,6 +30,16 @@ QString NodeItem::nodeId() const { return nodeId_; }
 QString NodeItem::nodeType() const { return nodeType_; }
 void NodeItem::setNodeType(const QString& type) { nodeType_ = type; update(); }
 
+void NodeItem::setRunStatus(RunStatus status)
+{
+    if (runStatus_ == status)
+        return;
+    runStatus_ = status;
+    update();
+}
+
+NodeItem::RunStatus NodeItem::runStatus() const { return runStatus_; }
+
 QPointF NodeItem::inputPortPos() const
 {
     return mapToScene(QPointF(-NODE_WIDTH / 2, 0));
@@ -114,6 +124,15 @@ void NodeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, 
 
     QColor fillColor = sel ? QColor(30, 90, 150) : bodyColor;
     QColor borderColor = sel ? QColor(100, 180, 255) : QColor(80, 80, 80);
+    qreal borderWidth = sel ? 2.5 : 1.5;
+
+    // 执行状态优先覆盖边框：运行中蓝、成功绿、失败红。
+    switch (runStatus_) {
+        case RunStatus::Running:   borderColor = QColor(66, 165, 245); borderWidth = 3.0; break;
+        case RunStatus::Completed: borderColor = QColor(102, 187, 106); borderWidth = 3.0; break;
+        case RunStatus::Failed:    borderColor = QColor(239, 83, 80);  borderWidth = 3.0; break;
+        case RunStatus::None:      break;
+    }
 
     QPainterPath path;
     path.addRoundedRect(rect, 8, 8);
@@ -123,7 +142,7 @@ void NodeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, 
     gradient.setColorAt(1, fillColor);
     painter->fillPath(path, gradient);
 
-    QPen borderPen(borderColor, sel ? 2.5 : 1.5);
+    QPen borderPen(borderColor, borderWidth);
     painter->setPen(borderPen);
     painter->drawPath(path);
 

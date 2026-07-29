@@ -5,8 +5,11 @@
 #include <QSet>
 #include <QQueue>
 #include <QStack>
+#include <QTimer>
 #include <algorithm>
 #include <task_graph/plugin.hpp>
+#include <task_graph/executor.hpp>
+#include <task_graph/compiler.hpp>
 #include <plugin_api.hpp>
 
 using namespace graph_studio;
@@ -135,11 +138,19 @@ GraphViewModel::GraphViewModel(GraphModel& model, QObject* parent)
 {
 }
 
-GraphViewModel::~GraphViewModel() = default;
+GraphViewModel::~GraphViewModel()
+{
+    // 确保后台执行线程停止后再析构，避免 profile_callback 回调悬空 this。
+    if (executor_) {
+        executor_->cancel();
+        executor_->wait();
+    }
+}
 
 int GraphViewModel::taskCount() const { return nodeList_.size(); }
 int GraphViewModel::edgeCount() const { return edgeList_.size(); }
 QString GraphViewModel::selectedNodeId() const { return selectedNodeId_; }
+bool GraphViewModel::isExecuting() const { return executing_; }
 
 QString GraphViewModel::generateUniqueId(const QString& taskType) const
 {
@@ -546,6 +557,133 @@ void GraphViewModel::autoLayout()
     }
 
     emit logMessage("[INFO] Auto layout applied");
+}
+
+void GraphViewModel::execute()
+{
+    if (executing_) {
+        emit logMessage("[WARN] Execution already in progress");
+        return;
+    }
+    if (nodeList_.isEmpty()) {
+        emit logMessage("[WARN] Nothing to execute: graph is empty");
+        return;
+    }
+
+    // 保证 DAG 与当前 UI 状态一致（参数编辑已即时同步，此处重建保险起见）。
+    rebuildDag();
+
+    // 执行前校验：有环或 ERROR 级契约问题则中止。
+    task_graph::DAGCompiler compiler;
+    const auto issues = compiler.validate(model_.dag());
+    bool hasError = false;
+    for (const auto& issue : issues) {
+        const bool isError = issue.severity == task_graph::ValidationError::Severity::ERROR;
+        hasError = hasError || isError;
+        emit logMessage(QStringLiteral("[%1] %2%3%4")
+                            .arg(isError ? "ERROR" : "WARN")
+                            .arg(issue.task_id.empty() ? QString()
+                                                       : QStringLiteral("%1: ").arg(QString::fromStdString(issue.task_id)))
+                            .arg(issue.port_name.empty() ? QString()
+                                                         : QStringLiteral("[%1] ").arg(QString::fromStdString(issue.port_name)))
+                            .arg(QString::fromStdString(issue.message)));
+    }
+    if (hasError) {
+        emit logMessage("[ERROR] Execution aborted due to validation errors");
+        return;
+    }
+
+    executing_ = true;
+    emit executingChanged();
+    emit executionStarted();
+    emit logMessage(QStringLiteral("[INFO] Executing %1 tasks...").arg(nodeList_.size()));
+
+    // executor 可复用（execute() 内部会清 results_、用 running_ 守卫重入，
+    // 线程池为成员）；profile_callback 只捕获稳定的 this，一次构造即可。
+    ensureExecutor();
+
+    try {
+        executor_->execute(model_.dag());
+    } catch (const std::exception& ex) {
+        emit logMessage(QStringLiteral("[ERROR] Failed to start execution: %1").arg(ex.what()));
+        // 不销毁 executor_，保留给下次尝试复用。
+        executing_ = false;
+        emit executingChanged();
+        return;
+    }
+
+    // std::shared_future 无 Qt 信号，用 QTimer 轮询完成。WASM 下 execute() 已同步
+    // 返回，首次触发即完成。
+    if (!completionTimer_) {
+        completionTimer_ = new QTimer(this);
+        completionTimer_->setInterval(50);
+        connect(completionTimer_, &QTimer::timeout, this, [this]() {
+            if (executor_ && !executor_->is_running()) {
+                completionTimer_->stop();
+                finishExecution();
+            }
+        });
+    }
+    completionTimer_->start();
+}
+
+void GraphViewModel::ensureExecutor()
+{
+    if (executor_)
+        return;
+    task_graph::ExecutorConfig config;
+    config.enable_profiling = true;
+    // 回调在 executor 后台线程触发：只发排队信号，绝不碰 widget。
+    config.profile_callback = [this](const task_graph::TaskProfileEvent& e) {
+        const QString id = QString::fromStdString(e.task_id);
+        const int phase = static_cast<int>(e.phase);
+        const double ms = std::chrono::duration<double, std::milli>(e.duration).count();
+        QMetaObject::invokeMethod(
+            this,
+            [this, id, phase, ms]() { emit nodeStatusChanged(id, phase, ms); },
+            Qt::QueuedConnection);
+    };
+    executor_ = std::make_unique<task_graph::DAGExecutor>(config);
+}
+
+void GraphViewModel::stop()
+{
+    if (!executing_ || !executor_)
+        return;
+    emit logMessage("[WARN] Cancelling execution...");
+    executor_->cancel();
+    // cancel() 会等待后台线程收敛；随后收尾。
+    if (completionTimer_)
+        completionTimer_->stop();
+    finishExecution();
+}
+
+void GraphViewModel::finishExecution()
+{
+    if (!executing_)
+        return;
+
+    int completed = 0, failed = 0;
+    if (executor_) {
+        const auto results = executor_->get_results();
+        for (const auto& [id, result] : results) {
+            const bool ok = result.is_success();
+            completed += ok ? 1 : 0;
+            failed += ok ? 0 : 1;
+            const double ms = std::chrono::duration<double, std::milli>(result.duration).count();
+            emit logMessage(QStringLiteral("[%1] %2  (%3 ms)")
+                                .arg(ok ? "OK" : "FAIL")
+                                .arg(QString::fromStdString(id))
+                                .arg(ms, 0, 'f', 2));
+        }
+    }
+    emit logMessage(QStringLiteral("[INFO] Execution finished: %1 ok, %2 failed")
+                        .arg(completed)
+                        .arg(failed));
+
+    executing_ = false;
+    emit executingChanged();
+    emit executionFinished();
 }
 
 void GraphViewModel::rebuildDag()

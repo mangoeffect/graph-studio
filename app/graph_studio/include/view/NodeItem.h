@@ -14,6 +14,7 @@ class NodeItem : public QGraphicsItem
 public:
     enum { Type = UserType + 1 };
     enum class Port { None, Input, Output };
+    enum class RunStatus { None, Running, Completed, Failed };
 
     NodeItem(const QString& nodeId, const QString& nodeType, QGraphicsItem* parent = nullptr);
     ~NodeItem() override;
@@ -21,6 +22,10 @@ public:
     QString nodeId() const;
     QString nodeType() const;
     void setNodeType(const QString& type);
+
+    // 执行状态：驱动节点边框/发光配色（运行中/成功/失败）
+    void setRunStatus(RunStatus status);
+    RunStatus runStatus() const;
 
     // Port geometry in scene coordinates
     QPointF inputPortPos() const;
@@ -49,6 +54,7 @@ private:
     QString nodeId_;
     QString nodeType_;
     QSet<EdgeItem*> edges_;
+    RunStatus runStatus_ = RunStatus::None;
 
     static const qreal NODE_WIDTH;
     static const qreal NODE_HEIGHT;

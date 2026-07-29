@@ -285,6 +285,12 @@ void MainWindow::ConnectSignals()
     // Command stack
     connect(&commandStack_, &CommandStack::canUndoChanged, this, &MainWindow::UpdateUndoRedoActions);
     connect(&commandStack_, &CommandStack::canRedoChanged, this, &MainWindow::UpdateUndoRedoActions);
+
+    // 执行相关（ViewModel 已用 QueuedConnection marshal 回 UI 线程）
+    connect(&vm_, &GraphViewModel::nodeStatusChanged, this, &MainWindow::onNodeStatusChanged);
+    connect(&vm_, &GraphViewModel::executionStarted, this, &MainWindow::onExecutionStarted);
+    connect(&vm_, &GraphViewModel::executionFinished, this, &MainWindow::onExecutionFinished);
+    connect(&vm_, &GraphViewModel::executingChanged, this, &MainWindow::onExecutingChanged);
 }
 
 void MainWindow::CreateMenuBar()
@@ -315,6 +321,15 @@ void MainWindow::CreateMenuBar()
     connect(viewMenu->addAction("Fit to View"), &QAction::triggered, this, &MainWindow::ActionFitToView);
     viewMenu->addSeparator();
     connect(viewMenu->addAction("Auto Layout"), &QAction::triggered, this, &MainWindow::ActionAutoLayout);
+
+    auto* runMenu = menuBar()->addMenu("&Run");
+    runAction_ = runMenu->addAction("Run");
+    runAction_->setShortcut(QKeySequence("Ctrl+R"));
+    connect(runAction_, &QAction::triggered, this, &MainWindow::ActionRun);
+    stopAction_ = runMenu->addAction("Stop");
+    stopAction_->setShortcut(QKeySequence("Ctrl+."));
+    stopAction_->setEnabled(false);
+    connect(stopAction_, &QAction::triggered, this, &MainWindow::ActionStop);
 
     auto* helpMenu = menuBar()->addMenu("&Help");
     connect(helpMenu->addAction("About"), &QAction::triggered, this, [this]() {
@@ -347,6 +362,9 @@ void MainWindow::CreateToolbar()
     toolbar_->addSeparator();
     auto* btnLayout = toolbar_->addAction("Auto Layout");
     connect(btnLayout, &QAction::triggered, this, &MainWindow::ActionAutoLayout);
+    toolbar_->addSeparator();
+    toolbar_->addAction(runAction_);
+    toolbar_->addAction(stopAction_);
     toolbar_->addSeparator();
     auto* btnZoomIn = toolbar_->addAction("Zoom +");
     connect(btnZoomIn, &QAction::triggered, this, &MainWindow::ActionZoomIn);
@@ -1067,6 +1085,63 @@ void MainWindow::UpdateUndoRedoActions()
         redoAction_->setEnabled(canRedo);
         redoAction_->setText(canRedo ? QString("Redo: %1").arg(commandStack_.redoDescription()) : "Redo");
     }
+}
+
+void MainWindow::UpdateRunActions()
+{
+    const bool exec = vm_.isExecuting();
+    if (runAction_) runAction_->setEnabled(!exec);
+    if (stopAction_) stopAction_->setEnabled(exec);
+}
+
+void MainWindow::ActionRun()
+{
+    vm_.execute();
+}
+
+void MainWindow::ActionStop()
+{
+    vm_.stop();
+}
+
+void MainWindow::onNodeStatusChanged(const QString& id, int phase, double durationMs)
+{
+    // phase 值对应 task_graph::ProfilePhase：
+    //   0=READY 1=STARTED 2=COMPLETED 3=FAILED 4=SKIPPED
+    auto it = nodeItems_.find(id);
+    if (it == nodeItems_.end() || !it.value())
+        return;
+    using RS = NodeItem::RunStatus;
+    switch (phase) {
+        case 1: it.value()->setRunStatus(RS::Running); break;
+        case 2: it.value()->setRunStatus(RS::Completed); break;
+        case 3: it.value()->setRunStatus(RS::Failed); break;
+        case 4: it.value()->setRunStatus(RS::None); break;
+        default: break;  // READY 不改色
+    }
+}
+
+void MainWindow::onExecutionStarted()
+{
+    // 重置所有节点执行配色，准备新一轮
+    for (auto* item : nodeItems_) {
+        if (item) item->setRunStatus(NodeItem::RunStatus::None);
+    }
+    if (outputWidget_)
+        outputWidget_->setPlainText("Executing...");
+    UpdateRunActions();
+}
+
+void MainWindow::onExecutionFinished()
+{
+    UpdateRunActions();
+    if (statusBar_)
+        statusBar_->showMessage("Execution finished", 3000);
+}
+
+void MainWindow::onExecutingChanged()
+{
+    UpdateRunActions();
 }
 
 void MainWindow::keyPressEvent(QKeyEvent* event)
