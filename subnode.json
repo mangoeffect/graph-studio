@@ -43,6 +43,15 @@
         "opencv_scharr_filter",
         "opencv_laplacian_filter"
       ]
+    },
+    {
+      "name": "image_reader",
+      "url": "./submodules/opencv/image_io/image_reader",
+      "ref": "main",
+      "type": "local",
+      "tasks": [
+        "opencv_image_read"
+      ]
     }
   ]
 }

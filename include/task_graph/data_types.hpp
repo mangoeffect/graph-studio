@@ -303,6 +303,12 @@ struct ParamSpec {
     // 枚举可选值（type==Enum 时使用：label -> int 值）
     std::vector<std::pair<std::string, int>> enum_values;
 
+    // UI 渲染提示（可选，不影响序列化/校验）。
+    // widget_hint=="file" 时，UI 在 String 输入框旁渲染文件浏览按钮；
+    // file_filter 为对话框过滤器，如 "Images (*.png *.jpg *.bmp)"。
+    std::string widget_hint;
+    std::string file_filter;
+
     bool required{false};
 };
 
@@ -340,6 +346,18 @@ inline ParamSpec make_string_param(std::string name, std::string default_value) 
     s.name = std::move(name);
     s.type = ParamType::String;
     s.default_value = std::move(default_value);
+    return s;
+}
+
+// 文件路径参数：底层仍是 String，仅附加 UI hint 让面板渲染浏览按钮。
+inline ParamSpec make_file_param(std::string name, std::string default_value = "",
+                                 std::string file_filter = "All Files (*)") {
+    ParamSpec s;
+    s.name = std::move(name);
+    s.type = ParamType::String;
+    s.default_value = std::move(default_value);
+    s.widget_hint = "file";
+    s.file_filter = std::move(file_filter);
     return s;
 }
 

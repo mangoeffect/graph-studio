@@ -18,12 +18,14 @@
 #include <QDoubleSpinBox>
 #include <QCheckBox>
 #include <QComboBox>
+#include <QPushButton>
 #include <QGroupBox>
 #include <QFormLayout>
 #include <QTimer>
 #include <QScrollArea>
 #include <QPainter>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QMessageBox>
 #include <QKeyEvent>
 #include <QShortcut>
@@ -829,6 +831,26 @@ void MainWindow::RebuildParamWidgets(const QString& nodeId)
             connect(le, &QLineEdit::editingFinished, this, [this, name, le](){
                 OnParamWidgetChanged(name);
             });
+            // widget=="file"：在输入框旁渲染浏览按钮。容器作为 form 行控件，
+            // 但 paramWidgets_ 仍存 QLineEdit，保证 OnParamWidgetChanged 的
+            // qobject_cast<QLineEdit*> 不变。
+            if (s.value("widget").toString() == "file") {
+                QString filter = s.value("fileFilter").toString();
+                if (filter.isEmpty()) filter = "All Files (*)";
+                auto* container = new QWidget();
+                auto* h = new QHBoxLayout(container);
+                h->setContentsMargins(0, 0, 0, 0);
+                h->addWidget(le, 1);
+                auto* browse = new QPushButton(QStringLiteral("…"));
+                browse->setFixedWidth(28);
+                connect(browse, &QPushButton::clicked, this,
+                        [this, name, le, filter](){ OnBrowseFile(name, le, filter); });
+                h->addWidget(browse, 0);
+                w = container;
+                paramsLayout_->addRow(name + ":", w);
+                paramWidgets_[name] = le;   // 存 le 而非容器
+                continue;
+            }
             w = le;
         } else if (type == "bool") {
             auto* cb = new QCheckBox();
@@ -876,6 +898,35 @@ void MainWindow::OnParamWidgetChanged(const QString& key)
     selfParamEdit_ = true;
     commandStack_.push(std::make_unique<ChangeParamCommand>(vm_, nodeId, key, newValue));
     selfParamEdit_ = false;
+}
+
+// 文件路径参数的浏览按钮：桌面拿真实路径，WASM 走异步上传 -> MEMFS 临时文件。
+// 回填 QLineEdit 后手动触发 OnParamWidgetChanged 写回 model。
+void MainWindow::OnBrowseFile(const QString& key, QLineEdit* le, const QString& filter)
+{
+    if (!le) return;
+#ifdef __EMSCRIPTEN__
+    // WASM：同步模态对话框不可用，getOpenFileContent 异步返回文件字节，
+    // 写入 MEMFS 后把该路径作为参数值（下游 task 用该路径 imread）。
+    QString capturedKey = key;
+    QFileDialog::getOpenFileContent(filter,
+        [this, capturedKey, le](const QString& fileName, const QByteArray& content) {
+            if (fileName.isEmpty() || content.isEmpty()) return;
+            const QString memfsPath = "/tmp/_gs_param_" + QFileInfo(fileName).fileName();
+            {
+                QFile f(memfsPath);
+                if (!f.open(QIODevice::WriteOnly)) return;
+                f.write(content);
+            }
+            le->setText(memfsPath);
+            OnParamWidgetChanged(capturedKey);
+        });
+#else
+    QString path = QFileDialog::getOpenFileName(this, "Select File", QString(), filter);
+    if (path.isEmpty()) return;
+    le->setText(path);
+    OnParamWidgetChanged(key);
+#endif
 }
 
 void MainWindow::ActionNew()

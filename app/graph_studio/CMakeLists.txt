@@ -163,31 +163,39 @@ if(EMSCRIPTEN)
     set(TG_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../)
     include(${TG_ROOT}/cmake/Subnode.cmake)
     parse_subnode_json("${TG_ROOT}/subnode.json")
-    # Subnode 路径相对 CMAKE_SOURCE_DIR 解析（这里指向 graph_studio 子目录），
-    # 因此需要临时让 ABS_PATH 基于 TG_ROOT 计算：手动处理每个 local 子模块。
+
+    # OpenCV WASM 静态库若已用 scripts/build_opencv_wasm.sh 构建到
+    # build_wasm/opencv/install/，则依赖 OpenCV 的 submodule 自动启用；否则跳过。
+    set(_OPENCV_WASM_INSTALL "${TG_ROOT}/build_wasm/opencv/install")
+    set(_OPENCV_WASM_AVAILABLE OFF)
+    if(EXISTS "${_OPENCV_WASM_INSTALL}/lib/cmake/opencv4")
+        set(_OPENCV_WASM_AVAILABLE ON)
+        set(OpenCV_DIR "${_OPENCV_WASM_INSTALL}/lib/cmake/opencv4")
+        # 依赖 OpenCV 的 submodule CMakeLists 用该开关判断是否 return() 跳过
+        set(TASK_GRAPH_ENABLE_OPENCV ON)
+        find_package(OpenCV REQUIRED COMPONENTS core imgproc)
+        message(STATUS "WASM: OpenCV found at ${_OPENCV_WASM_INSTALL}")
+    else()
+        message(STATUS "WASM: OpenCV not built (run scripts/build_opencv_wasm.sh); OpenCV submodules skipped")
+    endif()
+
+    # 逐个处理 subnode.json 声明的 submodule。URL 相对 TG_ROOT 解析。
     foreach(submodule ${SUBMODULES})
-        # 直接基于 subnode.json 中已知结构，从 TG_ROOT 解析 local 子模块路径
-        if(EXISTS "${TG_ROOT}/submodules/${submodule}/CMakeLists.txt")
-            add_subdirectory("${TG_ROOT}/submodules/${submodule}"
-                             "${CMAKE_BINARY_DIR}/submodules/${submodule}")
-        elseif(submodule STREQUAL "image_filtering")
-            # image_filtering 依赖 OpenCV。WASM 下若 OpenCV 静态库已用
-            # scripts/build_opencv_wasm.sh 构建到 build_wasm/opencv/install/，
-            # 则自动启用；否则跳过。
-            set(_OPENCV_WASM_INSTALL "${TG_ROOT}/build_wasm/opencv/install")
-            if(EXISTS "${_OPENCV_WASM_INSTALL}/lib/cmake/opencv4")
-                message(STATUS "WASM: OpenCV found at ${_OPENCV_WASM_INSTALL}, enabling image_filtering")
-                set(OpenCV_DIR "${_OPENCV_WASM_INSTALL}/lib/cmake/opencv4")
-                # image_filtering/CMakeLists.txt 依赖此开关，否则会 return() 跳过
-                set(TASK_GRAPH_ENABLE_OPENCV ON)
-                find_package(OpenCV REQUIRED COMPONENTS core imgproc)
-                add_subdirectory("${TG_ROOT}/submodules/opencv/image_processing/image_filtering"
-                                 "${CMAKE_BINARY_DIR}/submodules/image_filtering")
-                target_link_libraries(graph_studio PRIVATE image_filtering ${OpenCV_LIBS})
-            else()
-                message(STATUS "WASM: skipping image_filtering (OpenCV not built; run scripts/build_opencv_wasm.sh)")
+        get_filename_component(_sub_path "${SUBMODULE_${submodule}_URL}"
+                               ABSOLUTE BASE_DIR "${TG_ROOT}")
+        if(NOT EXISTS "${_sub_path}/CMakeLists.txt")
+            message(STATUS "WASM: skipping ${submodule} (no CMakeLists at ${_sub_path})")
+            continue()
+        endif()
+        # 依赖 OpenCV 的 submodule（路径位于 submodules/opencv/ 下）仅在
+        # OpenCV WASM 库可用时加入。
+        if(_sub_path MATCHES "/submodules/opencv/")
+            if(NOT _OPENCV_WASM_AVAILABLE)
+                message(STATUS "WASM: skipping ${submodule} (OpenCV not built)")
+                continue()
             endif()
         endif()
+        add_subdirectory("${_sub_path}" "${CMAKE_BINARY_DIR}/submodules/${submodule}")
         if(TARGET ${submodule})
             # WASM 静态库的 __attribute__((constructor)) 默认会被链接器丢弃
             # （archive 中未引用的 object file 不被拉入）。用 --whole-archive
@@ -195,6 +203,11 @@ if(EMSCRIPTEN)
             list(APPEND _wasm_subnode_libs ${submodule})
         endif()
     endforeach()
+
+    if(_OPENCV_WASM_AVAILABLE AND _wasm_subnode_libs)
+        # OpenCV 库供依赖它的 submodule 链接
+        target_link_libraries(graph_studio PRIVATE ${OpenCV_LIBS})
+    endif()
     if(_wasm_subnode_libs)
         target_link_libraries(graph_studio PRIVATE
             "-Wl,--whole-archive"

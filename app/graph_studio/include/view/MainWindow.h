@@ -94,6 +94,7 @@ private:
     void ClearPropertyPanel();
     void RebuildParamWidgets(const QString& nodeId);
     void OnParamWidgetChanged(const QString& key);
+    void OnBrowseFile(const QString& key, QLineEdit* le, const QString& filter);
 
     // Actions
     void ActionNew();

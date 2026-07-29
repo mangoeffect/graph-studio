@@ -52,6 +52,9 @@ QVariantMap paramSpecToVariant(const task_graph::ParamSpec& s) {
         m["enumLabels"] = labels;
         m["enumValues"] = values;
     }
+    // UI 渲染提示（如文件浏览按钮）
+    if (!s.widget_hint.empty()) m["widget"] = QString::fromStdString(s.widget_hint);
+    if (!s.file_filter.empty()) m["fileFilter"] = QString::fromStdString(s.file_filter);
     return m;
 }
 
