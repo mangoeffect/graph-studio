@@ -83,6 +83,13 @@ if [[ "${NO_BUILD}" -eq 0 ]]; then
     source "${EMSDK_ROOT}/emsdk_env.sh" >/dev/null 2>&1 || true
 
     # 2) 构建 libtask_graph.a（多线程：-pthread）
+    # 若 OpenCV WASM 静态库已构建，则核心库也开 OpenCV，使 Image::to_mat/from_mat
+    # 等符号编入 libtask_graph.a（image_filtering 插件依赖这些符号）。
+    LIB_OPENCV_FLAG="-DTASK_GRAPH_ENABLE_OPENCV=OFF"
+    if [[ -d "${ROOT_DIR}/build_wasm/opencv/install/lib/cmake/opencv4" ]]; then
+        echo "${C_BOLD}==> 检测到 OpenCV WASM 库，核心库启用 OpenCV${C_RESET}"
+        LIB_OPENCV_FLAG="-DTASK_GRAPH_ENABLE_OPENCV=ON"
+    fi
     echo "${C_BOLD}==> 构建 libtask_graph.a (WASM + pthread)${C_RESET}"
     cmake -S . -B "${LIB_BUILD}" \
         -DCMAKE_TOOLCHAIN_FILE="${EMSDK_ROOT}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake" \
@@ -90,7 +97,7 @@ if [[ "${NO_BUILD}" -eq 0 ]]; then
         -DCMAKE_CXX_FLAGS="-pthread" \
         -DCMAKE_C_FLAGS="-pthread" \
         -DCMAKE_EXE_LINKER_FLAGS="-pthread -sUSE_PTHREADS=1" \
-        -DTASK_GRAPH_ENABLE_OPENCV=OFF >/dev/null
+        "${LIB_OPENCV_FLAG}" >/dev/null
     cmake --build "${LIB_BUILD}" --target task_graph -j "${JOBS}"
 
     # 3) 配置 + 构建 graph_studio WASM

@@ -81,25 +81,17 @@ set(PROJECT_SOURCES
 
 if(EMSCRIPTEN)
     # WASM：用 qt_add_executable 才能自动生成 .html + qtloader.js。
-    # 多线程 + ASYNCIFY 兜底（即便 MainWindow 已改异步，QMessageBox.about 仍可能需要）。
+    # Qt 的 wasm_multithread 构建已在 qt_add_executable 内部设置了
+    # -pthread / -sUSE_PTHREADS / PROXY_TO_PTHREAD 等链接标志，
+    # 不应额外添加（否则 PROXY_TO_PTHREAD 与 Qt 内部线程模型冲突，导致
+    # QApplication 不在 main thread / visualViewport undefined → 空白页）。
     qt_add_executable(graph_studio
         ${PROJECT_HEADERS}
         ${PROJECT_SOURCES}
     )
-    target_link_options(graph_studio PRIVATE
-        "-pthread"
-        "-sUSE_PTHREADS=1"
-        "-sPROXY_TO_PTHREAD=1"          # main 跑在 worker，避免阻塞浏览器 UI 线程
-        "-sEXIT_RUNTIME=1"
-        "-sASYNCIFY=1"                  # 兼容 QMessageBox::about 等同步阻塞 API
-        "-sINITIAL_MEMORY=200MB"
-        "-sALLOW_MEMORY_GROWTH=1"
-        "-sEXPORTED_RUNTIME_METHODS=['ccall','cwrap','FS','stringToUTF8']"
-        "--bind"
-    )
+    # 仅添加 Qt 不默认设置的资源/内存参数
     set_target_properties(graph_studio PROPERTIES
         QT_WASM_INITIAL_MEMORY "200MB"
-        QT_WASM_PTHREAD_POOL_SIZE "4"
     )
 else()
     qt_add_executable(graph_studio
@@ -186,6 +178,8 @@ if(EMSCRIPTEN)
             if(EXISTS "${_OPENCV_WASM_INSTALL}/lib/cmake/opencv4")
                 message(STATUS "WASM: OpenCV found at ${_OPENCV_WASM_INSTALL}, enabling image_filtering")
                 set(OpenCV_DIR "${_OPENCV_WASM_INSTALL}/lib/cmake/opencv4")
+                # image_filtering/CMakeLists.txt 依赖此开关，否则会 return() 跳过
+                set(TASK_GRAPH_ENABLE_OPENCV ON)
                 find_package(OpenCV REQUIRED COMPONENTS core imgproc)
                 add_subdirectory("${TG_ROOT}/submodules/opencv/image_processing/image_filtering"
                                  "${CMAKE_BINARY_DIR}/submodules/image_filtering")
@@ -195,7 +189,17 @@ if(EMSCRIPTEN)
             endif()
         endif()
         if(TARGET ${submodule})
-            target_link_libraries(graph_studio PRIVATE ${submodule})
+            # WASM 静态库的 __attribute__((constructor)) 默认会被链接器丢弃
+            # （archive 中未引用的 object file 不被拉入）。用 --whole-archive
+            # 强制全量链接，确保 constructor 注册到 PluginRegistry。
+            list(APPEND _wasm_subnode_libs ${submodule})
         endif()
     endforeach()
+    if(_wasm_subnode_libs)
+        target_link_libraries(graph_studio PRIVATE
+            "-Wl,--whole-archive"
+            ${_wasm_subnode_libs}
+            "-Wl,--no-whole-archive"
+        )
+    endif()
 endif()

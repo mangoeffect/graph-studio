@@ -63,6 +63,8 @@ emcmake cmake -S "${OPENCV_SRC}" -B "${BUILD_DIR}" \
     -DBUILD_EXAMPLES=OFF \
     -DBUILD_DOCS=OFF \
     -DBUILD_opencv_apps=OFF \
+    -DBUILD_opencv_gapi=OFF \
+    -DWITH_ADE=OFF \
     -DWITH_FFMPEG=OFF \
     -DWITH_GTK=OFF \
     -DWITH_V4L=OFF \
@@ -75,8 +77,11 @@ emcmake cmake -S "${OPENCV_SRC}" -B "${BUILD_DIR}" \
     -DWITH_ITT=OFF \
     -DWITH_EIGEN=OFF \
     -DENABLE_PIC=OFF \
-    -DCMAKE_C_FLAGS="-pthread -msimd128" \
-    -DCMAKE_CXX_FLAGS="-pthread -msimd128" \
+    -DCV_ENABLE_INTRINSICS=OFF \
+    -DCPU_BASELINE="" \
+    -DCPU_DISPATCH="" \
+    -DCMAKE_C_FLAGS="-pthread" \
+    -DCMAKE_CXX_FLAGS="-pthread" \
     -DCMAKE_INSTALL_PREFIX="${INSTALL_DIR}"
 
 echo "==> Building OpenCV WASM (-j $(sysctl -n hw.ncpu 2>/dev/null || echo 4))"
