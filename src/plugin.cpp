@@ -23,10 +23,22 @@ struct PluginLoader::Handle {
     std::string path;
 };
 
-PluginLoader::PluginLoader() {}
+PluginLoader::PluginLoader() {
+    // 先触碰 PluginRegistry 单例，使其构造早于本 loader。Meyers 单例按构造
+    // 完成的逆序析构，从而保证退出期 registry 晚于 loader 析构；否则
+    // ~PluginLoader -> unload_all -> 插件 unregister_plugin -> 已销毁的
+    // PluginRegistry（对已析构 mutex 加锁抛 std::system_error）→ 逃出
+    // noexcept 析构 → std::terminate。
+    (void)PluginRegistry::instance();
+}
 
 PluginLoader::~PluginLoader() {
-    unload_all();
+    // 析构函数隐式 noexcept：任何异常逃逸都会触发 std::terminate。
+    // 退出期插件卸载路径可能因静态析构顺序等触及已销毁对象，这里兜底吞掉。
+    try {
+        unload_all();
+    } catch (...) {
+    }
 }
 
 bool PluginLoader::load(const std::string& path) {

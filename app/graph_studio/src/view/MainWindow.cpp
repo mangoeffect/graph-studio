@@ -74,7 +74,14 @@ MainWindow::MainWindow(GraphViewModel& vm, QWidget* parent)
     UpdateUndoRedoActions();
 }
 
-MainWindow::~MainWindow() = default;
+MainWindow::~MainWindow()
+{
+    // 断开 scene 到本窗口的所有连接，防止子对象析构时 (deleteChildren)
+    // 删除处于选中状态的 item 发出 selectionChanged，回调半析构的 MainWindow。
+    if (scene_) {
+        scene_->disconnect(this);
+    }
+}
 
 void MainWindow::ApplyDarkTheme()
 {
