@@ -119,6 +119,15 @@ void DAGExecutor::run(const DAG& dag) {
     try {
         emit_dag_event(DagProfilePhase::STARTED, dag.num_tasks());
 
+        // 预初始化所有 task（如 GPU shader 预编译），异常不阻断执行
+        for (const auto& [task_id, task] : dag.tasks()) {
+            try {
+                task->init();
+            } catch (...) {
+                TG_LOG_WARN("Task '" + task_id + "' init() threw exception, ignoring");
+            }
+        }
+
         TG_LOG_DEBUG("Initializing task dependencies tracking");
         
         // remaining_dependencies：每个任务尚未完成的依赖数，归零表示可执行

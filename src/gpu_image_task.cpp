@@ -25,6 +25,16 @@ std::vector<PortSpec> GpuImageTaskBase::output_specs() const {
     return { make_port<Image>("out") };
 }
 
+void GpuImageTaskBase::init() {
+    auto backend = get_gpu_backend();
+    if (!backend || !backend->supports_compute()) return;
+
+    const GpuImageOp* op = GpuKernelLibrary::instance().find(type());
+    if (!op) return;
+
+    backend->compile_kernel(op->kernel_name, op->kernel_source);
+}
+
 TaskResult GpuImageTaskBase::run_gpu_op(TaskContext& ctx, const std::string& op_name) {
     auto backend = get_gpu_backend();
     if (!backend || !backend->supports_compute()) {
@@ -201,6 +211,16 @@ TaskResult GpuComputeTask::execute(TaskContext& ctx) {
 std::vector<ParamSpec> GpuComputeTask::param_specs() const {
     const GpuImageOp* op = GpuKernelLibrary::instance().find(op_name_);
     return op ? op->params : std::vector<ParamSpec>{};
+}
+
+void GpuComputeTask::init() {
+    auto backend = get_gpu_backend();
+    if (!backend || !backend->supports_compute()) return;
+
+    const GpuImageOp* op = GpuKernelLibrary::instance().find(op_name_);
+    if (!op) return;
+
+    backend->compile_kernel(op->kernel_name, op->kernel_source);
 }
 
 }  // namespace task_graph

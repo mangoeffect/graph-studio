@@ -28,6 +28,8 @@ public:
     std::vector<PortSpec> output_specs() const override;
     std::vector<ParamSpec> param_specs() const override;
 
+    void init() override;
+
     void set_spec_delegate(std::shared_ptr<IPluginTask> delegate) {
         spec_delegate_ = std::move(delegate);
     }

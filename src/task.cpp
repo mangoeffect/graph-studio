@@ -27,6 +27,12 @@ std::vector<ParamSpec> Task::param_specs() const {
     return spec_delegate_ ? spec_delegate_->param_specs() : IPluginTask::param_specs();
 }
 
+void Task::init() {
+    if (spec_delegate_) {
+        spec_delegate_->init();
+    }
+}
+
 // IPluginTask::check_input(map) 默认实现：
 //  1) 每个声明的 required input port 必须存在
 //  2) 已注册的类型名必须与实际 any 中的类型名匹配

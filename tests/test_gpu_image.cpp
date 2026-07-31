@@ -496,6 +496,67 @@ bool test_metal_brightness_contrast() {
     std::cout << "PASSED" << std::endl;
     return true;
 }
+
+bool test_metal_init_precompile() {
+    std::cout << "Test: Metal init() precompile... ";
+
+    auto backend = std::make_shared<task_graph::MetalGpuBackend>();
+    if (!backend->init()) {
+        std::cout << "SKIPPED (Metal not available)" << std::endl;
+        backend->shutdown();
+        return true;
+    }
+    task_graph::set_gpu_backend(backend);
+
+    task_graph::GpuBoxBlurTask task("blur");
+    task.init();
+
+    const task_graph::GpuImageOp* op =
+        task_graph::GpuKernelLibrary::instance().find("gpu_box_blur");
+    uintptr_t kernel = backend->compile_kernel(op->kernel_name, op->kernel_source);
+    if (kernel == 0) {
+        std::cout << "FAILED (kernel not compiled after init)" << std::endl;
+        backend->shutdown();
+        return false;
+    }
+
+    const int W = 32, H = 32;
+    task_graph::Image img(W, H, 3);
+    for (int i = 0; i < W * H * 3; i++)
+        img.ptr()[i] = static_cast<uint8_t>((i * 7 + 13) % 256);
+
+    auto ref = cpu_box_blur(img.ptr(), W, H, 3, 1);
+
+    task_graph::TaskParams params;
+    params.set_int("kernel_size", 3);
+    std::unordered_map<std::string, std::any> inputs{{"in", img}};
+    task_graph::TaskContext ctx(params, {}, {}, std::move(inputs));
+
+    auto result = task.execute(ctx);
+    if (!result.is_success()) {
+        std::cout << "FAILED (execute failed)" << std::endl;
+        backend->shutdown();
+        return false;
+    }
+
+    task_graph::Image out = std::any_cast<task_graph::Image>(result.value);
+    task_graph::ensure_cpu(out);
+
+    int mismatches = 0;
+    for (int i = 0; i < W * H * 3; i++) {
+        if (std::abs((int)out.ptr()[i] - (int)ref[i]) > 1) mismatches++;
+    }
+
+    if (mismatches > 0) {
+        std::cout << "FAILED (" << mismatches << " mismatches)" << std::endl;
+        backend->shutdown();
+        return false;
+    }
+
+    backend->shutdown();
+    std::cout << "PASSED" << std::endl;
+    return true;
+}
 #endif
 
 int main() {
@@ -517,6 +578,7 @@ int main() {
     all_passed &= test_metal_chain_gpu_pass();
     all_passed &= test_metal_dag_integration();
     all_passed &= test_metal_brightness_contrast();
+    all_passed &= test_metal_init_precompile();
 #endif
 
     std::cout << "\n=== All tests " << (all_passed ? "PASSED" : "FAILED") << " ===" << std::endl;

@@ -169,6 +169,11 @@ public:
     // 供 UI / 工具链自动发现（对齐 input_specs/output_specs 的做法）。
     virtual std::vector<ParamSpec> param_specs() const { return {}; }
 
+    // 预初始化：在 task 执行前调用，只依赖构造时传入的 config（不依赖运行时 context）。
+    // 用于 GPU shader 预编译等提前准备工作。默认空实现，子类按需重写。
+    // 失败不应阻止后续 execute（execute 内有 fallback 逻辑）。
+    virtual void init() {}
+
     // 输入校验：按端口名取值的 map。默认实现基于 input_specs() 自动校验
     // （必填端口存在 + 类型名匹配）。子类一般无需重写。
     virtual CheckResult check_input(
