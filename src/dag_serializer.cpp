@@ -2,6 +2,8 @@
 #include <task_graph/plugin.hpp>
 #include <stdexcept>
 #include <any>
+#include <variant>
+#include <type_traits>
 #include <typeinfo>
 #include <set>
 
@@ -140,15 +142,18 @@ nlohmann::json DAGSerializer::serialize(const DAG& dag) {
 
         nlohmann::json params_json = nlohmann::json::object();
         for (const auto& [key, value] : config.params.params()) {
-            if (value.type() == typeid(int)) {
-                params_json[key] = static_cast<int>(std::any_cast<int>(value));
-            } else if (value.type() == typeid(float)) {
-                params_json[key] = static_cast<double>(std::any_cast<float>(value));
-            } else if (value.type() == typeid(std::string)) {
-                params_json[key] = std::any_cast<std::string>(value);
-            } else if (value.type() == typeid(bool)) {
-                params_json[key] = std::any_cast<bool>(value);
-            }
+            std::visit([&](auto&& v) {
+                using T = std::decay_t<decltype(v)>;
+                if constexpr (std::is_same_v<T, int>) {
+                    params_json[key] = v;
+                } else if constexpr (std::is_same_v<T, float>) {
+                    params_json[key] = static_cast<double>(v);
+                } else if constexpr (std::is_same_v<T, std::string>) {
+                    params_json[key] = v;
+                } else if constexpr (std::is_same_v<T, bool>) {
+                    params_json[key] = v;
+                }
+            }, value);
         }
         if (!params_json.empty()) task_json["params"] = params_json;
 

@@ -15,7 +15,7 @@ TEST_CASE(int_param_factory_carries_range) {
     auto s = make_int_param("kernel_size", 5, 1, 31, 2);
     EXPECT_TRUE(s.name == "kernel_size");
     EXPECT_TRUE(s.type == ParamType::Int);
-    EXPECT_EQ(std::any_cast<int>(s.default_value), 5);
+    EXPECT_EQ(std::get<int>(s.default_value), 5);
     EXPECT_TRUE(s.min_value.has_value() && *s.min_value == 1.0);
     EXPECT_TRUE(s.max_value.has_value() && *s.max_value == 31.0);
     EXPECT_TRUE(s.step.has_value() && *s.step == 2.0);
@@ -24,27 +24,27 @@ TEST_CASE(int_param_factory_carries_range) {
 TEST_CASE(float_param_factory) {
     auto s = make_float_param("sigma", 1.5f, 0.0, 100.0);
     EXPECT_TRUE(s.type == ParamType::Float);
-    EXPECT_EQ(std::any_cast<float>(s.default_value), 1.5f);
+    EXPECT_EQ(std::get<float>(s.default_value), 1.5f);
     EXPECT_TRUE(s.min_value.has_value() && *s.min_value == 0.0);
 }
 
 TEST_CASE(string_param_factory) {
     auto s = make_string_param("mode", "RGB");
     EXPECT_TRUE(s.type == ParamType::String);
-    EXPECT_TRUE(std::any_cast<std::string>(s.default_value) == "RGB");
+    EXPECT_TRUE(std::get<std::string>(s.default_value) == "RGB");
     EXPECT_FALSE(s.min_value.has_value());
 }
 
 TEST_CASE(bool_param_factory) {
     auto s = make_bool_param("normalize", true);
     EXPECT_TRUE(s.type == ParamType::Bool);
-    EXPECT_EQ(std::any_cast<bool>(s.default_value), true);
+    EXPECT_EQ(std::get<bool>(s.default_value), true);
 }
 
 TEST_CASE(enum_param_factory_carries_values) {
     auto s = make_enum_param("operation", 2, {{"OPEN", 2}, {"CLOSE", 3}});
     EXPECT_TRUE(s.type == ParamType::Enum);
-    EXPECT_EQ(std::any_cast<int>(s.default_value), 2);
+    EXPECT_EQ(std::get<int>(s.default_value), 2);
     EXPECT_EQ(s.enum_values.size(), size_t(2));
     EXPECT_TRUE(s.enum_values[0].first == "OPEN");
     EXPECT_EQ(s.enum_values[0].second, 2);

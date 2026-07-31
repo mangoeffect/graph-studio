@@ -4,6 +4,7 @@
 #include <memory>
 #include <string>
 #include <any>
+#include <variant>
 #include <optional>
 #include <typeinfo>
 #include <typeindex>
@@ -292,11 +293,14 @@ enum class ParamType {
     Enum,   // 底层以 int 存储，enum_values 给出 label->value 映射
 };
 
+// 参数值类型（替代 std::any，消除跨 SO 的 RTTI/ABI 风险）
+using ParamValue = std::variant<int, float, std::string, bool>;
+
 struct ParamSpec {
     std::string name;                 // 参数键名，如 "kernel_size"
     ParamType   type{ParamType::Int};
     std::string description;          // 可选，UI tooltip
-    std::any    default_value;        // 按 type 取用 int/float/std::string/bool
+    ParamValue default_value;         // 按 type 取用 int/float/std::string/bool
 
     // 数值范围（仅 Int/Float 有意义；nullopt 表示无约束）
     std::optional<double> min_value;

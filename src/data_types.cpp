@@ -210,28 +210,32 @@ static int cv_depth(DataType data_type) {
 // ====================== ParamSpec typed accessors ======================
 std::optional<int> ParamSpec::default_as_int() const {
     if (type == ParamType::Int || type == ParamType::Enum) {
-        return any_cast_safe<int>(default_value);
+        const int* p = std::get_if<int>(&default_value);
+        return p ? std::optional<int>(*p) : std::nullopt;
     }
     return std::nullopt;
 }
 
 std::optional<float> ParamSpec::default_as_float() const {
     if (type == ParamType::Float) {
-        return any_cast_safe<float>(default_value);
+        const float* p = std::get_if<float>(&default_value);
+        return p ? std::optional<float>(*p) : std::nullopt;
     }
     return std::nullopt;
 }
 
 std::optional<std::string> ParamSpec::default_as_string() const {
     if (type == ParamType::String) {
-        return any_cast_safe<std::string>(default_value);
+        const std::string* p = std::get_if<std::string>(&default_value);
+        return p ? std::optional<std::string>(*p) : std::nullopt;
     }
     return std::nullopt;
 }
 
 std::optional<bool> ParamSpec::default_as_bool() const {
     if (type == ParamType::Bool) {
-        return any_cast_safe<bool>(default_value);
+        const bool* p = std::get_if<bool>(&default_value);
+        return p ? std::optional<bool>(*p) : std::nullopt;
     }
     return std::nullopt;
 }

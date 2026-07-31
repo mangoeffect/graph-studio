@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <vector>
 #include <any>
+#include <variant>
 #include <optional>
 #include <chrono>
 #include <mutex>
@@ -94,6 +95,8 @@ struct CheckResult {
 
 using TaskId = std::string;
 
+// ParamValue is defined in data_types.hpp (needed by ParamSpec)
+
 class TaskParams {
 public:
     void set_int(const std::string& key, int value);
@@ -109,10 +112,10 @@ public:
     bool has_param(const std::string& key) const;
     void clear();
     
-    const std::unordered_map<std::string, std::any>& params() const { return params_; }
+    const std::unordered_map<std::string, ParamValue>& params() const { return params_; }
     
 private:
-    std::unordered_map<std::string, std::any> params_;
+    std::unordered_map<std::string, ParamValue> params_;
 };
 
 struct TaskConfig {
