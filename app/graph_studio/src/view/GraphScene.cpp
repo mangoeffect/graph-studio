@@ -126,6 +126,7 @@ void GraphScene::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
 
         // Clean up temporary edge
         if (tempEdge_) {
+            if (dragSource_) dragSource_->unregisterEdge(tempEdge_);
             removeItem(tempEdge_);
             delete tempEdge_;
             tempEdge_ = nullptr;
