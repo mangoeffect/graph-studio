@@ -207,4 +207,33 @@ static int cv_depth(DataType data_type) {
 
 #endif
 
+// ====================== ParamSpec typed accessors ======================
+std::optional<int> ParamSpec::default_as_int() const {
+    if (type == ParamType::Int || type == ParamType::Enum) {
+        return any_cast_safe<int>(default_value);
+    }
+    return std::nullopt;
+}
+
+std::optional<float> ParamSpec::default_as_float() const {
+    if (type == ParamType::Float) {
+        return any_cast_safe<float>(default_value);
+    }
+    return std::nullopt;
+}
+
+std::optional<std::string> ParamSpec::default_as_string() const {
+    if (type == ParamType::String) {
+        return any_cast_safe<std::string>(default_value);
+    }
+    return std::nullopt;
+}
+
+std::optional<bool> ParamSpec::default_as_bool() const {
+    if (type == ParamType::Bool) {
+        return any_cast_safe<bool>(default_value);
+    }
+    return std::nullopt;
+}
+
 }

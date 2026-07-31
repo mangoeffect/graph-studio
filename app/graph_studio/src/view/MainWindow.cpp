@@ -5,8 +5,6 @@
 #include "view/EdgeItem.h"
 #include "viewmodel/GraphViewModel.h"
 
-#include <task_graph/plugin.hpp>
-
 #include <QMenu>
 #include <QAction>
 #include <QMenuBar>
@@ -54,7 +52,7 @@ MainWindow::MainWindow(GraphViewModel& vm, QWidget* parent)
     // Seed a demo graph through the ViewModel.
     // 仅添加已注册的 task 类型（WASM 下 image_filtering 等可能不可用）。
     auto tryAddTask = [&](const QString& type, qreal x, qreal y) {
-        if (task_graph::PluginRegistry::instance().has_task(type.toStdString())) {
+        if (vm_.hasTaskType(type)) {
             vm_.addTask(type, x, y);
         }
     };
@@ -574,6 +572,7 @@ QWidget* MainWindow::CreateOutputPanel()
 void MainWindow::CreateCanvas()
 {
     scene_ = new GraphScene(this);
+    scene_->setAvailableTaskTypes(vm_.availableTaskTypes());
     graphicsView_ = new GraphView(scene_);
     graphicsView_->setRenderHint(QPainter::Antialiasing);
     graphicsView_->setMinimumWidth(400);

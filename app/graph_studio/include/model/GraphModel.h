@@ -18,11 +18,9 @@ public:
     // Incremental building (forwarded to DAG)
     bool add_task(const std::string& task_id, const std::string& task_type, const task_graph::TaskConfig& config = {});
     bool add_edge(const std::string& from_id, const std::string& to_id);
-    // Update params of an existing task in-place (used by parameter edits).
-    // Note: DAG stores task config by value; this replaces the task with a
-    // re-created instance carrying the new config so edits take effect before
-    // the next rebuild. Caller should follow up with rebuild() at the next
-    // structural change to keep schema/params consistent.
+    bool remove_task(const std::string& task_id);
+    bool remove_edge(const std::string& from_id, const std::string& to_id);
+    // Update params of an existing task in-place (delegates to DAG::update_task_params).
     bool update_task_params(const std::string& task_id, const task_graph::TaskParams& params);
     task_graph::TaskParams task_params(const std::string& task_id) const;
 
@@ -49,7 +47,9 @@ public:
 
     // Serialization helpers (via DAGSerializer)
     std::string to_json_string() const;
+    std::string to_json_string(const std::string& metadata_json) const;
     bool from_json_string(const std::string& json);
+    std::string from_json_string_with_metadata(const std::string& json);
 
     const task_graph::DAG& dag() const { return *dag_; }
 

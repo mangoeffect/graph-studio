@@ -34,6 +34,12 @@ public:
         spec_delegate_ = std::move(delegate);
     }
 
+    // 同步更新 wrapper 与 spec_delegate_ 的 config
+    void set_config(const TaskConfig& config) override {
+        IPluginTask::set_config(config);
+        if (spec_delegate_) spec_delegate_->set_config(config);
+    }
+
 private:
     std::string type_;
     TaskFunction func_;

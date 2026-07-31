@@ -162,6 +162,10 @@ public:
     virtual TaskResult execute(TaskContext& ctx) = 0;
     const TaskConfig& config() const { return config_; }
 
+    // 就地更新 config（params/priority/timeout 等）。用于 DAG::update_task_config。
+    // 若子类持有 spec_delegate_（如 Task 包装 IPluginTask），应重写以同步委托对象。
+    virtual void set_config(const TaskConfig& config) { config_ = config; }
+
     // 端口契约声明（默认空，等价于"无约束"）。子类应重写以参与构图期校验。
     virtual std::vector<PortSpec> input_specs()  const { return {}; }
     virtual std::vector<PortSpec> output_specs() const { return {}; }

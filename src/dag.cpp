@@ -1,6 +1,7 @@
 ﻿#include <task_graph/dag.hpp>
 #include <plugin_api.hpp>
 #include <stdexcept>
+#include <algorithm>
 
 namespace task_graph {
 
@@ -227,6 +228,180 @@ std::vector<Edge> DAG::outgoing_edges(const TaskId& tid) const {
     result.reserve(it->second.size());
     for (size_t idx : it->second) {
         result.push_back(edges_[idx]);
+    }
+    return result;
+}
+
+// ====================== 就地更新 config ======================
+void DAG::update_task_config(const TaskId& id, const TaskConfig& config) {
+    auto it = tasks_.find(id);
+    if (it == tasks_.end()) {
+        TG_LOG_ERROR("Cannot update task: '" + id + "' does not exist");
+        throw std::runtime_error("Task '" + id + "' does not exist");
+    }
+
+    const std::string& type = it->second->type();
+    if (!type.empty() && type != id &&
+        PluginRegistry::instance().has_task(type)) {
+        // plugin task：重建 IPluginTask + Task 包装，保证 config 与 spec delegate 一致
+        auto plugin_task = PluginRegistry::instance().create_task(id, type, config);
+        if (!plugin_task) {
+            TG_LOG_ERROR("Failed to recreate plugin task '" + type + "' for update");
+            throw std::runtime_error("Failed to recreate plugin task '" + type + "'");
+        }
+        auto plugin_ptr = std::shared_ptr<IPluginTask>(plugin_task);
+        auto wrapper = std::make_shared<Task>(
+            id, type,
+            [plugin_ptr](TaskContext& ctx) { return plugin_ptr->execute(ctx); },
+            config);
+        wrapper->set_spec_delegate(plugin_ptr);
+        tasks_[id] = wrapper;
+        TG_LOG_DEBUG("Updated plugin task '" + id + "' config (recreated instance)");
+    } else {
+        // 普通 lambda Task：直接更新 config_（Task::set_config 同步 spec_delegate_）
+        it->second->set_config(config);
+        TG_LOG_DEBUG("Updated task '" + id + "' config (in-place)");
+    }
+}
+
+void DAG::update_task_params(const TaskId& id, const TaskParams& params) {
+    auto task = get_task(id);
+    if (!task) {
+        TG_LOG_ERROR("Cannot update params: task '" + id + "' does not exist");
+        throw std::runtime_error("Task '" + id + "' does not exist");
+    }
+    TaskConfig new_config = task->config();
+    new_config.params = params;
+    update_task_config(id, new_config);
+}
+
+// ====================== 增量删除 ======================
+void DAG::remove_edge(const TaskId& from, const TaskId& to) {
+    if (!tasks_.contains(from) || !tasks_.contains(to)) {
+        TG_LOG_WARN("Cannot remove edge: task '" + from + "' or '" + to + "' does not exist");
+        return;
+    }
+
+    // 收集需要删除的边在 edges_ 中的下标
+    std::vector<size_t> to_remove;
+    auto in_it = incoming_idx_.find(to);
+    if (in_it != incoming_idx_.end()) {
+        for (size_t idx : in_it->second) {
+            if (edges_[idx].from == from) {
+                to_remove.push_back(idx);
+            }
+        }
+    }
+    if (to_remove.empty()) {
+        TG_LOG_DEBUG("Edge '" + from + "' -> '" + to + "' not found, nothing to remove");
+        return;
+    }
+
+    // 检查移除后是否还有 from->to 的边（端口级可能有多条）
+    bool has_remaining = false;
+    auto out_it = outgoing_idx_.find(from);
+    if (out_it != outgoing_idx_.end()) {
+        for (size_t idx : out_it->second) {
+            if (edges_[idx].from == from && edges_[idx].to == to &&
+                std::find(to_remove.begin(), to_remove.end(), idx) == to_remove.end()) {
+                has_remaining = true;
+                break;
+            }
+        }
+    }
+
+    // 更新 task 级邻接：仅当没有剩余边时才移除
+    if (!has_remaining) {
+        adjacency_[from].erase(to);
+        reverse_adjacency_[to].erase(from);
+        if (adjacency_[from].empty()) adjacency_.erase(from);
+        if (reverse_adjacency_[to].empty()) reverse_adjacency_.erase(to);
+        // in_degree 仅按 task 级去重计算，减 1
+        if (in_degree_.contains(to) && in_degree_[to] > 0) {
+            in_degree_[to]--;
+        }
+    }
+
+    // 从 edges_ 中删除（swap-remove 会导致下标位移，重建索引更安全）
+    std::sort(to_remove.rbegin(), to_remove.rend());
+    for (size_t idx : to_remove) {
+        edges_.erase(edges_.begin() + static_cast<ptrdiff_t>(idx));
+    }
+
+    // 重建 incoming_idx_ / outgoing_idx_（下标已位移）
+    incoming_idx_.clear();
+    outgoing_idx_.clear();
+    for (size_t i = 0; i < edges_.size(); ++i) {
+        incoming_idx_[edges_[i].to].push_back(i);
+        outgoing_idx_[edges_[i].from].push_back(i);
+    }
+
+    TG_LOG_DEBUG("Removed " + std::to_string(to_remove.size()) +
+                 " edge(s) from '" + from + "' to '" + to + "'");
+}
+
+void DAG::remove_task(const TaskId& id) {
+    if (!tasks_.contains(id)) {
+        TG_LOG_WARN("Cannot remove task: '" + id + "' does not exist");
+        return;
+    }
+
+    // 先移除所有关联边（outgoing + incoming）
+    auto out_edges = outgoing_edges(id);
+    auto in_edges = incoming_edges(id);
+    for (const auto& e : out_edges) {
+        remove_edge(e.from, e.to);
+    }
+    for (const auto& e : in_edges) {
+        remove_edge(e.from, e.to);
+    }
+
+    // 再删除 task 本身
+    tasks_.erase(id);
+    in_degree_.erase(id);
+    adjacency_.erase(id);
+    reverse_adjacency_.erase(id);
+    incoming_idx_.erase(id);
+    outgoing_idx_.erase(id);
+
+    TG_LOG_INFO("Removed task '" + id + "' from DAG");
+}
+
+// ====================== 值类型查询 ======================
+bool DAG::has_edge(const TaskId& from, const TaskId& to) const {
+    auto it = adjacency_.find(from);
+    if (it == adjacency_.end()) return false;
+    return it->second.contains(to);
+}
+
+std::vector<TaskId> DAG::task_ids() const {
+    std::vector<TaskId> ids;
+    ids.reserve(tasks_.size());
+    for (const auto& [id, _] : tasks_) {
+        ids.push_back(id);
+    }
+    return ids;
+}
+
+std::optional<TaskConfig> DAG::task_config(const TaskId& id) const {
+    auto it = tasks_.find(id);
+    if (it == tasks_.end()) return std::nullopt;
+    return it->second->config();
+}
+
+std::string DAG::task_type(const TaskId& id) const {
+    auto it = tasks_.find(id);
+    if (it == tasks_.end()) return {};
+    return it->second->type();
+}
+
+std::vector<DAG::EdgeRef> DAG::edge_list() const {
+    std::vector<EdgeRef> result;
+    result.reserve(adjacency_.size());
+    for (const auto& [from, tos] : adjacency_) {
+        for (const auto& to : tos) {
+            result.push_back({from, to});
+        }
     }
     return result;
 }

@@ -13,8 +13,6 @@
 
 #include "../model/GraphModel.h"
 
-class QTimer;
-
 namespace task_graph {
 class DAGExecutor;
 }
@@ -79,6 +77,7 @@ public:
     Q_INVOKABLE bool setNodeParam(const QString& taskId, const QString& key, const QVariant& value);
     // 可用 task 类型（从 PluginRegistry 动态获取，替代硬编码列表）
     Q_INVOKABLE QStringList availableTaskTypes() const;
+    Q_INVOKABLE bool hasTaskType(const QString& type) const;
 
     // Graph operations
     Q_INVOKABLE void clear();
@@ -126,9 +125,8 @@ private:
     QString selectedNodeId_;
     mutable QHash<QString, int> typeCounter_;
 
-    // 执行状态：executor_ 持有后台执行；completionTimer_ 轮询 future 完成。
+    // 执行状态：executor_ 持有后台执行；完成由 completion_callback 通知。
     std::unique_ptr<task_graph::DAGExecutor> executor_;
-    QTimer* completionTimer_ = nullptr;
     bool executing_ = false;
 };
 

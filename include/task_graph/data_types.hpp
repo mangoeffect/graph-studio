@@ -313,6 +313,12 @@ struct ParamSpec {
     std::string file_filter;
 
     bool required{false};
+
+    // 类型安全取用 default_value（内部用 any_cast_safe，WASM 安全）
+    std::optional<int> default_as_int() const;
+    std::optional<float> default_as_float() const;
+    std::optional<std::string> default_as_string() const;
+    std::optional<bool> default_as_bool() const;
 };
 
 // ---- 工厂函数 ----

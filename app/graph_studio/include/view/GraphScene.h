@@ -19,6 +19,8 @@ public:
 
     NodeItem* findNodeItem(const QString& id) const;
 
+    void setAvailableTaskTypes(const QStringList& types) { availableTaskTypes_ = types; }
+
 signals:
     void edgeCreationRequested(const QString& fromId, const QString& toId);
     void nodeMoved(const QString& id, qreal x, qreal y);
@@ -38,6 +40,7 @@ private:
     bool portDragging_ = false;
     NodeItem* dragSource_ = nullptr;
     EdgeItem* tempEdge_ = nullptr;
+    QStringList availableTaskTypes_;
 };
 
 } // namespace graph_studio

@@ -11,11 +11,13 @@
 #include <task_graph/executor.hpp>
 #include <task_graph/compiler.hpp>
 #include <plugin_api.hpp>
+#include <nlohmann/json.hpp>
 
 using namespace graph_studio;
 
 // ---- ParamSpec 桥接：把 lib 侧 ParamSpec 拆成 QVariantMap（明确类型） ----
 // 避免 std::any 跨 lib/GUI 边界；GUI 侧只消费 QVariant。
+// 使用 SDK 的 typed accessor（default_as_int/float/string/bool），WASM 安全。
 namespace {
 QVariantMap paramSpecToVariant(const task_graph::ParamSpec& s) {
     QVariantMap m;
@@ -31,20 +33,11 @@ QVariantMap paramSpecToVariant(const task_graph::ParamSpec& s) {
     if (s.min_value) m["min"] = *s.min_value;
     if (s.max_value) m["max"] = *s.max_value;
     if (s.step)      m["step"] = *s.step;
-    // 默认值按类型取
-    try {
-        switch (s.type) {
-            case task_graph::ParamType::Int:
-            case task_graph::ParamType::Enum:
-                m["default"] = std::any_cast<int>(s.default_value); break;
-            case task_graph::ParamType::Float:
-                m["default"] = std::any_cast<float>(s.default_value); break;
-            case task_graph::ParamType::String:
-                m["default"] = QString::fromStdString(std::any_cast<std::string>(s.default_value)); break;
-            case task_graph::ParamType::Bool:
-                m["default"] = std::any_cast<bool>(s.default_value); break;
-        }
-    } catch (const std::bad_any_cast&) { /* default 留空 */ }
+    // 默认值按类型取（使用 SDK typed accessor，无需 std::any_cast）
+    if (auto v = s.default_as_int())        m["default"] = *v;
+    else if (auto v = s.default_as_float()) m["default"] = *v;
+    else if (auto v = s.default_as_bool())  m["default"] = *v;
+    else if (auto v = s.default_as_string()) m["default"] = QString::fromStdString(*v);
     // 枚举可选值
     if (s.type == task_graph::ParamType::Enum && !s.enum_values.empty()) {
         QVariantList labels, values;
@@ -78,38 +71,42 @@ QVariantMap defaultParamsForType(const std::string& task_type) {
     return out;
 }
 
-// 把 TaskParams（any）转成 QVariantMap（明确类型），供 UI 读取
+// 把 TaskParams 转成 QVariantMap，供 UI 读取。
+// 使用 SDK typed getter（get_int/get_float/...），避免 std::any_cast + typeid 泄漏。
 QVariantMap taskParamsToVariant(const task_graph::TaskParams& p,
-                                const std::vector<task_graph::ParamSpec>& specs) {
+                                 const std::vector<task_graph::ParamSpec>& specs) {
     QVariantMap out;
     std::unordered_map<std::string, const task_graph::ParamSpec*> by_name;
     for (const auto& s : specs) by_name[s.name] = &s;
-    for (const auto& [key, value] : p.params()) {
-        QString k = QString::fromStdString(key);
-        auto it = by_name.find(key);
-        if (it != by_name.end()) {
-            const auto& s = *it->second;
-            try {
-                switch (s.type) {
-                    case task_graph::ParamType::Int:
-                    case task_graph::ParamType::Enum:
-                        out[k] = std::any_cast<int>(value); break;
-                    case task_graph::ParamType::Float:
-                        out[k] = std::any_cast<float>(value); break;
-                    case task_graph::ParamType::String:
-                        out[k] = QString::fromStdString(std::any_cast<std::string>(value)); break;
-                    case task_graph::ParamType::Bool:
-                        out[k] = std::any_cast<bool>(value); break;
-                }
-            } catch (const std::bad_any_cast&) { /* skip */ }
-        } else {
-            // 未声明：按运行时类型尽力转换
-            if (value.type() == typeid(int))         out[k] = std::any_cast<int>(value);
-            else if (value.type() == typeid(float))  out[k] = std::any_cast<float>(value);
-            else if (value.type() == typeid(bool))   out[k] = std::any_cast<bool>(value);
-            else if (value.type() == typeid(std::string))
-                out[k] = QString::fromStdString(std::any_cast<std::string>(value));
+
+    // 已声明参数：按 spec 类型用 typed getter 读取
+    for (const auto& s : specs) {
+        QString k = QString::fromStdString(s.name);
+        switch (s.type) {
+            case task_graph::ParamType::Int:
+            case task_graph::ParamType::Enum:
+                if (auto v = p.get_int(s.name)) out[k] = *v;
+                break;
+            case task_graph::ParamType::Float:
+                if (auto v = p.get_float(s.name)) out[k] = *v;
+                break;
+            case task_graph::ParamType::String:
+                if (auto v = p.get_string(s.name)) out[k] = QString::fromStdString(*v);
+                break;
+            case task_graph::ParamType::Bool:
+                if (auto v = p.get_bool(s.name)) out[k] = *v;
+                break;
         }
+    }
+
+    // 未声明参数：遍历 keys（仅取 key 名，值仍走 typed getter）
+    for (const auto& [key, _] : p.params()) {
+        if (by_name.contains(key)) continue;
+        QString k = QString::fromStdString(key);
+        if (auto v = p.get_int(key))         out[k] = *v;
+        else if (auto v = p.get_float(key))  out[k] = *v;
+        else if (auto v = p.get_bool(key))   out[k] = *v;
+        else if (auto v = p.get_string(key)) out[k] = QString::fromStdString(*v);
     }
     return out;
 }
@@ -204,7 +201,7 @@ bool GraphViewModel::removeTask(const QString& taskId)
         return false;
 
     removeEdgesOfNode(taskId);
-    rebuildDag();
+    model_.remove_task(taskId.toStdString());
 
     if (selectedNodeId_ == taskId) {
         selectedNodeId_.clear();
@@ -274,7 +271,7 @@ bool GraphViewModel::removeEdge(const QString& fromId, const QString& toId)
     for (int i = 0; i < edgeList_.size(); ++i) {
         if (edgeList_[i].fromId == fromId && edgeList_[i].toId == toId) {
             edgeList_.removeAt(i);
-            rebuildDag();
+            model_.remove_edge(fromId.toStdString(), toId.toStdString());
             emit edgeRemoved(fromId, toId);
             emit edgeCountChanged();
             emit logMessage("[INFO] Edge removed: " + fromId + " -> " + toId);
@@ -369,6 +366,11 @@ QStringList GraphViewModel::availableTaskTypes() const
     return out;
 }
 
+bool GraphViewModel::hasTaskType(const QString& type) const
+{
+    return task_graph::PluginRegistry::instance().has_task(type.toStdString());
+}
+
 void GraphViewModel::clear()
 {
     nodeList_.clear();
@@ -385,29 +387,24 @@ void GraphViewModel::clear()
 
 bool GraphViewModel::saveToFile(const QString& filePath)
 {
-    // Build a combined JSON: positions + DAG structure
-    QString json = QString::fromStdString(model_.to_json_string());
-    if (json.isEmpty()) {
+    // 构建元数据 JSON（节点位置等 UI-only 数据）
+    nlohmann::json positions;
+    for (const auto& n : nodeList_) {
+        nlohmann::json pos;
+        pos["x"] = n.x;
+        pos["y"] = n.y;
+        pos["type"] = n.type.toStdString();
+        positions[n.id.toStdString()] = pos;
+    }
+    nlohmann::json metadata;
+    if (!positions.empty()) metadata["positions"] = positions;
+
+    // 用 SDK 序列化器输出带元数据的 JSON（无字符串手术）
+    std::string json_str = model_.to_json_string(metadata.dump());
+    if (json_str.empty()) {
         emit logMessage("[ERROR] Failed to serialize DAG");
         return false;
     }
-
-    // Inject node positions into JSON for round-trip
-    // We use nlohmann json via model, append a "positions" field
-    // Simple approach: append positions as a separate section
-    QString positions;
-    for (int i = 0; i < nodeList_.size(); ++i) {
-        const auto& n = nodeList_[i];
-        if (i > 0) positions += ",";
-        positions += QString("\"%1\":{\"x\":%2,\"y\":%3,\"type\":\"%4\"}")
-                         .arg(n.id).arg(n.x).arg(n.y).arg(n.type);
-    }
-
-    // Insert positions before closing brace
-    json.chop(1); // remove trailing }
-    if (!json.endsWith("{"))
-        json += ",";
-    json += "\"positions\":{" + positions + "}}";
 
     QFile file(filePath);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
@@ -415,7 +412,7 @@ bool GraphViewModel::saveToFile(const QString& filePath)
         return false;
     }
     QTextStream stream(&file);
-    stream << json;
+    stream << QString::fromStdString(json_str);
     file.close();
 
     emit logMessage("[INFO] Graph saved to: " + filePath);
@@ -432,43 +429,49 @@ bool GraphViewModel::loadFromFile(const QString& filePath)
     QString json = QTextStream(&file).readAll();
     file.close();
 
-    if (!model_.from_json_string(json.toStdString())) {
+    // 用带元数据的反序列化（positions 等 UI-only 数据 round-trip）
+    std::string metadata_str = model_.from_json_string_with_metadata(json.toStdString());
+    if (metadata_str.empty() && !model_.task_count()) {
         emit logMessage("[ERROR] Failed to parse DAG JSON");
         return false;
     }
 
-    // Rebuild ViewModel lists from the new DAG
+    // 从 metadata 恢复 UI 状态
+    nlohmann::json metadata;
+    try { metadata = nlohmann::json::parse(metadata_str); } catch (...) {}
+
+    // 重建 ViewModel 列表（使用值类型查询，不遍历内部容器）
     nodeList_.clear();
     edgeList_.clear();
     selectedNodeId_.clear();
 
     const auto& dag = model_.dag();
-    for (const auto& [id, taskPtr] : dag.tasks()) {
+    for (const auto& id : dag.task_ids()) {
         NodeData nd;
         nd.id = QString::fromStdString(id);
-        nd.type = QString::fromStdString(taskPtr->type());
-        // 从 DAG task config 恢复 params（按声明类型桥接为 QVariantMap）
-        nd.params = taskParamsToVariant(taskPtr->config().params,
-                                        queryParamSpecs(taskPtr->type()));
+        nd.type = QString::fromStdString(dag.task_type(id));
+        auto config_opt = dag.task_config(id);
+        nd.params = taskParamsToVariant(config_opt ? config_opt->params : task_graph::TaskParams{},
+                                        queryParamSpecs(dag.task_type(id)));
+        // 恢复位置
+        if (metadata.contains("positions") && metadata["positions"].contains(id)) {
+            nd.x = metadata["positions"][id]["x"].get<qreal>();
+            nd.y = metadata["positions"][id]["y"].get<qreal>();
+        }
         nodeList_.append(nd);
     }
-    for (const auto& [from, targets] : dag.adjacency()) {
-        for (const auto& to : targets) {
-            EdgeData ed;
-            ed.fromId = QString::fromStdString(from);
-            ed.toId = QString::fromStdString(to);
-            edgeList_.append(ed);
-        }
+    for (const auto& e : dag.edge_list()) {
+        EdgeData ed;
+        ed.fromId = QString::fromStdString(e.from);
+        ed.toId = QString::fromStdString(e.to);
+        edgeList_.append(ed);
     }
 
-    // TODO: parse positions from JSON (stored as custom field)
-    // For now, auto-layout loaded graph. Positions must be computed before
-    // creating scene items so NodeItems are placed correctly.
-    autoLayout();
+    // 无位置数据时自动布局
+    bool has_positions = metadata.contains("positions") && !metadata["positions"].empty();
+    if (!has_positions) autoLayout();
 
-    // Clear the old scene, then re-create scene items for the loaded graph.
-    // graphReset() clears MainWindow's scene; taskAdded/edgeAdded rebuild it.
-    // Nodes must be emitted before edges so edge endpoints resolve.
+    // 重建场景
     emit graphReset();
     for (const auto& nd : nodeList_)
         emit taskAdded(nd);
@@ -580,8 +583,7 @@ void GraphViewModel::execute()
         return;
     }
 
-    // 保证 DAG 与当前 UI 状态一致（参数编辑已即时同步，此处重建保险起见）。
-    rebuildDag();
+    // DAG 已通过增量 API 与 UI 状态同步，无需全量重建。
 
     // 执行前校验：有环或 ERROR 级契约问题则中止。
     task_graph::DAGCompiler compiler;
@@ -622,19 +624,8 @@ void GraphViewModel::execute()
         return;
     }
 
-    // std::shared_future 无 Qt 信号，用 QTimer 轮询完成。WASM 下 execute() 已同步
-    // 返回，首次触发即完成。
-    if (!completionTimer_) {
-        completionTimer_ = new QTimer(this);
-        completionTimer_->setInterval(50);
-        connect(completionTimer_, &QTimer::timeout, this, [this]() {
-            if (executor_ && !executor_->is_running()) {
-                completionTimer_->stop();
-                finishExecution();
-            }
-        });
-    }
-    completionTimer_->start();
+    // WASM 下 execute() 同步返回，completion_callback 已在 execute() 内触发，
+    // finishExecution 由 QueuedConnection 在事件循环中执行。
 }
 
 void GraphViewModel::ensureExecutor()
@@ -653,6 +644,11 @@ void GraphViewModel::ensureExecutor()
             [this, id, phase, ms]() { emit nodeStatusChanged(id, phase, ms); },
             Qt::QueuedConnection);
     };
+    // 执行完成回调（替代 QTimer 轮询）：marshal 回 UI 线程收尾
+    config.completion_callback = [this]() {
+        QMetaObject::invokeMethod(this, [this]() { finishExecution(); },
+                                  Qt::QueuedConnection);
+    };
     executor_ = std::make_unique<task_graph::DAGExecutor>(config);
 }
 
@@ -662,9 +658,8 @@ void GraphViewModel::stop()
         return;
     emit logMessage("[WARN] Cancelling execution...");
     executor_->cancel();
-    // cancel() 会等待后台线程收敛；随后收尾。
-    if (completionTimer_)
-        completionTimer_->stop();
+    // cancel() 会等待后台线程收敛；completion_callback 会触发 finishExecution，
+    // 但 cancel 路径下手动收尾以确保即时响应。
     finishExecution();
 }
 

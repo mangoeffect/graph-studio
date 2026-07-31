@@ -3,6 +3,7 @@
 #include <stdexcept>
 #include <any>
 #include <typeinfo>
+#include <set>
 
 namespace task_graph {
 
@@ -260,6 +261,42 @@ std::string DAGSerializer::to_string(const DAG& dag, int indent) {
 
 DAG DAGSerializer::from_string(const std::string& s) {
     return deserialize(nlohmann::json::parse(s));
+}
+
+// ====================== 带元数据的序列化 ======================
+nlohmann::json DAGSerializer::serialize(const DAG& dag, const nlohmann::json& metadata) {
+    nlohmann::json j = serialize(dag);
+    if (!metadata.empty()) {
+        j["metadata"] = metadata;
+    }
+    return j;
+}
+
+std::string DAGSerializer::to_string(const DAG& dag, const nlohmann::json& metadata, int indent) {
+    return serialize(dag, metadata).dump(indent);
+}
+
+DAGSerializer::DeserializeResult DAGSerializer::deserialize_with_metadata(const nlohmann::json& j) {
+    DeserializeResult result;
+    result.dag = deserialize(j);
+
+    // 优先读 "metadata" 键
+    if (j.contains("metadata") && j["metadata"].is_object()) {
+        result.metadata = j["metadata"];
+    }
+
+    // 兼容旧格式：收集非标准 top-level keys（如 graph_studio 旧的 "positions"）
+    static const std::set<std::string> known_keys = {"version", "tasks", "edges", "metadata"};
+    for (const auto& [key, value] : j.get<nlohmann::json::object_t>()) {
+        if (!known_keys.contains(key)) {
+            result.metadata[key] = value;
+        }
+    }
+    return result;
+}
+
+DAGSerializer::DeserializeResult DAGSerializer::from_string_with_metadata(const std::string& s) {
+    return deserialize_with_metadata(nlohmann::json::parse(s));
 }
 
 }

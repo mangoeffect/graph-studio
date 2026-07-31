@@ -19,6 +19,9 @@ struct ExecutorConfig {
     bool enable_profiling{false};              // 是否启用 profiler 埋点
     ProfileCallback profile_callback;          // 任务级事件回调（可选，自定义处理）
     DagProfileCallback dag_profile_callback;   // DAG 级事件回调（可选）
+
+    // 执行完成回调（在 executor 线程触发，调用方需自行 marshal 回 UI 线程）
+    std::function<void()> completion_callback;
 };
 
 class DAGExecutor {

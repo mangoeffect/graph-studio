@@ -2,7 +2,6 @@
 #include "view/NodeItem.h"
 #include "view/EdgeItem.h"
 
-#include <task_graph/plugin.hpp>
 #include <QPainter>
 #include <QGraphicsItem>
 #include <QKeyEvent>
@@ -195,11 +194,8 @@ void GraphScene::contextMenuEvent(QGraphicsSceneContextMenuEvent* event)
         });
     };
 
-    // 从 PluginRegistry 动态获取可用 task 类型
-    QStringList allTypes;
-    for (const auto& t : task_graph::PluginRegistry::instance().available_tasks()) {
-        allTypes.append(QString::fromStdString(t));
-    }
+    // 从 ViewModel 设置的可用 task 类型（不直接访问 PluginRegistry）
+    QStringList allTypes = availableTaskTypes_;
     allTypes.sort();
     if (allTypes.isEmpty()) {
         menu.addAction("(no tasks registered)")->setEnabled(false);

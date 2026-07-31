@@ -8,6 +8,7 @@
 #include <vector>
 #include <string>
 #include <memory>
+#include <optional>
 
 namespace task_graph {
 
@@ -45,6 +46,16 @@ public:
     TaskPtr get_task(const TaskId& id) const;
     void replace_task(const std::string& id, TaskPtr task);
 
+    // 就地更新 task 的 config（params/priority/timeout 等）。
+    // plugin task 会重建 IPluginTask 以保证 config 与 spec delegate 一致；
+    // 普通 lambda Task 直接更新 config_。
+    void update_task_config(const TaskId& id, const TaskConfig& config);
+    void update_task_params(const TaskId& id, const TaskParams& params);
+
+    // 增量删除 task（同时移除关联边）与 edge
+    void remove_task(const TaskId& id);
+    void remove_edge(const TaskId& from, const TaskId& to);
+
     // ====== 图查询接口 ======
     const std::unordered_map<TaskId, TaskPtr>& tasks() const { return tasks_; }
 
@@ -60,6 +71,15 @@ public:
 
     size_t num_tasks() const { return tasks_.size(); }
     size_t num_edges() const { return edges_.size(); }
+
+    // ====== 值类型查询（推荐消费者使用，解耦内部存储布局）======
+    bool has_edge(const TaskId& from, const TaskId& to) const;
+    std::vector<TaskId> task_ids() const;
+    std::optional<TaskConfig> task_config(const TaskId& id) const;
+    std::string task_type(const TaskId& id) const;
+
+    struct EdgeRef { TaskId from; TaskId to; };
+    std::vector<EdgeRef> edge_list() const;
 
 private:
     std::unordered_map<TaskId, TaskPtr> tasks_;

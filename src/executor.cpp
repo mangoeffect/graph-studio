@@ -361,15 +361,18 @@ void DAGExecutor::run(const DAG& dag) {
         running_ = false;
         emit_dag_event(DagProfilePhase::COMPLETED, dag.num_tasks());
         TG_LOG_ERROR("DAG execution failed with exception: " + std::string(e.what()));
+        if (config_.completion_callback) config_.completion_callback();
         throw;
     } catch (...) {
         running_ = false;
         emit_dag_event(DagProfilePhase::COMPLETED, dag.num_tasks());
         TG_LOG_ERROR("DAG execution failed with unknown exception");
+        if (config_.completion_callback) config_.completion_callback();
         throw;
     }
 
     running_ = false;
+    if (config_.completion_callback) config_.completion_callback();
 }
 
 }
