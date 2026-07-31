@@ -4,6 +4,8 @@
 #
 # 默认行为：
 #   1) 先构建根库 task_graph（GraphStudio 运行时依赖 build/libtask_graph.dylib）
+#      默认开启 OpenCV（image_filtering / image_reader 子模块）和 Metal
+#      （gpu_image_processing 子模块），确保 GraphStudio 任务库面板有完整插件。
 #   2) 在 app/graph_studio/build 用 CMake 配置 + 构建 graph_studio
 #   3) 启动生成的应用（macOS 为 .app bundle，其它平台为可执行文件）
 #
@@ -81,7 +83,11 @@ if [[ "${NO_BUILD}" -eq 0 ]]; then
     # 同时构建 subnode 模块：GraphStudio 启动时通过 dlopen 加载 build/submodules/*
     # 下的插件 .dylib，需要这些产物先存在（否则任务库面板为空）。
     echo "${C_BOLD}==> 构建 task_graph 库 + subnode 插件${C_RESET}"
-    cmake -B "${LIB_BUILD}" -DCMAKE_BUILD_TYPE=Debug >/dev/null
+    TG_CFG_ARGS=(-DCMAKE_BUILD_TYPE=Debug -DTASK_GRAPH_ENABLE_OPENCV=ON)
+    if [[ "$(uname)" == "Darwin" ]]; then
+        TG_CFG_ARGS+=(-DTASK_GRAPH_ENABLE_METAL=ON)
+    fi
+    cmake -B "${LIB_BUILD}" "${TG_CFG_ARGS[@]}" >/dev/null
     cmake --build "${LIB_BUILD}" -j "${JOBS}"
 
     # ---- 2) 配置 + 构建 graph_studio ----
