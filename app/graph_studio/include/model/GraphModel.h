@@ -5,8 +5,7 @@
 #include <string>
 #include <vector>
 #include <utility>
-#include <task_graph/task.hpp>
-#include <task_graph/dag.hpp>
+#include <task_graph_api.hpp>
 
 namespace graph_studio {
 

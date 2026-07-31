@@ -6,10 +6,7 @@
 #include <QQueue>
 #include <QStack>
 #include <algorithm>
-#include <task_graph/plugin.hpp>
-#include <task_graph/executor.hpp>
-#include <task_graph/compiler.hpp>
-#include <plugin_api.hpp>
+#include <task_graph_api.hpp>
 #include <nlohmann/json.hpp>
 
 using namespace graph_studio;

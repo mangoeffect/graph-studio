@@ -259,3 +259,6 @@ extern "C" {
     using RegisterPluginFunc = bool(*)();
     using UnregisterPluginFunc = void(*)();
 }
+
+// 自包含：子模块只需 #include <plugin_api.hpp> 即可获得 INode + TaskContext 完整定义
+#include <task_graph/task_context.hpp>

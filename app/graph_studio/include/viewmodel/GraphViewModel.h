@@ -13,8 +13,7 @@
 #include <memory>
 
 #include "../model/GraphModel.h"
-#include <task_graph/dag.hpp>
-#include <task_graph/executor.hpp>
+#include <task_graph_api.hpp>
 
 namespace task_graph {
 class DAGExecutor;

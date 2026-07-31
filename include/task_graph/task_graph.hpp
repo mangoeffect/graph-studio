@@ -1,14 +1,5 @@
 ﻿#pragma once
 
-#include <task_graph/task.hpp>
-#include <task_graph/dag.hpp>
-#include <task_graph/compiler.hpp>
-#include <task_graph/thread_pool.hpp>
-#include <task_graph/executor.hpp>
-#include <task_graph/context.hpp>
-
-namespace task_graph {
-
-using TaskId = std::string;
-
-}
+// 向后兼容：转发到新的统一入口 <task_graph_api.hpp>
+// 新代码请直接使用 <task_graph_api.hpp>
+#include <task_graph_api.hpp>

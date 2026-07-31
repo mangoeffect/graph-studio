@@ -1,7 +1,6 @@
 #include "PluginBootstrap.h"
 
-#include <task_graph/plugin.hpp>
-#include <plugin_api.hpp>
+#include <task_graph_api.hpp>
 
 #include <QCoreApplication>
 #include <QDir>

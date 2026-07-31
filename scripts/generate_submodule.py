@@ -151,7 +151,6 @@ def gen_header(module_name: str, tasks: list, use_opencv: bool) -> str:
         '#pragma once',
         '',
         '#include <plugin_api.hpp>',
-        '#include <task_graph/task_context.hpp>',
     ]
     if use_opencv:
         includes += [
