@@ -168,13 +168,13 @@ def gen_header(module_name: str, tasks: list, use_opencv: bool) -> str:
 
     for class_name, _ in tasks:
         includes += [
-            f'class {class_name} : public task_graph::IPluginTask {{',
+            f'class {class_name} : public task_graph::INode {{',
             'public:',
-            '    using task_graph::IPluginTask::IPluginTask;',
+            '    using task_graph::INode::INode;',
             '',
             '    const std::string& type() const override;',
             '    task_graph::TaskResult execute(task_graph::TaskContext& ctx) override;',
-            '    task_graph::CheckResult check_input(const std::vector<std::any>& inputs) const override;',
+            '    task_graph::CheckResult check_input(const std::unordered_map<std::string, std::any>& inputs) const override;',
             '};',
             '',
         ]
@@ -278,16 +278,10 @@ def gen_source(module_name: str, tasks: list, use_opencv: bool) -> str:
 
         # check_input()
         ns_lines += [
-            f'task_graph::CheckResult {class_name}::check_input(const std::vector<std::any>& inputs) const {{',
-            '    if (inputs.empty()) {',
-            f'        return task_graph::CheckResult(false, "{class_name} requires at least 1 input");',
-            '    }',
-            '    // TODO: 添加输入数据类型校验',
-            '    // 示例（Image 类型）:',
-            '    //   if (!task_graph::is_image(inputs[0])) {',
-            f'    //       return task_graph::CheckResult(false, "{class_name} input must be Image type");',
-            '    //   }',
-            '    return task_graph::CheckResult(true);',
+            f'task_graph::CheckResult {class_name}::check_input(const std::unordered_map<std::string, std::any>& inputs) const {{',
+            '    // 默认实现：按 input_specs() 自动校验必填端口存在 + 类型名匹配',
+            '    // 如需自定义校验逻辑，可覆盖此方法',
+            '    return task_graph::INode::check_input(inputs);',
             '}',
             '',
         ]
