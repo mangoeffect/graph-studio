@@ -17,9 +17,12 @@ void DAG::add_task(TaskPtr task) {
         throw std::runtime_error("Task with id '" + id + "' already exists");
     }
 
+    std::string type = task->type();
     tasks_[id] = std::move(task);
     in_degree_[id] = 0;
+    insertion_order_.push_back(id);
     TG_LOG_DEBUG("Added task '" + id + "' to DAG");
+    notify({DAGChangeEvent::Type::TaskAdded, id, std::move(type)});
 }
 
 void DAG::add_task(const std::string& id, TaskPtr task) {
@@ -33,9 +36,12 @@ void DAG::add_task(const std::string& id, TaskPtr task) {
         throw std::runtime_error("Task with id '" + id + "' already exists");
     }
 
+    std::string type = task->type();
     tasks_[id] = std::move(task);
     in_degree_[id] = 0;
+    insertion_order_.push_back(id);
     TG_LOG_DEBUG("Added task '" + id + "' to DAG");
+    notify({DAGChangeEvent::Type::TaskAdded, id, std::move(type)});
 }
 
 // 添加插件任务（自动生成唯一 ID）
@@ -166,6 +172,8 @@ void DAG::connect(const TaskId& from, std::string from_port,
 
     TG_LOG_DEBUG("Connected " + from + ":" + edges_[new_idx].from_port +
                  " -> " + to + ":" + edges_[new_idx].to_port);
+    notify({DAGChangeEvent::Type::EdgeAdded, {}, {}, from, to,
+            edges_[new_idx].from_port, edges_[new_idx].to_port});
 }
 
 void DAG::connect(const TaskId& from, const TaskId& to) {
@@ -262,6 +270,7 @@ void DAG::update_task_config(const TaskId& id, const TaskConfig& config) {
         it->second->set_config(config);
         TG_LOG_DEBUG("Updated task '" + id + "' config (in-place)");
     }
+    notify({DAGChangeEvent::Type::TaskUpdated, id});
 }
 
 void DAG::update_task_params(const TaskId& id, const TaskParams& params) {
@@ -277,6 +286,11 @@ void DAG::update_task_params(const TaskId& id, const TaskParams& params) {
 
 // ====================== 增量删除 ======================
 void DAG::remove_edge(const TaskId& from, const TaskId& to) {
+    remove_edge_impl(from, to);
+    notify({DAGChangeEvent::Type::EdgeRemoved, {}, {}, from, to});
+}
+
+void DAG::remove_edge_impl(const TaskId& from, const TaskId& to) {
     if (!tasks_.contains(from) || !tasks_.contains(to)) {
         TG_LOG_WARN("Cannot remove edge: task '" + from + "' or '" + to + "' does not exist");
         return;
@@ -346,14 +360,14 @@ void DAG::remove_task(const TaskId& id) {
         return;
     }
 
-    // 先移除所有关联边（outgoing + incoming）
+    // 先移除所有关联边（outgoing + incoming）—— 用 impl 避免逐条发事件
     auto out_edges = outgoing_edges(id);
     auto in_edges = incoming_edges(id);
     for (const auto& e : out_edges) {
-        remove_edge(e.from, e.to);
+        remove_edge_impl(e.from, e.to);
     }
     for (const auto& e : in_edges) {
-        remove_edge(e.from, e.to);
+        remove_edge_impl(e.from, e.to);
     }
 
     // 再删除 task 本身
@@ -363,8 +377,12 @@ void DAG::remove_task(const TaskId& id) {
     reverse_adjacency_.erase(id);
     incoming_idx_.erase(id);
     outgoing_idx_.erase(id);
+    insertion_order_.erase(
+        std::remove(insertion_order_.begin(), insertion_order_.end(), id),
+        insertion_order_.end());
 
     TG_LOG_INFO("Removed task '" + id + "' from DAG");
+    notify({DAGChangeEvent::Type::TaskRemoved, id});
 }
 
 // ====================== 值类型查询 ======================
@@ -375,12 +393,7 @@ bool DAG::has_edge(const TaskId& from, const TaskId& to) const {
 }
 
 std::vector<TaskId> DAG::task_ids() const {
-    std::vector<TaskId> ids;
-    ids.reserve(tasks_.size());
-    for (const auto& [id, _] : tasks_) {
-        ids.push_back(id);
-    }
-    return ids;
+    return insertion_order_;
 }
 
 std::optional<TaskConfig> DAG::task_config(const TaskId& id) const {
@@ -404,6 +417,70 @@ std::vector<DAG::EdgeRef> DAG::edge_list() const {
         }
     }
     return result;
+}
+
+// ====================== 清空 ======================
+void DAG::clear() {
+    tasks_.clear();
+    edges_.clear();
+    adjacency_.clear();
+    reverse_adjacency_.clear();
+    in_degree_.clear();
+    incoming_idx_.clear();
+    outgoing_idx_.clear();
+    insertion_order_.clear();
+    TG_LOG_INFO("DAG cleared");
+    notify({DAGChangeEvent::Type::GraphReset});
+}
+
+void DAG::reset_from(DAG&& other) {
+    tasks_ = std::move(other.tasks_);
+    edges_ = std::move(other.edges_);
+    adjacency_ = std::move(other.adjacency_);
+    reverse_adjacency_ = std::move(other.reverse_adjacency_);
+    in_degree_ = std::move(other.in_degree_);
+    incoming_idx_ = std::move(other.incoming_idx_);
+    outgoing_idx_ = std::move(other.outgoing_idx_);
+    insertion_order_ = std::move(other.insertion_order_);
+    TG_LOG_INFO("DAG reset from another DAG");
+    notify({DAGChangeEvent::Type::GraphReset});
+}
+
+// ====================== 变更订阅 ======================
+
+DAG& DAG::operator=(DAG&& other) noexcept {
+    tasks_ = std::move(other.tasks_);
+    edges_ = std::move(other.edges_);
+    adjacency_ = std::move(other.adjacency_);
+    reverse_adjacency_ = std::move(other.reverse_adjacency_);
+    in_degree_ = std::move(other.in_degree_);
+    incoming_idx_ = std::move(other.incoming_idx_);
+    outgoing_idx_ = std::move(other.outgoing_idx_);
+    insertion_order_ = std::move(other.insertion_order_);
+    // observers_ / observers_mutex_ 保持默认初始化（观察者属于原实例，不随数据移动）
+    return *this;
+}
+
+size_t DAG::subscribe(ChangeCallback cb) const {
+    std::lock_guard<std::mutex> lock(observers_mutex_);
+    size_t id = next_observer_id_++;
+    observers_.emplace_back(id, std::move(cb));
+    return id;
+}
+
+void DAG::unsubscribe(size_t id) const {
+    std::lock_guard<std::mutex> lock(observers_mutex_);
+    observers_.erase(
+        std::remove_if(observers_.begin(), observers_.end(),
+                       [id](const auto& p) { return p.first == id; }),
+        observers_.end());
+}
+
+void DAG::notify(const DAGChangeEvent& e) const {
+    std::lock_guard<std::mutex> lock(observers_mutex_);
+    for (const auto& [_, cb] : observers_) {
+        if (cb) cb(e);
+    }
 }
 
 }

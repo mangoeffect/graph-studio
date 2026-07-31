@@ -1,0 +1,43 @@
+file(REMOVE_RECURSE
+  "CMakeFiles/task_graph.dir/src/compiler.cpp.o"
+  "CMakeFiles/task_graph.dir/src/compiler.cpp.o.d"
+  "CMakeFiles/task_graph.dir/src/context.cpp.o"
+  "CMakeFiles/task_graph.dir/src/context.cpp.o.d"
+  "CMakeFiles/task_graph.dir/src/dag.cpp.o"
+  "CMakeFiles/task_graph.dir/src/dag.cpp.o.d"
+  "CMakeFiles/task_graph.dir/src/dag_serializer.cpp.o"
+  "CMakeFiles/task_graph.dir/src/dag_serializer.cpp.o.d"
+  "CMakeFiles/task_graph.dir/src/data_types.cpp.o"
+  "CMakeFiles/task_graph.dir/src/data_types.cpp.o.d"
+  "CMakeFiles/task_graph.dir/src/executor.cpp.o"
+  "CMakeFiles/task_graph.dir/src/executor.cpp.o.d"
+  "CMakeFiles/task_graph.dir/src/gpu_image_ops.cpp.o"
+  "CMakeFiles/task_graph.dir/src/gpu_image_ops.cpp.o.d"
+  "CMakeFiles/task_graph.dir/src/gpu_image_task.cpp.o"
+  "CMakeFiles/task_graph.dir/src/gpu_image_task.cpp.o.d"
+  "CMakeFiles/task_graph.dir/src/gpu_kernel_library.cpp.o"
+  "CMakeFiles/task_graph.dir/src/gpu_kernel_library.cpp.o.d"
+  "CMakeFiles/task_graph.dir/src/logger.cpp.o"
+  "CMakeFiles/task_graph.dir/src/logger.cpp.o.d"
+  "CMakeFiles/task_graph.dir/src/plugin.cpp.o"
+  "CMakeFiles/task_graph.dir/src/plugin.cpp.o.d"
+  "CMakeFiles/task_graph.dir/src/plugin_registry.cpp.o"
+  "CMakeFiles/task_graph.dir/src/plugin_registry.cpp.o.d"
+  "CMakeFiles/task_graph.dir/src/profiler.cpp.o"
+  "CMakeFiles/task_graph.dir/src/profiler.cpp.o.d"
+  "CMakeFiles/task_graph.dir/src/task.cpp.o"
+  "CMakeFiles/task_graph.dir/src/task.cpp.o.d"
+  "CMakeFiles/task_graph.dir/src/task_manager.cpp.o"
+  "CMakeFiles/task_graph.dir/src/task_manager.cpp.o.d"
+  "CMakeFiles/task_graph.dir/src/task_params.cpp.o"
+  "CMakeFiles/task_graph.dir/src/task_params.cpp.o.d"
+  "CMakeFiles/task_graph.dir/src/thread_pool.cpp.o"
+  "CMakeFiles/task_graph.dir/src/thread_pool.cpp.o.d"
+  "libtask_graph.dylib"
+  "libtask_graph.pdb"
+)
+
+# Per-language clean rules from dependency scanning.
+foreach(lang CXX)
+  include(CMakeFiles/task_graph.dir/cmake_clean_${lang}.cmake OPTIONAL)
+endforeach()

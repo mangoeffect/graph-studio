@@ -51,13 +51,13 @@ bool GraphModel::add_edge(const std::string& from_id, const std::string& to_id)
 
 void GraphModel::clear()
 {
-    dag_ = std::make_unique<task_graph::DAG>();
+    dag_->clear();
 }
 
 void GraphModel::rebuild(const std::vector<NodeSpec>& tasks,
                          const std::vector<std::pair<std::string, std::string>>& edges)
 {
-    dag_ = std::make_unique<task_graph::DAG>();
+    dag_->clear();
     for (const auto& t : tasks) {
         add_task(t.id, t.type, t.config);
     }
@@ -154,7 +154,8 @@ std::string GraphModel::to_json_string(const std::string& metadata_json) const
 bool GraphModel::from_json_string(const std::string& json)
 {
     try {
-        dag_ = std::make_unique<task_graph::DAG>(task_graph::DAGSerializer::from_string(json));
+        auto new_dag = task_graph::DAGSerializer::from_string(json);
+        dag_->reset_from(std::move(new_dag));
         return true;
     } catch (const std::exception&) {
         return false;
@@ -165,8 +166,9 @@ std::string GraphModel::from_json_string_with_metadata(const std::string& json)
 {
     try {
         auto result = task_graph::DAGSerializer::from_string_with_metadata(json);
-        dag_ = std::make_unique<task_graph::DAG>(std::move(result.dag));
-        return result.metadata.dump();
+        std::string meta = result.metadata.dump();
+        dag_->reset_from(std::move(result.dag));
+        return meta;
     } catch (const std::exception&) {
         return {};
     }

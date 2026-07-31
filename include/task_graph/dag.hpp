@@ -9,6 +9,8 @@
 #include <string>
 #include <memory>
 #include <optional>
+#include <mutex>
+#include <functional>
 
 namespace task_graph {
 
@@ -21,9 +23,35 @@ struct Edge {
     std::string to_port{"in"};
 };
 
+// DAG 变更事件：所有 mutation 操作后发出，供观察者（如 ViewModel）同步 UI 状态。
+struct DAGChangeEvent {
+    enum class Type {
+        TaskAdded,
+        TaskRemoved,
+        TaskUpdated,
+        EdgeAdded,
+        EdgeRemoved,
+        GraphReset,     // clear 后消费者需重新查询全部
+    } type;
+
+    // TaskAdded / TaskRemoved / TaskUpdated
+    TaskId task_id;
+    std::string task_type;
+
+    // EdgeAdded / EdgeRemoved
+    TaskId from;
+    TaskId to;
+    std::string from_port;
+    std::string to_port;
+};
+
 class DAG {
 public:
     DAG() = default;
+    DAG(DAG&& other) noexcept { *this = std::move(other); }
+    DAG& operator=(DAG&& other) noexcept;
+    DAG(const DAG&) = delete;
+    DAG& operator=(const DAG&) = delete;
 
     void add_task(TaskPtr task);
     void add_task(const std::string& id, TaskPtr task);
@@ -56,6 +84,12 @@ public:
     void remove_task(const TaskId& id);
     void remove_edge(const TaskId& from, const TaskId& to);
 
+    // 清空所有 task 和 edge（发出 GraphReset 事件）
+    void clear();
+
+    // 用另一个 DAG 的数据替换当前内容（发出 GraphReset 事件，保留订阅者）
+    void reset_from(DAG&& other);
+
     // ====== 图查询接口 ======
     const std::unordered_map<TaskId, TaskPtr>& tasks() const { return tasks_; }
 
@@ -81,6 +115,11 @@ public:
     struct EdgeRef { TaskId from; TaskId to; };
     std::vector<EdgeRef> edge_list() const;
 
+    // ====== 变更订阅 ======
+    using ChangeCallback = std::function<void(const DAGChangeEvent&)>;
+    size_t subscribe(ChangeCallback cb) const;
+    void unsubscribe(size_t id) const;
+
 private:
     std::unordered_map<TaskId, TaskPtr> tasks_;
     std::vector<Edge> edges_;
@@ -88,9 +127,21 @@ private:
     std::unordered_map<TaskId, std::unordered_set<TaskId>> reverse_adjacency_;
     std::unordered_map<TaskId, size_t> in_degree_;
 
-    // 端口级索引：task id → 边在 edges_ 中的下标列表
+    // 端口级索引：task id -> 边在 edges_ 中的下标列表
     std::unordered_map<TaskId, std::vector<size_t>> incoming_idx_;
     std::unordered_map<TaskId, std::vector<size_t>> outgoing_idx_;
+
+    // 插入顺序（保证 task_ids()/nodes() 返回稳定顺序）
+    std::vector<TaskId> insertion_order_;
+
+    // 观察者列表
+    mutable std::mutex observers_mutex_;
+    mutable std::vector<std::pair<size_t, ChangeCallback>> observers_;
+    mutable size_t next_observer_id_{0};
+    void notify(const DAGChangeEvent& e) const;
+
+    // 内部删除（不发出事件，供 remove_task 批量删除边时使用）
+    void remove_edge_impl(const TaskId& from, const TaskId& to);
 };
 
 using DAGPtr = std::shared_ptr<DAG>;
