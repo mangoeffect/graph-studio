@@ -321,7 +321,7 @@ std::string ProfileCollector::to_trace_string(bool pretty) const {
     };
 
     for (const auto& ts : task_stats) {
-        int64_t tid = tid_of(ts.task_id);
+        long long tid = static_cast<long long>(tid_of(ts.task_id));
 
         // 等待段（READY → STARTED）：浅色，类别 "wait"
         if (ts.has_ready && ts.has_start && ts.start_time > ts.ready_time) {

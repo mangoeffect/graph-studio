@@ -13,6 +13,12 @@
 #include <processthreadsapi.h>
 #else
 #include <pthread.h>
+#if defined(__ANDROID__)
+#include <unistd.h>
+#elif !defined(__APPLE__) && !defined(__EMSCRIPTEN__)
+#include <sys/syscall.h>
+#include <unistd.h>
+#endif
 #endif
 
 namespace task_graph {
@@ -33,6 +39,8 @@ namespace {
         uint64_t tid;
         pthread_threadid_np(NULL, &tid);
         ss << tid;
+#elif defined(__ANDROID__)
+        ss << gettid();
 #elif defined(__EMSCRIPTEN__)
         ss << std::this_thread::get_id();
 #else
@@ -50,6 +58,9 @@ namespace {
             LocalFree(result);
             return std::string(buffer);
         }
+        return "";
+#elif defined(__ANDROID__)
+        // Android bionic 不提供 pthread_getname_np
         return "";
 #elif defined(__EMSCRIPTEN__)
         return "main";

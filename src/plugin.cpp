@@ -1,9 +1,22 @@
 ﻿#include <task_graph/plugin.hpp>
 #include <mutex>
 #include <stdexcept>
-#include <dlfcn.h>
 
-#ifdef _WIN32
+#if defined(__APPLE__)
+    #include <TargetConditionals.h>
+#endif
+
+#if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
+    // iOS 不支持运行时 dlopen 加载外部代码；插件通过静态链接 +
+    // __attribute__((constructor)) 注册。定义空桩使编译通过，load() 直接返回 false。
+    #define TASK_GRAPH_NO_DLOPEN 1
+    #define dlopen(path, mode) ((void*)nullptr)
+    #define dlclose(handle) ((void)0)
+    #define dlsym(handle, symbol) ((void*)nullptr)
+    #define dlerror() "dlopen not available on iOS"
+    #define RTLD_LAZY 0
+    #define RTLD_NODELETE 0
+#elif defined(_WIN32)
 #include <windows.h>
 #define dlopen(path, mode) LoadLibraryA(path)
 #define dlclose(handle) FreeLibrary((HMODULE)handle)
@@ -11,6 +24,8 @@
 #define dlerror() "Windows error"
 #define RTLD_LAZY 0
 #define RTLD_NODELETE 0
+#else
+#include <dlfcn.h>
 #endif
 
 namespace task_graph {
@@ -42,6 +57,10 @@ PluginLoader::~PluginLoader() {
 }
 
 bool PluginLoader::load(const std::string& path) {
+#ifdef TASK_GRAPH_NO_DLOPEN
+    (void)path;
+    return false;
+#else
     // RTLD_NODELETE：dlclose 时不真正卸载代码段，避免插件内 C++ 静态对象
     // 的析构函数（__cxa_atexit 注册）在 dlclose 与进程退出时被重复调用，
     // 或注册到主库单例中的 std::function（其 vtable/代码位于插件地址空间）
@@ -75,6 +94,7 @@ bool PluginLoader::load(const std::string& path) {
 
     handles_[path] = std::move(h);
     return true;
+#endif
 }
 
 void PluginLoader::unload(const std::string& path) {

@@ -14,6 +14,19 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake" ${CMAKE_MODULE_PATH})
 
+# ============================================================
+# 平台检测：iOS / Android / 移动端统一标记
+# ============================================================
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    set(TASK_GRAPH_IOS ON)
+endif()
+if(ANDROID)
+    set(TASK_GRAPH_ANDROID ON)
+endif()
+if(TASK_GRAPH_IOS OR TASK_GRAPH_ANDROID)
+    set(TASK_GRAPH_MOBILE ON)
+endif()
+
 if(NOT EMSCRIPTEN)
     find_package(Threads REQUIRED)
 endif()
@@ -49,13 +62,17 @@ if(TASK_GRAPH_ENABLE_OPENCV)
     # WASM 下优先用 emcmake 构建的 OpenCV 静态库
     if(EMSCRIPTEN AND EXISTS "${CMAKE_SOURCE_DIR}/build_wasm/opencv/install/lib/cmake/opencv4")
         set(OpenCV_DIR "${CMAKE_SOURCE_DIR}/build_wasm/opencv/install/lib/cmake/opencv4")
+    elseif(TASK_GRAPH_IOS AND EXISTS "${CMAKE_SOURCE_DIR}/build_ios/opencv/install/lib/cmake/opencv4")
+        set(OpenCV_DIR "${CMAKE_SOURCE_DIR}/build_ios/opencv/install/lib/cmake/opencv4")
+    elseif(TASK_GRAPH_ANDROID AND EXISTS "${CMAKE_SOURCE_DIR}/build_android/opencv/install/lib/cmake/opencv4")
+        set(OpenCV_DIR "${CMAKE_SOURCE_DIR}/build_android/opencv/install/lib/cmake/opencv4")
     endif()
     find_package(OpenCV REQUIRED)
     include_directories(${OpenCV_INCLUDE_DIRS})
     add_definitions(-DTASK_GRAPH_ENABLE_OPENCV)
 endif()
 
-if(EMSCRIPTEN)
+if(EMSCRIPTEN OR TASK_GRAPH_MOBILE)
     set(TASK_GRAPH_LIB_TYPE STATIC)
 else()
     set(TASK_GRAPH_LIB_TYPE SHARED)
@@ -141,9 +158,11 @@ target_compile_options(task_graph
 )
 
 # ============================================================
-# 库测试目标（合并精简后）
+# 库测试目标（合并精简后）— 移动端跳过
 # ============================================================
 # 一个 helper：tests/test_util.hpp（纯头文件，无需目标）
+
+if(NOT TASK_GRAPH_MOBILE)
 
 # 便捷宏：定义一个链接 task_graph 的测试可执行文件
 function(add_tg_test name)
@@ -205,6 +224,8 @@ if(WIN32)
     set_target_properties(task_plugin_example PROPERTIES SUFFIX ".dll")
 endif()
 
+endif() # NOT TASK_GRAPH_MOBILE
+
 # ============================================================
 # 子模块（subnode）：编译期链接的内置插件
 # ============================================================
@@ -215,6 +236,7 @@ foreach(submodule ${SUBMODULES})
 endforeach()
 
 # test_plugin 依赖 subnode 内置插件（task1/task2/task_processor）
+if(NOT TASK_GRAPH_MOBILE)
 foreach(submodule ${SUBMODULES})
     if(TARGET ${submodule})
         target_link_libraries(test_plugin PRIVATE ${submodule})
@@ -245,3 +267,4 @@ if(TASK_GRAPH_ENABLE_OPENCV)
     add_test(NAME test_opencv_convert COMMAND test_opencv_convert)
     add_test(NAME test_opencv_image_filtering COMMAND test_opencv_image_filtering)
 endif()
+endif() # NOT TASK_GRAPH_MOBILE
