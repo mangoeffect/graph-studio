@@ -52,6 +52,19 @@
       "tasks": [
         "opencv_image_read"
       ]
+    },
+    {
+      "name": "gpu_image_processing",
+      "url": "./submodules/gpu/image_processing",
+      "ref": "main",
+      "type": "local",
+      "tasks": [
+        "gpu_box_blur",
+        "gpu_gaussian_blur",
+        "gpu_grayscale",
+        "gpu_brightness_contrast",
+        "gpu_resize"
+      ]
     }
   ]
 }

@@ -74,6 +74,8 @@ add_library(task_graph ${TASK_GRAPH_LIB_TYPE}
     src/logger.cpp
     src/data_types.cpp
     src/gpu_image_ops.cpp
+    src/gpu_kernel_library.cpp
+    src/gpu_image_task.cpp
     src/task_manager.cpp
     src/task_params.cpp
     src/profiler.cpp
@@ -218,6 +220,11 @@ foreach(submodule ${SUBMODULES})
         target_link_libraries(test_plugin PRIVATE ${submodule})
     endif()
 endforeach()
+
+# test_gpu_image 需要 GPU subnode 的 task 注册（Metal compute 端到端测试）
+if(TASK_GRAPH_ENABLE_METAL AND TARGET gpu_image_processing)
+    target_link_libraries(test_gpu_image PRIVATE gpu_image_processing)
+endif()
 
 # ============================================================
 # ctest 注册（全部核心测试）
