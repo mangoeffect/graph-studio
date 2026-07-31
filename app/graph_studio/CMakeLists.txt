@@ -153,6 +153,31 @@ qt_add_executable(test_integration
 )
 target_link_libraries(test_integration PRIVATE Qt6::Test task_graph)
 add_test(NAME test_integration COMMAND test_integration)
+
+# GUI 集成测试：用 QApplication 实例化 MainWindow，QTest 驱动鼠标/键盘，
+# 内省 QGraphicsScene 的 NodeItem/EdgeItem 与 GraphViewModel 状态。
+# 默认以 QT_QPA_PLATFORM=offscreen 无头运行（见 test_gui.cpp）。
+qt_add_executable(test_gui
+    tests/test_gui.cpp
+    include/model/GraphModel.h
+    include/viewmodel/GraphViewModel.h
+    include/command/CommandStack.h
+    include/view/MainWindow.h
+    include/view/GraphScene.h
+    include/view/GraphView.h
+    include/view/NodeItem.h
+    include/view/EdgeItem.h
+    src/model/GraphModel.cpp
+    src/viewmodel/GraphViewModel.cpp
+    src/command/CommandStack.cpp
+    src/view/MainWindow.cpp
+    src/view/GraphScene.cpp
+    src/view/GraphView.cpp
+    src/view/NodeItem.cpp
+    src/view/EdgeItem.cpp
+)
+target_link_libraries(test_gui PRIVATE Qt6::Widgets Qt6::Test task_graph)
+add_test(NAME test_gui COMMAND test_gui)
 endif()
 
 # ============================================================
