@@ -552,8 +552,9 @@ QWidget* MainWindow::CreateLogPanel()
 
     logWidget_ = new QPlainTextEdit();
     logWidget_->setReadOnly(true);
-    logWidget_->appendPlainText("[INFO] Graph Studio started.");
-    logWidget_->appendPlainText("[INFO] Ready.");
+    logWidget_->setMaximumBlockCount(5000);
+    logWidget_->appendHtml("<span style=\"color:#d4d4d4\">[INFO] Graph Studio started.</span>");
+    logWidget_->appendHtml("<span style=\"color:#d4d4d4\">[INFO] Ready.</span>");
     layout->addWidget(logWidget_);
 
     return container;
@@ -689,10 +690,25 @@ void MainWindow::onGraphReset()
     ClearPropertyPanel();
 }
 
-void MainWindow::onLogMessage(const QString& msg)
+void MainWindow::onLogMessage(int level, const QString& msg)
 {
-    if (logWidget_)
-        logWidget_->appendPlainText(msg);
+    if (!logWidget_) return;
+
+    auto lvl = static_cast<task_graph::LogLevel>(level);
+    QString color;
+    QString tag;
+    switch (lvl) {
+        case task_graph::LogLevel::TRACE: color = "#7f8c8d"; tag = "TRACE"; break;
+        case task_graph::LogLevel::DEBUG: color = "#7f8c8d"; tag = "DEBUG"; break;
+        case task_graph::LogLevel::INFO:  color = "#d4d4d4"; tag = "INFO";  break;
+        case task_graph::LogLevel::WARN:  color = "#f39c12"; tag = "WARN";  break;
+        case task_graph::LogLevel::ERROR: color = "#e74c3c"; tag = "ERROR"; break;
+        case task_graph::LogLevel::FATAL: color = "#e74c3c"; tag = "FATAL"; break;
+        default:                          color = "#d4d4d4"; tag = "INFO";  break;
+    }
+    logWidget_->appendHtml(
+        QStringLiteral("<span style=\"color:%1\">[%2] %3</span>")
+            .arg(color, tag, msg.toHtmlEscaped()));
 }
 
 void MainWindow::onSelectionChangedVm(const QString& nodeId)

@@ -118,34 +118,54 @@ namespace {
             return level >= level_;
         }
 
+        void set_sink(LogSink sink) {
+            std::lock_guard<std::mutex> lock(mutex_);
+            sink_ = std::move(sink);
+        }
+
+        void clear_sink() {
+            std::lock_guard<std::mutex> lock(mutex_);
+            sink_ = {};
+        }
+
         void log(LogLevel level, const std::string& msg, const char* file, int line) {
             if (!is_enabled(level)) return;
 
-            std::lock_guard<std::mutex> lock(mutex_);
-            
-            std::stringstream ss;
-            ss << "[" << get_timestamp() << "] ";
-            ss << "[" << std::setw(5) << get_level_name(level) << "] ";
-            
-            std::string thread_name = get_thread_name();
-            std::string thread_id = get_thread_id();
-            if (!thread_name.empty()) {
-                ss << "[" << thread_name << "/" << thread_id << "] ";
-            } else {
-                ss << "[T/" << thread_id << "] ";
-            }
-            
-            std::string filename = get_filename(file);
-            if (!filename.empty() && line > 0) {
-                ss << "[" << filename << ":" << line << "] ";
-            } else if (!filename.empty()) {
-                ss << "[" << filename << "] ";
-            }
-            
-            ss << msg << std::endl;
+            LogSink sink_copy;
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
 
-            std::cout << ss.str();
-            std::cout.flush();
+                std::stringstream ss;
+                ss << "[" << get_timestamp() << "] ";
+                ss << "[" << std::setw(5) << get_level_name(level) << "] ";
+
+                std::string thread_name = get_thread_name();
+                std::string thread_id = get_thread_id();
+                if (!thread_name.empty()) {
+                    ss << "[" << thread_name << "/" << thread_id << "] ";
+                } else {
+                    ss << "[T/" << thread_id << "] ";
+                }
+
+                std::string filename = get_filename(file);
+                if (!filename.empty() && line > 0) {
+                    ss << "[" << filename << ":" << line << "] ";
+                } else if (!filename.empty()) {
+                    ss << "[" << filename << "] ";
+                }
+
+                ss << msg << std::endl;
+
+                std::cout << ss.str();
+                std::cout.flush();
+
+                sink_copy = sink_;
+            }
+            // 锁外调用 sink：避免 sink 内部再调 tg_log 导致重入死锁。
+            // 可能在任意线程触发，调用方需自行 marshal 回目标线程。
+            if (sink_copy) {
+                sink_copy(level, msg, file, line);
+            }
         }
 
     private:
@@ -156,6 +176,7 @@ namespace {
 
         mutable std::mutex mutex_;
         LogLevel level_{LogLevel::INFO};
+        LogSink sink_;
     };
 }
 
@@ -169,6 +190,14 @@ extern "C" TG_EXPORT void tg_set_log_level(LogLevel level) {
 
 extern "C" TG_EXPORT LogLevel tg_get_log_level() {
     return LoggerImpl::instance().get_level();
+}
+
+TG_EXPORT void set_log_sink(LogSink sink) {
+    LoggerImpl::instance().set_sink(std::move(sink));
+}
+
+TG_EXPORT void clear_log_sink() {
+    LoggerImpl::instance().clear_sink();
 }
 
 }

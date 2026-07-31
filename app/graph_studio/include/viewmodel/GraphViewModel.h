@@ -98,7 +98,7 @@ signals:
     void selectionChanged(const QString& nodeId);
     void nodeParamsChanged(const QString& nodeId);
     void graphReset();
-    void logMessage(const QString& msg);
+    void logMessage(int level, const QString& msg);
     void nodeStatusChanged(const QString& taskId, int phase, double durationMs);
     void executionStarted();
     void executionFinished();

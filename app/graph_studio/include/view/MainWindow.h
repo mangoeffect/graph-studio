@@ -65,7 +65,7 @@ private slots:
     void onEdgeRemoved(const QString& fromId, const QString& toId);
     void onNodeMovedVm(const QString& id, qreal x, qreal y);
     void onGraphReset();
-    void onLogMessage(const QString& msg);
+    void onLogMessage(int level, const QString& msg);
     void onSelectionChangedVm(const QString& nodeId);
     void onSceneSelectionChanged();
     void onEdgeCreationRequested(const QString& fromId, const QString& toId);

@@ -14,6 +14,14 @@ using namespace graph_studio;
 
 // ---- ParamSpec 桥接：把 lib 侧 ParamSpec 拆成 QVariantMap（明确类型） ----
 namespace {
+
+const int kLogTrace = static_cast<int>(task_graph::LogLevel::TRACE);
+const int kLogDebug = static_cast<int>(task_graph::LogLevel::DEBUG);
+const int kLogInfo  = static_cast<int>(task_graph::LogLevel::INFO);
+const int kLogWarn  = static_cast<int>(task_graph::LogLevel::WARN);
+const int kLogError = static_cast<int>(task_graph::LogLevel::ERROR);
+const int kLogFatal = static_cast<int>(task_graph::LogLevel::FATAL);
+
 QVariantMap paramSpecToVariant(const task_graph::ParamSpec& s) {
     QVariantMap m;
     m["name"] = QString::fromStdString(s.name);
@@ -188,10 +196,23 @@ GraphViewModel::GraphViewModel(GraphModel& model, QObject* parent)
     dagSubId_ = model_.dag().subscribe([this](const task_graph::DAGChangeEvent& e) {
         onDagChanged(e);
     });
+
+    // 注册框架日志 sink：把 TG_LOG_* / ctx.log() 等日志转发到 UI 线程。
+    // sink 可能在 executor 工作线程触发，用 QueuedConnection 编组到 UI 线程后 emit。
+    task_graph::set_log_sink(
+        [this](task_graph::LogLevel level, const std::string& msg,
+               const char* /*file*/, int /*line*/) {
+            QString qmsg = QString::fromStdString(msg);
+            int ilevel = static_cast<int>(level);
+            QMetaObject::invokeMethod(this, [this, ilevel, qmsg]() {
+                emit logMessage(ilevel, qmsg);
+            }, Qt::QueuedConnection);
+        });
 }
 
 GraphViewModel::~GraphViewModel()
 {
+    task_graph::clear_log_sink();
     model_.dag().unsubscribe(dagSubId_);
     if (executor_) {
         executor_->cancel();
@@ -229,7 +250,7 @@ void GraphViewModel::onDagChanged(const task_graph::DAGChangeEvent& e) {
         nd.params = defaultParamsForType(e.task_type);
         emit taskAdded(nd);
         emit taskCountChanged();
-        emit logMessage("[INFO] Task added: " + nd.id + " (" + nd.type + ")");
+        emit logMessage(kLogInfo, "Task added: " + nd.id + " (" + nd.type + ")");
         break;
     }
     case Type::TaskRemoved: {
@@ -241,7 +262,7 @@ void GraphViewModel::onDagChanged(const task_graph::DAGChangeEvent& e) {
         }
         emit taskRemoved(id);
         emit taskCountChanged();
-        emit logMessage("[INFO] Task removed: " + id);
+        emit logMessage(kLogInfo, "Task removed: " + id);
         break;
     }
     case Type::TaskUpdated:
@@ -253,13 +274,13 @@ void GraphViewModel::onDagChanged(const task_graph::DAGChangeEvent& e) {
         ed.toId = QString::fromStdString(e.to);
         emit edgeAdded(ed);
         emit edgeCountChanged();
-        emit logMessage("[INFO] Edge added: " + ed.fromId + " -> " + ed.toId);
+        emit logMessage(kLogInfo, "Edge added: " + ed.fromId + " -> " + ed.toId);
         break;
     }
     case Type::EdgeRemoved:
         emit edgeRemoved(QString::fromStdString(e.from), QString::fromStdString(e.to));
         emit edgeCountChanged();
-        emit logMessage("[INFO] Edge removed: " +
+        emit logMessage(kLogInfo, "Edge removed: " +
                         QString::fromStdString(e.from) + " -> " + QString::fromStdString(e.to));
         break;
     case Type::GraphReset: {
@@ -297,14 +318,14 @@ QString GraphViewModel::addTask(const QString& taskType, qreal x, qreal y, const
 {
     QString id = taskId.isEmpty() ? generateUniqueId(taskType) : taskId;
     if (hasNode(id)) {
-        emit logMessage("[WARNING] Task already exists: " + id);
+        emit logMessage(kLogWarn, "Task already exists: " + id);
         return {};
     }
 
     positions_[id] = QPointF(x, y);
     if (!model_.add_task(id.toStdString(), taskType.toStdString())) {
         positions_.remove(id);
-        emit logMessage("[ERROR] Failed to add task to DAG: " + id);
+        emit logMessage(kLogError, "Failed to add task to DAG: " + id);
         return {};
     }
     return id;
@@ -328,23 +349,23 @@ bool GraphViewModel::moveNode(const QString& taskId, qreal x, qreal y)
 bool GraphViewModel::addEdge(const QString& fromId, const QString& toId)
 {
     if (fromId == toId) {
-        emit logMessage("[WARNING] Cannot create self-loop: " + fromId);
+        emit logMessage(kLogWarn, "Cannot create self-loop: " + fromId);
         return false;
     }
     if (!hasNode(fromId) || !hasNode(toId)) {
-        emit logMessage("[WARNING] Node not found for edge");
+        emit logMessage(kLogWarn, "Node not found for edge");
         return false;
     }
     if (model_.has_edge(fromId.toStdString(), toId.toStdString())) {
-        emit logMessage("[WARNING] Edge already exists: " + fromId + " -> " + toId);
+        emit logMessage(kLogWarn, "Edge already exists: " + fromId + " -> " + toId);
         return false;
     }
     if (canReach(toId, fromId)) {
-        emit logMessage("[WARNING] Cycle detected, cannot add edge: " + fromId + " -> " + toId);
+        emit logMessage(kLogWarn, "Cycle detected, cannot add edge: " + fromId + " -> " + toId);
         return false;
     }
     if (!model_.add_edge(fromId.toStdString(), toId.toStdString())) {
-        emit logMessage("[ERROR] Failed to add edge to DAG: " + fromId + " -> " + toId);
+        emit logMessage(kLogError, "Failed to add edge to DAG: " + fromId + " -> " + toId);
         return false;
     }
     return true;
@@ -457,7 +478,7 @@ bool GraphViewModel::setNodeParam(const QString& taskId, const QString& key, con
             task_graph::TaskParams params = model_.task_params(id);
             applyVariantToParams(key, value, s, params);
             model_.update_task_params(id, params);
-            emit logMessage("[INFO] Param updated: " + taskId + "." + key);
+            emit logMessage(kLogInfo, "Param updated: " + taskId + "." + key);
             return true;
         }
     }
@@ -485,7 +506,7 @@ void GraphViewModel::clear()
     selectedNodeId_.clear();
     model_.clear();
     emit selectionChanged({});
-    emit logMessage("[INFO] Graph cleared");
+    emit logMessage(kLogInfo, "Graph cleared");
 }
 
 bool GraphViewModel::saveToFile(const QString& filePath)
@@ -504,20 +525,20 @@ bool GraphViewModel::saveToFile(const QString& filePath)
 
     std::string json_str = model_.to_json_string(metadata.dump());
     if (json_str.empty()) {
-        emit logMessage("[ERROR] Failed to serialize DAG");
+        emit logMessage(kLogError, "Failed to serialize DAG");
         return false;
     }
 
     QFile file(filePath);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        emit logMessage("[ERROR] Cannot open file for writing: " + filePath);
+        emit logMessage(kLogError, "Cannot open file for writing: " + filePath);
         return false;
     }
     QTextStream stream(&file);
     stream << QString::fromStdString(json_str);
     file.close();
 
-    emit logMessage("[INFO] Graph saved to: " + filePath);
+    emit logMessage(kLogInfo, "Graph saved to: " + filePath);
     return true;
 }
 
@@ -525,7 +546,7 @@ bool GraphViewModel::loadFromFile(const QString& filePath)
 {
     QFile file(filePath);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        emit logMessage("[ERROR] Cannot open file: " + filePath);
+        emit logMessage(kLogError, "Cannot open file: " + filePath);
         return false;
     }
     QString json = QTextStream(&file).readAll();
@@ -536,7 +557,7 @@ bool GraphViewModel::loadFromFile(const QString& filePath)
 
     std::string metadata_str = model_.from_json_string_with_metadata(json.toStdString());
     if (metadata_str.empty() && !model_.task_count()) {
-        emit logMessage("[ERROR] Failed to parse DAG JSON");
+        emit logMessage(kLogError, "Failed to parse DAG JSON");
         return false;
     }
 
@@ -567,7 +588,7 @@ bool GraphViewModel::loadFromFile(const QString& filePath)
         }
     }
 
-    emit logMessage("[INFO] Graph loaded from: " + filePath);
+    emit logMessage(kLogInfo, "Graph loaded from: " + filePath);
     return true;
 }
 
@@ -637,17 +658,17 @@ void GraphViewModel::autoLayout()
         }
     }
 
-    emit logMessage("[INFO] Auto layout applied");
+    emit logMessage(kLogInfo, "Auto layout applied");
 }
 
 void GraphViewModel::execute()
 {
     if (executing_) {
-        emit logMessage("[WARN] Execution already in progress");
+        emit logMessage(kLogWarn, "Execution already in progress");
         return;
     }
     if (taskCount() == 0) {
-        emit logMessage("[WARN] Nothing to execute: graph is empty");
+        emit logMessage(kLogWarn, "Nothing to execute: graph is empty");
         return;
     }
 
@@ -657,8 +678,8 @@ void GraphViewModel::execute()
     for (const auto& issue : issues) {
         const bool isError = issue.severity == task_graph::ValidationError::Severity::ERROR;
         hasError = hasError || isError;
-        emit logMessage(QStringLiteral("[%1] %2%3%4")
-                            .arg(isError ? "ERROR" : "WARN")
+        emit logMessage(isError ? kLogError : kLogWarn,
+                        QStringLiteral("%1%2%3")
                             .arg(issue.task_id.empty() ? QString()
                                                        : QStringLiteral("%1: ").arg(QString::fromStdString(issue.task_id)))
                             .arg(issue.port_name.empty() ? QString()
@@ -666,21 +687,21 @@ void GraphViewModel::execute()
                             .arg(QString::fromStdString(issue.message)));
     }
     if (hasError) {
-        emit logMessage("[ERROR] Execution aborted due to validation errors");
+        emit logMessage(kLogError, "Execution aborted due to validation errors");
         return;
     }
 
     executing_ = true;
     emit executingChanged();
     emit executionStarted();
-    emit logMessage(QStringLiteral("[INFO] Executing %1 tasks...").arg(taskCount()));
+    emit logMessage(kLogInfo, QStringLiteral("Executing %1 tasks...").arg(taskCount()));
 
     ensureExecutor();
 
     try {
         executor_->execute(model_.dag());
     } catch (const std::exception& ex) {
-        emit logMessage(QStringLiteral("[ERROR] Failed to start execution: %1").arg(ex.what()));
+        emit logMessage(kLogError, QStringLiteral("Failed to start execution: %1").arg(ex.what()));
         executing_ = false;
         emit executingChanged();
         return;
@@ -710,7 +731,7 @@ void GraphViewModel::onExecutionEvent(const task_graph::ExecutionEvent& e) {
         emit nodeStatusChanged(QString::fromStdString(e.task_id),
                               static_cast<int>(task_graph::ProfilePhase::COMPLETED),
                               std::chrono::duration<double, std::milli>(e.duration).count());
-        emit logMessage(QStringLiteral("[OK] %1  (%2 ms)")
+        emit logMessage(kLogInfo, QStringLiteral("%1  (%2 ms)")
                             .arg(QString::fromStdString(e.task_id))
                             .arg(std::chrono::duration<double, std::milli>(e.duration).count(), 0, 'f', 2));
         break;
@@ -718,7 +739,7 @@ void GraphViewModel::onExecutionEvent(const task_graph::ExecutionEvent& e) {
         emit nodeStatusChanged(QString::fromStdString(e.task_id),
                               static_cast<int>(task_graph::ProfilePhase::FAILED),
                               std::chrono::duration<double, std::milli>(e.duration).count());
-        emit logMessage(QStringLiteral("[FAIL] %1%2")
+        emit logMessage(kLogError, QStringLiteral("%1%2")
                             .arg(QString::fromStdString(e.task_id))
                             .arg(e.failure_reason.empty() ? QString() : QStringLiteral(": %1").arg(QString::fromStdString(e.failure_reason))));
         break;
@@ -733,7 +754,7 @@ void GraphViewModel::onExecutionEvent(const task_graph::ExecutionEvent& e) {
 void GraphViewModel::stop()
 {
     if (!executing_ || !executor_) return;
-    emit logMessage("[WARN] Cancelling execution...");
+    emit logMessage(kLogWarn, "Cancelling execution...");
     executor_->cancel();
     finishExecution();
 }
@@ -752,8 +773,8 @@ void GraphViewModel::finishExecution()
             completed += ok ? 1 : 0;
             failed += ok ? 0 : 1;
             const double ms = std::chrono::duration<double, std::milli>(result.duration).count();
-            emit logMessage(QStringLiteral("[%1] %2  (%3 ms)")
-                                .arg(ok ? "OK" : "FAIL")
+            emit logMessage(ok ? kLogInfo : kLogError,
+                            QStringLiteral("%1  (%2 ms)")
                                 .arg(QString::fromStdString(id))
                                 .arg(ms, 0, 'f', 2));
 
@@ -776,7 +797,7 @@ void GraphViewModel::finishExecution()
             }
         }
     }
-    emit logMessage(QStringLiteral("[INFO] Execution finished: %1 ok, %2 failed")
+    emit logMessage(kLogInfo, QStringLiteral("Execution finished: %1 ok, %2 failed")
                         .arg(completed)
                         .arg(failed));
 

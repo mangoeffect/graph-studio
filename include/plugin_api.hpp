@@ -55,6 +55,17 @@ inline void tg_log(LogLevel level, const std::string& msg, const char* file = ""
 #define TG_LOG_ERROR(msg) do { task_graph::tg_log(task_graph::LogLevel::ERROR, msg, __FILE__, __LINE__); } while(0)
 #define TG_LOG_FATAL(msg) do { task_graph::tg_log(task_graph::LogLevel::FATAL, msg, __FILE__, __LINE__); } while(0)
 
+// 日志 sink：收到原始日志字段（级别 + 消息 + 源位置），调用方自行决定如何格式化/显示。
+// 在 LoggerImpl::log() 锁外调用，可安全重入（sink 内部再调 tg_log 不会死锁）。
+// 可能在任意线程触发，调用方需自行做线程编组。
+using LogSink = std::function<void(LogLevel level, const std::string& msg,
+                                   const char* file, int line)>;
+
+// 注册/注销全局日志 sink。sink 附加到 stdout 输出（不替代），headless/CLI 仍可见日志。
+// 同一时刻仅支持一个 sink；重复注册会覆盖前一个。
+TG_EXPORT void set_log_sink(LogSink sink);
+TG_EXPORT void clear_log_sink();
+
 enum class TaskStatus {
     PENDING,
     RUNNING,
