@@ -462,14 +462,24 @@ bool GraphViewModel::loadFromFile(const QString& filePath)
     }
 
     // TODO: parse positions from JSON (stored as custom field)
-    // For now, auto-layout loaded graph
+    // For now, auto-layout loaded graph. Positions must be computed before
+    // creating scene items so NodeItems are placed correctly.
+    autoLayout();
+
+    // Clear the old scene, then re-create scene items for the loaded graph.
+    // graphReset() clears MainWindow's scene; taskAdded/edgeAdded rebuild it.
+    // Nodes must be emitted before edges so edge endpoints resolve.
     emit graphReset();
+    for (const auto& nd : nodeList_)
+        emit taskAdded(nd);
+    for (const auto& ed : edgeList_)
+        emit edgeAdded(ed);
+
     emit taskCountChanged();
     emit edgeCountChanged();
     emit selectionChanged({});
     emit logMessage("[INFO] Graph loaded from: " + filePath);
 
-    autoLayout();
     return true;
 }
 
