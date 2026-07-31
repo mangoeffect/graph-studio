@@ -626,20 +626,42 @@ void GraphViewModel::ensureExecutor()
     if (executor_) return;
     task_graph::ExecutorConfig config;
     config.enable_profiling = true;
-    config.profile_callback = [this](const task_graph::TaskProfileEvent& e) {
-        const QString id = QString::fromStdString(e.task_id);
-        const int phase = static_cast<int>(e.phase);
-        const double ms = std::chrono::duration<double, std::milli>(e.duration).count();
-        QMetaObject::invokeMethod(
-            this,
-            [this, id, phase, ms]() { emit nodeStatusChanged(id, phase, ms); },
-            Qt::QueuedConnection);
-    };
-    config.completion_callback = [this]() {
-        QMetaObject::invokeMethod(this, [this]() { finishExecution(); },
+    config.callback = [this](const task_graph::ExecutionEvent& e) {
+        QMetaObject::invokeMethod(this, [this, e]() { onExecutionEvent(e); },
                                   Qt::QueuedConnection);
     };
     executor_ = std::make_unique<task_graph::DAGExecutor>(config);
+}
+
+void GraphViewModel::onExecutionEvent(const task_graph::ExecutionEvent& e) {
+    using Type = task_graph::ExecutionEvent::Type;
+    switch (e.type) {
+    case Type::TaskStarted:
+        emit nodeStatusChanged(QString::fromStdString(e.task_id),
+                              static_cast<int>(task_graph::ProfilePhase::STARTED), 0);
+        break;
+    case Type::TaskCompleted:
+        emit nodeStatusChanged(QString::fromStdString(e.task_id),
+                              static_cast<int>(task_graph::ProfilePhase::COMPLETED),
+                              std::chrono::duration<double, std::milli>(e.duration).count());
+        emit logMessage(QStringLiteral("[OK] %1  (%2 ms)")
+                            .arg(QString::fromStdString(e.task_id))
+                            .arg(std::chrono::duration<double, std::milli>(e.duration).count(), 0, 'f', 2));
+        break;
+    case Type::TaskFailed:
+        emit nodeStatusChanged(QString::fromStdString(e.task_id),
+                              static_cast<int>(task_graph::ProfilePhase::FAILED),
+                              std::chrono::duration<double, std::milli>(e.duration).count());
+        emit logMessage(QStringLiteral("[FAIL] %1%2")
+                            .arg(QString::fromStdString(e.task_id))
+                            .arg(e.failure_reason.empty() ? QString() : QStringLiteral(": %1").arg(QString::fromStdString(e.failure_reason))));
+        break;
+    case Type::DagCompleted:
+        finishExecution();
+        break;
+    default:
+        break;
+    }
 }
 
 void GraphViewModel::stop()

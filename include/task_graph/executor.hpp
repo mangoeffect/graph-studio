@@ -11,17 +11,44 @@
 
 namespace task_graph {
 
+// 统一执行事件：替代 profile_callback + dag_profile_callback + completion_callback
+struct ExecutionEvent {
+    enum class Type {
+        DagStarted,
+        DagCompleted,
+        TaskReady,
+        TaskStarted,
+        TaskCompleted,
+        TaskFailed,
+        TaskSkipped,
+    } type;
+
+    // Task 事件
+    TaskId task_id;
+    std::string task_type;
+    std::chrono::nanoseconds duration{0};
+    std::string failure_reason;          // TaskFailed 时携带原因
+
+    // DagCompleted 事件
+    size_t total_tasks{0};
+    size_t completed_tasks{0};
+    size_t failed_tasks{0};
+    std::string exception_message;       // DAG 异常时的 what()
+
+    std::chrono::steady_clock::time_point timestamp;
+};
+
+using ExecutionCallback = std::function<void(const ExecutionEvent&)>;
+
 struct ExecutorConfig {
     size_t thread_pool_size{std::thread::hardware_concurrency()};
     std::chrono::milliseconds timeout{0};
 
-    // 性能 profiler 配置
-    bool enable_profiling{false};              // 是否启用 profiler 埋点
-    ProfileCallback profile_callback;          // 任务级事件回调（可选，自定义处理）
-    DagProfileCallback dag_profile_callback;   // DAG 级事件回调（可选）
+    // 统一事件回调（在 executor 线程触发，调用方需自行 marshal 回 UI 线程）
+    ExecutionCallback callback;
 
-    // 执行完成回调（在 executor 线程触发，调用方需自行 marshal 回 UI 线程）
-    std::function<void()> completion_callback;
+    // 是否启用内置 ProfileCollector 采集（通过 profiler() 只读访问）
+    bool enable_profiling{false};
 };
 
 class DAGExecutor {
@@ -44,10 +71,12 @@ private:
     void run(const DAG& dag);
     void process_task(const DAG& dag, const ExecutionPlan& plan, const TaskId& task_id);
 
-    // 触发性能事件（enable_profiling 为 false 时无开销）
-    void emit_task_event(const std::string& task_id, const std::string& task_type,
-                         ProfilePhase phase, std::chrono::nanoseconds duration = std::chrono::nanoseconds{0});
-    void emit_dag_event(DagProfilePhase phase, size_t total_tasks);
+    // 触发统一执行事件（同时喂给 ProfileCollector 和用户 callback）
+    void emit_event(const ExecutionEvent& e);
+    void emit_event(ExecutionEvent::Type type, const std::string& task_id = {},
+                    const std::string& task_type = {},
+                    std::chrono::nanoseconds duration = std::chrono::nanoseconds{0},
+                    const std::string& failure_reason = {});
 
     ThreadPoolPtr thread_pool_;
     std::atomic<bool> running_{false};

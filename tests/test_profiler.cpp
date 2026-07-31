@@ -96,11 +96,12 @@ bool test_profiler_callback() {
     dag.add_task(task);
 
     task_graph::ExecutorConfig cfg;
-    cfg.profile_callback = [&](const task_graph::TaskProfileEvent& ev) {
-        switch (ev.phase) {
-            case task_graph::ProfilePhase::READY:     ready_count++; break;
-            case task_graph::ProfilePhase::STARTED:   started_count++; break;
-            case task_graph::ProfilePhase::COMPLETED: completed_count++; break;
+    cfg.callback = [&](const task_graph::ExecutionEvent& ev) {
+        if (ev.task_id != "T") return;
+        switch (ev.type) {
+            case task_graph::ExecutionEvent::Type::TaskReady:     ready_count++; break;
+            case task_graph::ExecutionEvent::Type::TaskStarted:   started_count++; break;
+            case task_graph::ExecutionEvent::Type::TaskCompleted: completed_count++; break;
             default: break;
         }
     };

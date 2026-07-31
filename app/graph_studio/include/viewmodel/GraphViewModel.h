@@ -14,6 +14,7 @@
 
 #include "../model/GraphModel.h"
 #include <task_graph/dag.hpp>
+#include <task_graph/executor.hpp>
 
 namespace task_graph {
 class DAGExecutor;
@@ -101,6 +102,7 @@ signals:
 private:
     QString generateUniqueId(const QString& taskType) const;
     void onDagChanged(const task_graph::DAGChangeEvent& e);
+    void onExecutionEvent(const task_graph::ExecutionEvent& e);
     bool canReach(const QString& from, const QString& to) const;
     void finishExecution();
     void ensureExecutor();
