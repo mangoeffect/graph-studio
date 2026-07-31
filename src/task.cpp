@@ -27,7 +27,7 @@ std::vector<ParamSpec> Task::param_specs() const {
     return spec_delegate_ ? spec_delegate_->param_specs() : IPluginTask::param_specs();
 }
 
-void Task::init() {
+void Task::on_init() {
     if (spec_delegate_) {
         spec_delegate_->init();
     }

@@ -10,6 +10,7 @@
 #include <chrono>
 #include <mutex>
 #include <shared_mutex>
+#include <atomic>
 
 #include <task_graph/data_types.hpp>
 
@@ -170,9 +171,14 @@ public:
     virtual std::vector<ParamSpec> param_specs() const { return {}; }
 
     // 预初始化：在 task 执行前调用，只依赖构造时传入的 config（不依赖运行时 context）。
-    // 用于 GPU shader 预编译等提前准备工作。默认空实现，子类按需重写。
+    // 用于 GPU shader 预编译等提前准备工作。线程安全，保证每个实例只执行一次。
     // 失败不应阻止后续 execute（execute 内有 fallback 逻辑）。
-    virtual void init() {}
+    // 子类重写 on_init() 实现具体逻辑，不要重写 init()。
+    virtual void init() final {
+        bool expected = false;
+        if (!initialized_.compare_exchange_strong(expected, true)) return;
+        on_init();
+    }
 
     // 输入校验：按端口名取值的 map。默认实现基于 input_specs() 自动校验
     // （必填端口存在 + 类型名匹配）。子类一般无需重写。
@@ -180,8 +186,14 @@ public:
         const std::unordered_map<std::string, std::any>& inputs_by_port) const;
 
 protected:
+    // 子类重写此方法实现预初始化逻辑（如 GPU shader 预编译）。保证只被调用一次。
+    virtual void on_init() {}
+
     std::string id_;
     TaskConfig config_;
+
+private:
+    std::atomic<bool> initialized_{false};
 };
 
 using PluginTaskPtr = std::shared_ptr<IPluginTask>;

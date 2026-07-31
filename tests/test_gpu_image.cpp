@@ -141,6 +141,40 @@ bool test_gpu_handle_field() {
     return true;
 }
 
+// ===== init() 去重测试（不依赖 Metal） =====
+
+class InitCounterTask : public task_graph::IPluginTask {
+public:
+    using IPluginTask::IPluginTask;
+    int init_count = 0;
+    const std::string& type() const override {
+        static const std::string t("init_counter");
+        return t;
+    }
+    task_graph::TaskResult execute(task_graph::TaskContext&) override {
+        return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED};
+    }
+protected:
+    void on_init() override { ++init_count; }
+};
+
+bool test_init_dedup() {
+    std::cout << "Test: init() dedup... ";
+
+    InitCounterTask task("test");
+    task.init();
+    task.init();
+    task.init();
+
+    if (task.init_count != 1) {
+        std::cout << "FAILED (on_init called " << task.init_count << " times, expected 1)" << std::endl;
+        return false;
+    }
+
+    std::cout << "PASSED" << std::endl;
+    return true;
+}
+
 #if TASK_GRAPH_ENABLE_METAL
 bool test_metal_backend_basic() {
     std::cout << "Test: Metal backend basic init... ";
@@ -570,6 +604,7 @@ int main() {
     all_passed &= test_member_ensure_cpu();
     all_passed &= test_member_ensure_gpu();
     all_passed &= test_gpu_handle_field();
+    all_passed &= test_init_dedup();
 
 #if TASK_GRAPH_ENABLE_METAL
     all_passed &= test_metal_backend_basic();

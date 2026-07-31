@@ -16,7 +16,7 @@ public:
     std::vector<PortSpec> input_specs() const override;
     std::vector<PortSpec> output_specs() const override;
 
-    void init() override;
+    void on_init() override;
 
 protected:
     // 通用 GPU 图像处理流程：按 op_name 查找算子，dispatch compute，返回 GPU-resident Image。
@@ -75,7 +75,7 @@ public:
     const std::string& type() const override;
     TaskResult execute(TaskContext& ctx) override;
     std::vector<ParamSpec> param_specs() const override;
-    void init() override;
+    void on_init() override;
 
 private:
     std::string op_name_;

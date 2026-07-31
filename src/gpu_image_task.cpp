@@ -25,7 +25,7 @@ std::vector<PortSpec> GpuImageTaskBase::output_specs() const {
     return { make_port<Image>("out") };
 }
 
-void GpuImageTaskBase::init() {
+void GpuImageTaskBase::on_init() {
     auto backend = get_gpu_backend();
     if (!backend || !backend->supports_compute()) return;
 
@@ -213,7 +213,7 @@ std::vector<ParamSpec> GpuComputeTask::param_specs() const {
     return op ? op->params : std::vector<ParamSpec>{};
 }
 
-void GpuComputeTask::init() {
+void GpuComputeTask::on_init() {
     auto backend = get_gpu_backend();
     if (!backend || !backend->supports_compute()) return;
 
