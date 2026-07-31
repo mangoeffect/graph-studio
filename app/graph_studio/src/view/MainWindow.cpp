@@ -22,6 +22,7 @@
 #include <QTimer>
 #include <QScrollArea>
 #include <QPainter>
+#include <QPixmap>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QMessageBox>
@@ -288,6 +289,13 @@ void MainWindow::ConnectSignals()
     connect(&vm_, &GraphViewModel::executionStarted, this, &MainWindow::onExecutionStarted);
     connect(&vm_, &GraphViewModel::executionFinished, this, &MainWindow::onExecutionFinished);
     connect(&vm_, &GraphViewModel::executingChanged, this, &MainWindow::onExecutingChanged);
+
+    // 图像结果：执行完成且采集到图像后，填充下拉框并默认显示
+    connect(&vm_, &GraphViewModel::imageResultsReady, this, &MainWindow::onImageResultsReady);
+    if (resultSelector_) {
+        connect(resultSelector_, qOverload<int>(&QComboBox::currentIndexChanged),
+                this, &MainWindow::onResultSelectorChanged);
+    }
 }
 
 void MainWindow::CreateMenuBar()
@@ -465,6 +473,12 @@ QWidget* MainWindow::CreateImageResultPanel()
     header->setFont(font);
     header->setStyleSheet("padding: 4px;");
     layout->addWidget(header);
+
+    // 节点结果选择下拉框：执行后填充，按 "nodeId:port" 粒度
+    resultSelector_ = new QComboBox();
+    resultSelector_->setPlaceholderText(QStringLiteral("No results"));
+    resultSelector_->setEnabled(false);
+    layout->addWidget(resultSelector_);
 
     auto* scrollArea = new QScrollArea();
     scrollArea->setWidgetResizable(true);
@@ -684,6 +698,15 @@ void MainWindow::onLogMessage(const QString& msg)
 void MainWindow::onSelectionChangedVm(const QString& nodeId)
 {
     UpdatePropertyPanel(nodeId);
+    // 联动图像面板：若选中节点有图像结果，自动切换下拉框显示它
+    if (resultSelector_ && !nodeId.isEmpty()) {
+        for (int i = 0; i < resultSelector_->count(); ++i) {
+            if (resultSelector_->itemData(i).toString().section(':', 0, 0) == nodeId) {
+                resultSelector_->setCurrentIndex(i);  // 触发 onResultSelectorChanged
+                break;
+            }
+        }
+    }
 }
 
 // ---- Scene signal handlers ----
@@ -1127,6 +1150,17 @@ void MainWindow::onExecutionStarted()
     }
     if (outputWidget_)
         outputWidget_->setPlainText("Executing...");
+    // 清空上一轮图像结果面板
+    if (resultSelector_) {
+        resultSelector_->blockSignals(true);
+        resultSelector_->clear();
+        resultSelector_->setEnabled(false);
+        resultSelector_->blockSignals(false);
+    }
+    if (imageResultLabel_) {
+        imageResultLabel_->setPixmap(QPixmap());
+        imageResultLabel_->setText("Running...");
+    }
     UpdateRunActions();
 }
 
@@ -1140,6 +1174,83 @@ void MainWindow::onExecutionFinished()
 void MainWindow::onExecutingChanged()
 {
     UpdateRunActions();
+}
+
+void MainWindow::onImageResultsReady(const QStringList& keys)
+{
+    RebuildResultSelector(keys);
+}
+
+void MainWindow::onResultSelectorChanged(int index)
+{
+    if (!resultSelector_ || index < 0) return;
+    QString key = resultSelector_->itemData(index).toString();
+    ShowResultImage(key);
+}
+
+void MainWindow::RebuildResultSelector(const QStringList& keys)
+{
+    if (!resultSelector_) return;
+    resultSelector_->blockSignals(true);
+    resultSelector_->clear();
+    // 按 nodeId 分组：单图像端口的节点显示 "nodeId (type)"，多端口显示 "nodeId:port (type)"
+    QHash<QString, int> countByNode;
+    for (const auto& k : keys) countByNode[k.section(':', 0, 0)]++;
+    for (const auto& k : keys) {
+        QString nodeId = k.section(':', 0, 0);
+        QString port = k.section(':', 1);
+        QString type = vm_.hasNode(nodeId) ? vm_.nodeData(nodeId).type : nodeId;
+        QString label = (countByNode.value(nodeId, 0) == 1)
+                            ? QStringLiteral("%1 (%2)").arg(nodeId, type)
+                            : QStringLiteral("%1:%2 (%3)").arg(nodeId, port, type);
+        resultSelector_->addItem(label, k);
+    }
+    resultSelector_->setEnabled(!keys.isEmpty());
+
+    // 默认选中：选中节点优先，否则第一个
+    int defaultIdx = 0;
+    QString selId = vm_.selectedNodeId();
+    if (!selId.isEmpty() && resultSelector_->count() > 0) {
+        for (int i = 0; i < resultSelector_->count(); ++i) {
+            if (resultSelector_->itemData(i).toString().section(':', 0, 0) == selId) {
+                defaultIdx = i;
+                break;
+            }
+        }
+    }
+    resultSelector_->setCurrentIndex(defaultIdx);
+    resultSelector_->blockSignals(false);
+    // blockSignals 期间未触发 currentIndexChanged，手动显示默认
+    ShowResultImage(resultSelector_->count() > 0
+                        ? resultSelector_->itemData(defaultIdx).toString()
+                        : QString());
+}
+
+void MainWindow::ShowResultImage(const QString& key)
+{
+    if (!imageResultLabel_) return;
+    if (key.isEmpty()) {
+        imageResultLabel_->setPixmap(QPixmap());
+        imageResultLabel_->setText("No image");
+        return;
+    }
+    QImage img = vm_.imageResult(key);
+    if (img.isNull()) {
+        imageResultLabel_->setPixmap(QPixmap());
+        imageResultLabel_->setText("No image");
+        return;
+    }
+    QPixmap pm = QPixmap::fromImage(img);
+    // 缩放适应面板宽度，保持比例；小图原样显示
+    int availW = imageResultLabel_->parentWidget()
+                     ? imageResultLabel_->parentWidget()->width()
+                     : imageResultLabel_->width();
+    if (availW < 50) availW = 300;
+    if (pm.width() > availW) {
+        pm = pm.scaledToWidth(availW, Qt::SmoothTransformation);
+    }
+    imageResultLabel_->setText(QString());
+    imageResultLabel_->setPixmap(pm);
 }
 
 void MainWindow::keyPressEvent(QKeyEvent* event)

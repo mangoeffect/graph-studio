@@ -9,6 +9,7 @@
 #include <QVariantMap>
 #include <QVariantList>
 #include <QPointF>
+#include <QImage>
 
 #include <memory>
 
@@ -81,6 +82,11 @@ public:
     Q_INVOKABLE void execute();
     Q_INVOKABLE void stop();
 
+    // 执行后的图像结果查询。key 格式 "nodeId:port"（单输出端口名为 "out"）。
+    // 仅在 finishExecution 后填充；执行前/失败节点不产生条目。
+    QStringList imageResultKeys() const;
+    QImage imageResult(const QString& key) const;
+
 signals:
     void taskAdded(const NodeData& node);
     void taskRemoved(const QString& taskId);
@@ -97,6 +103,8 @@ signals:
     void executionStarted();
     void executionFinished();
     void executingChanged();
+    // 执行完成且采集到图像结果时发出，keys 为 imageResultKeys 的快照。
+    void imageResultsReady(QStringList keys);
 
 private:
     QString generateUniqueId(const QString& taskType) const;
@@ -114,6 +122,11 @@ private:
 
     std::unique_ptr<task_graph::DAGExecutor> executor_;
     bool executing_ = false;
+
+    // 执行后采集的图像结果缓存：key="nodeId:port" -> QImage(零拷贝共享源像素)。
+    // QImage 通过 cleanup function 持有源 cv::Mat/shared_ptr 的引用计数，
+    // 析构时自动释放，无需手动管理生命周期。
+    QHash<QString, QImage> imageResults_;
 };
 
 } // namespace graph_studio

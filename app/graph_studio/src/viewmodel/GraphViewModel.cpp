@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <task_graph_api.hpp>
 #include <nlohmann/json.hpp>
+#include <opencv2/opencv.hpp>
 
 using namespace graph_studio;
 
@@ -110,7 +111,75 @@ void applyVariantToParams(const QString& key, const QVariant& value,
         case task_graph::ParamType::Bool:
             out.set_bool(k, value.toBool()); break;
     }
+    }
+}  // namespace
+
+// ---- 零拷贝图像转换：cv::Mat / task_graph::Image -> QImage ----
+// QImage 通过 cleanup function 持有源数据的引用计数，直接共享像素缓冲，
+// 析构时回调释放源对象，避免 QImage::copy() 二次拷贝。
+namespace {
+
+void matCleanup(void* info) {
+    delete static_cast<cv::Mat*>(info);
 }
+
+QImage matToQImage(const cv::Mat& src) {
+    if (src.empty()) return {};
+    cv::Mat mat = src;  // refcount++，共享像素缓冲
+    QImage::Format fmt = QImage::Format_Invalid;
+    switch (mat.channels()) {
+        case 1:  fmt = QImage::Format_Grayscale8; break;   // 灰度(Sobel/Laplacian)
+        case 3:  fmt = QImage::Format_BGR888;      break;  // BGR 直接映射，零拷贝
+        case 4: {                                          // BGRA：Qt 无 BGRA8888 格式
+            cv::Mat t;
+            cv::cvtColor(mat, t, cv::COLOR_BGRA2RGBA);
+            mat = t;
+            fmt = QImage::Format_RGBA8888;
+            break;
+        }
+        default: return {};
+    }
+    // keep 持 Mat 引用计数；QImage 析构时 delete keep，refcount 归零才释放像素
+    auto* keep = new cv::Mat(mat);
+    return QImage(keep->data, keep->cols, keep->rows, keep->step,
+                  fmt, matCleanup, keep);
+}
+
+void imageDataCleanup(void* info) {
+    delete static_cast<std::shared_ptr<std::vector<uint8_t>>*>(info);
+}
+
+QImage imageToQImage(const task_graph::Image& src) {
+    // 拷贝 Image 结构体（浅拷贝，共享 data 的 shared_ptr）；ensure_cpu 可能改状态，隔离之
+    task_graph::Image img = src;
+    if (!img.ensure_cpu() || !img.data || img.data->empty()) return {};
+    QImage::Format fmt = QImage::Format_Invalid;
+    switch (img.channels) {
+        case 1: fmt = QImage::Format_Grayscale8; break;
+        case 3: fmt = (img.pixel_format == task_graph::PixelFormat::BGR)
+                          ? QImage::Format_BGR888 : QImage::Format_RGB888; break;
+        case 4: fmt = QImage::Format_RGBA8888; break;
+        default: return {};
+    }
+    // keep 持 shared_ptr<vector<uint8_t>> 引用计数，QImage 析构时释放
+    auto* keep = new std::shared_ptr<std::vector<uint8_t>>(img.data);
+    return QImage(keep->get()->data(), img.width, img.height,
+                  img.width * img.channels, fmt, imageDataCleanup, keep);
+}
+
+// 从 std::any 提取图像转 QImage。type-check-first：WASM -fno-exceptions 下
+// any_cast 失败会 abort，必须先用 type() 比对。
+std::optional<QImage> anyToQImage(const std::any& v) {
+    if (!v.has_value()) return std::nullopt;
+    if (v.type() == typeid(cv::Mat)) {
+        return matToQImage(std::any_cast<cv::Mat>(v));
+    }
+    if (v.type() == typeid(task_graph::Image)) {
+        return imageToQImage(std::any_cast<task_graph::Image>(v));
+    }
+    return std::nullopt;
+}
+
 }  // namespace
 
 GraphViewModel::GraphViewModel(GraphModel& model, QObject* parent)
@@ -674,6 +743,8 @@ void GraphViewModel::finishExecution()
     if (!executing_) return;
 
     int completed = 0, failed = 0;
+    imageResults_.clear();  // 清空上一轮结果
+    QStringList imageKeys;
     if (executor_) {
         const auto results = executor_->get_results();
         for (const auto& [id, result] : results) {
@@ -685,6 +756,24 @@ void GraphViewModel::finishExecution()
                                 .arg(ok ? "OK" : "FAIL")
                                 .arg(QString::fromStdString(id))
                                 .arg(ms, 0, 'f', 2));
+
+            // 采集图像结果：多输出节点按端口，单输出(value)按 "out"
+            if (ok) {
+                const QString qid = QString::fromStdString(id);
+                if (!result.outputs.empty()) {
+                    for (const auto& [port, anyVal] : result.outputs) {
+                        if (auto img = anyToQImage(anyVal)) {
+                            QString key = qid + ":" + QString::fromStdString(port);
+                            imageResults_[key] = std::move(*img);
+                            imageKeys.append(key);
+                        }
+                    }
+                } else if (auto img = anyToQImage(result.value)) {
+                    QString key = qid + ":out";
+                    imageResults_[key] = std::move(*img);
+                    imageKeys.append(key);
+                }
+            }
         }
     }
     emit logMessage(QStringLiteral("[INFO] Execution finished: %1 ok, %2 failed")
@@ -694,6 +783,10 @@ void GraphViewModel::finishExecution()
     executing_ = false;
     emit executingChanged();
     emit executionFinished();
+
+    if (!imageKeys.isEmpty()) {
+        emit imageResultsReady(imageKeys);
+    }
 }
 
 bool GraphViewModel::canReach(const QString& from, const QString& to) const
@@ -717,4 +810,15 @@ bool GraphViewModel::canReach(const QString& from, const QString& to) const
         }
     }
     return false;
+}
+
+QStringList GraphViewModel::imageResultKeys() const
+{
+    return imageResults_.keys();
+}
+
+QImage GraphViewModel::imageResult(const QString& key) const
+{
+    auto it = imageResults_.constFind(key);
+    return it != imageResults_.end() ? it.value() : QImage();
 }

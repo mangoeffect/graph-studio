@@ -42,6 +42,13 @@ endif()
 find_package(Qt6 REQUIRED COMPONENTS ${QT_COMPONENTS})
 qt_standard_project_setup()
 
+# 桌面端显式链接 OpenCV：UI 层需直接 any_cast<cv::Mat> 并做零拷贝 QImage 转换。
+# WASM 端在文件末尾的 EMSCRIPTEN 块已条件链接，此处不重复。
+if(NOT EMSCRIPTEN)
+    find_package(OpenCV REQUIRED COMPONENTS core imgproc)
+    include_directories(${OpenCV_INCLUDE_DIRS})
+endif()
+
 set(PROJECT_HEADERS
     include/model/GraphModel.h
     include/viewmodel/GraphViewModel.h
@@ -104,6 +111,10 @@ target_link_libraries(graph_studio PRIVATE
     Qt6::Widgets
     task_graph
 )
+# 桌面端显式链接 OpenCV（WASM 在末尾 EMSCRIPTEN 块条件链接）
+if(NOT EMSCRIPTEN)
+    target_link_libraries(graph_studio PRIVATE ${OpenCV_LIBS})
+endif()
 
 # macOS 部署配置（非 WASM）
 if(APPLE AND NOT EMSCRIPTEN)
@@ -125,7 +136,7 @@ qt_add_executable(test_graph_view_model
     src/model/GraphModel.cpp
     src/viewmodel/GraphViewModel.cpp
 )
-target_link_libraries(test_graph_view_model PRIVATE Qt6::Test task_graph)
+target_link_libraries(test_graph_view_model PRIVATE Qt6::Test Qt6::Gui task_graph ${OpenCV_LIBS})
 add_test(NAME test_graph_view_model COMMAND test_graph_view_model)
 
 # CommandStack 单元测试
@@ -138,7 +149,7 @@ qt_add_executable(test_command_stack
     src/viewmodel/GraphViewModel.cpp
     src/command/CommandStack.cpp
 )
-target_link_libraries(test_command_stack PRIVATE Qt6::Test task_graph)
+target_link_libraries(test_command_stack PRIVATE Qt6::Test Qt6::Gui task_graph ${OpenCV_LIBS})
 add_test(NAME test_command_stack COMMAND test_command_stack)
 
 # 集成测试
@@ -151,7 +162,7 @@ qt_add_executable(test_integration
     src/viewmodel/GraphViewModel.cpp
     src/command/CommandStack.cpp
 )
-target_link_libraries(test_integration PRIVATE Qt6::Test task_graph)
+target_link_libraries(test_integration PRIVATE Qt6::Test Qt6::Gui task_graph ${OpenCV_LIBS})
 add_test(NAME test_integration COMMAND test_integration)
 
 # GUI 集成测试：用 QApplication 实例化 MainWindow，QTest 驱动鼠标/键盘，
@@ -176,7 +187,7 @@ qt_add_executable(test_gui
     src/view/NodeItem.cpp
     src/view/EdgeItem.cpp
 )
-target_link_libraries(test_gui PRIVATE Qt6::Widgets Qt6::Test task_graph)
+target_link_libraries(test_gui PRIVATE Qt6::Widgets Qt6::Test Qt6::Gui task_graph ${OpenCV_LIBS})
 add_test(NAME test_gui COMMAND test_gui)
 endif()
 

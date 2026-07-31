@@ -13,6 +13,7 @@
 #include <QLineEdit>
 #include <QHash>
 #include <QMimeData>
+#include <QComboBox>
 
 #include "view/GraphView.h"
 #include "viewmodel/GraphViewModel.h"
@@ -77,6 +78,10 @@ private slots:
     void onExecutionFinished();
     void onExecutingChanged();
 
+    // 图像结果面板：执行后采集到的各节点图像结果
+    void onImageResultsReady(const QStringList& keys);
+    void onResultSelectorChanged(int index);
+
 private:
     void InitializeLayout();
     void ApplyDarkTheme();
@@ -118,6 +123,10 @@ private:
     void UpdateUndoRedoActions();
     void UpdateRunActions();
 
+    // 图像结果面板：根据当前下拉选中显示对应 QImage；填充下拉列表
+    void ShowResultImage(const QString& key);
+    void RebuildResultSelector(const QStringList& keys);
+
     GraphViewModel& vm_;
     QSplitter* mainSplitter_ = nullptr;
     QSplitter* topSplitter_ = nullptr;
@@ -129,6 +138,7 @@ private:
 
     TaskListWidget* taskList_ = nullptr;
     QLabel* imageResultLabel_ = nullptr;
+    QComboBox* resultSelector_ = nullptr;
     QFormLayout* nodePropertyLayout_ = nullptr;
     QGroupBox* nodePropertyGroup_ = nullptr;
     // 动态参数表单：选中节点时按 paramSpecs 重建控件
