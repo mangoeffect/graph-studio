@@ -59,7 +59,6 @@ MainWindow::MainWindow(GraphViewModel& vm, QWidget* parent)
     tryAddTask("file_input", -300, -50);
     tryAddTask("opencv_blur_filter", -50, -50);
     tryAddTask("opencv_sobel_filter", 200, -100);
-    tryAddTask("data_processor", 200, 100);
     tryAddTask("display", 450, -50);
     tryAddTask("save_image", 200, 100);
     vm_.addEdge("file_input", "opencv_blur_filter");

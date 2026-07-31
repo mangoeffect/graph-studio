@@ -127,7 +127,7 @@ build_abi() {
     cmake --build "${build_dir}" --target task_graph -j "${JOBS}"
 
     # 构建子模块（Metal 不可用，gpu_image_processing 自动跳过）
-    local submodules=(task1 task2 task_processor)
+    local submodules=()
     [[ "${OPENCV_AVAILABLE}" -eq 1 ]] && submodules+=(image_filtering image_reader)
 
     for sub in "${submodules[@]}"; do
@@ -150,7 +150,7 @@ merge_static_libs() {
     mkdir -p "${dist_dir}"
 
     local libs=("${build_dir}/libtask_graph.a")
-    for sub in task1 task2 task_processor image_filtering image_reader; do
+    for sub in image_filtering image_reader; do
         local lib="${build_dir}/lib${sub}.a"
         [[ -f "${lib}" ]] && libs+=("${lib}")
     done

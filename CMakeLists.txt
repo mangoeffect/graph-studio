@@ -181,11 +181,7 @@ add_tg_test(test_profiler)
 add_tg_test(test_type_registry)
 add_tg_test(test_logger)
 
-# test_plugin 合并了 subnode 内置插件测试，需链接子模块 + filesystem
 add_tg_test(test_plugin)
-if(UNIX AND NOT APPLE AND NOT EMSCRIPTEN)
-    target_link_libraries(test_plugin PRIVATE stdc++fs)
-endif()
 
 if(TASK_GRAPH_ENABLE_OPENCV)
     add_executable(test_opencv_convert tests/test_opencv_convert.cpp)
@@ -204,25 +200,8 @@ target_link_libraries(example_basic PRIVATE task_graph)
 add_executable(example_parallel examples/parallel.cpp)
 target_link_libraries(example_parallel PRIVATE task_graph)
 
-add_executable(example_plugin examples/plugin.cpp)
-target_link_libraries(example_plugin PRIVATE task_graph)
-
 add_executable(example_multi_output examples/multi_output.cpp)
 target_link_libraries(example_multi_output PRIVATE task_graph)
-
-# ============================================================
-# 示例插件动态库
-# ============================================================
-add_library(task_plugin_example MODULE plugins/example_plugin.cpp)
-target_include_directories(task_plugin_example PRIVATE ${PROJECT_SOURCE_DIR}/include)
-target_link_libraries(task_plugin_example PRIVATE task_graph)
-set_target_properties(task_plugin_example PROPERTIES PREFIX "" SUFFIX ".so")
-if(APPLE)
-    set_target_properties(task_plugin_example PROPERTIES SUFFIX ".dylib")
-endif()
-if(WIN32)
-    set_target_properties(task_plugin_example PROPERTIES SUFFIX ".dll")
-endif()
 
 endif() # NOT TASK_GRAPH_MOBILE
 
@@ -235,13 +214,7 @@ foreach(submodule ${SUBMODULES})
     add_subnode_module(${submodule})
 endforeach()
 
-# test_plugin 依赖 subnode 内置插件（task1/task2/task_processor）
 if(NOT TASK_GRAPH_MOBILE)
-foreach(submodule ${SUBMODULES})
-    if(TARGET ${submodule})
-        target_link_libraries(test_plugin PRIVATE ${submodule})
-    endif()
-endforeach()
 
 # test_gpu_image 需要 GPU subnode 的 task 注册（Metal compute 端到端测试）
 if(TASK_GRAPH_ENABLE_METAL AND TARGET gpu_image_processing)

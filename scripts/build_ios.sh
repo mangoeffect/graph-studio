@@ -144,7 +144,7 @@ build_slice() {
     cmake --build "${build_dir}" --target task_graph -j "${JOBS}"
 
     # 构建子模块
-    local submodules=(task1 task2 task_processor)
+    local submodules=()
     [[ "${OPENCV_AVAILABLE}" -eq 1 ]] && submodules+=(image_filtering image_reader)
     [[ "${NO_METAL}" -eq 0 ]] && submodules+=(gpu_image_processing)
 
@@ -170,7 +170,7 @@ merge_static_libs() {
     local output="${build_dir}/libtask_graph_full.a"
     local libs=("${build_dir}/libtask_graph.a")
 
-    for sub in task1 task2 task_processor image_filtering image_reader gpu_image_processing; do
+    for sub in image_filtering image_reader gpu_image_processing; do
         local lib="${build_dir}/lib${sub}.a"
         [[ -f "${lib}" ]] && libs+=("${lib}")
     done

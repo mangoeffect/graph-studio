@@ -1,14 +1,11 @@
-﻿// 插件系统测试。合并自 test_plugin.cpp、test_subnode.cpp、test_task_type_id.cpp。
-// 覆盖：registry 注册/注销、动态库 loader、唯一 ID 生成、TaskManager 生命周期、
-//       同类型多实例、type/id 分离、subnode 内置插件可用性与 DAG 执行。
+﻿// 插件系统测试。覆盖：registry 注册/注销、唯一 ID 生成、TaskManager 生命周期、
+// 同类型多实例、type/id 分离。
 #include <task_graph/task_graph.hpp>
 #include <task_graph/plugin.hpp>
 #include <task_graph/task_manager.hpp>
 #include <task_graph/task_context.hpp>
 #include <task_graph/dag_serializer.hpp>
-#include <filesystem>
 #include <set>
-#include <algorithm>
 #include <string>
 #include "test_util.hpp"
 
@@ -25,13 +22,6 @@ public:
         return TaskResult{.status = TaskStatus::COMPLETED};
     }
 };
-
-static std::filesystem::path find_example_plugin() {
-    auto p = std::filesystem::current_path() / "task_plugin_example.dylib";
-    if (!std::filesystem::exists(p))
-        p = std::filesystem::current_path() / "task_plugin_example.so";
-    return p;
-}
 
 // ============================================================
 // registry / 唯一 ID / TaskManager
@@ -146,81 +136,6 @@ TEST_CASE(json_id_only_backward_compat) {
     DAG dag = DAGSerializer::from_string(json);
     auto s = dag.get_task("simple");
     EXPECT_TRUE(s->type() == s->id());
-}
-
-// ============================================================
-// subnode 内置插件（task1/task2/task_processor 编译期链接，进程启动时经
-// __attribute__((constructor)) 注册）。
-// 注意：这些测试必须在 loader 测试之前运行——loadable example plugin 与
-// subnode 内置插件共用相同的 task 名（example_task_1/2、data_processor），
-// loader.unload() 会 unregister 这些名字，破坏后续依赖内置注册的用例。
-// ============================================================
-
-TEST_CASE(subnode_tasks_available) {
-    auto avail = PluginRegistry::instance().available_tasks();
-    auto has = [&](const std::string& n) {
-        return std::find(avail.begin(), avail.end(), n) != avail.end();
-    };
-    EXPECT_TRUE(has("example_task_1"));
-    EXPECT_TRUE(has("example_task_2"));
-    EXPECT_TRUE(has("data_processor"));
-}
-
-TEST_CASE(subnode_dag_execution) {
-    DAG dag;
-    dag.add_plugin_task("example_task_1", "example_task_1");
-    dag.add_plugin_task("example_task_2", "example_task_2");
-    dag.add_plugin_task("data_processor", "data_processor");
-    dag.connect("example_task_1", "out", "data_processor", "a");
-    dag.connect("example_task_2", "out", "data_processor", "b");
-
-    DAGExecutor executor;
-    executor.execute(dag).wait();
-    auto results = executor.get_results();
-    EXPECT_EQ(results.size(), size_t(3));
-    EXPECT_TRUE(results["example_task_1"].is_success());
-    EXPECT_TRUE(results["example_task_2"].is_success());
-    EXPECT_TRUE(results["data_processor"].is_success());
-}
-
-// ============================================================
-// 动态库 loader（依赖 task_plugin_example，缺失则跳过）。
-// 放在最后：unload() 会 unregister 与 subnode 共名的 task。
-// ============================================================
-
-TEST_CASE(plugin_loader_load_unload) {
-    auto path = find_example_plugin();
-    if (!std::filesystem::exists(path)) {
-        std::cout << "         (skipped: plugin not found)\n";
-        return;
-    }
-    PluginLoader loader;
-    EXPECT_TRUE(loader.load(path.string()));
-    EXPECT_TRUE(PluginRegistry::instance().has_task("example_task_1"));
-    loader.unload(path.string());
-}
-
-TEST_CASE(dag_with_loaded_plugin) {
-    auto path = find_example_plugin();
-    if (!std::filesystem::exists(path)) {
-        std::cout << "         (skipped: plugin not found)\n";
-        return;
-    }
-    PluginLoader loader;
-    EXPECT_TRUE(loader.load(path.string()));
-
-    DAG dag;
-    dag.add_plugin_task("example_task_1", "example_task_1");
-    dag.add_plugin_task("data_processor", "data_processor");
-    dag.connect("example_task_1", "out", "data_processor", "in");
-
-    DAGExecutor executor;
-    executor.execute(dag).wait();
-    auto results = executor.get_results();
-    EXPECT_EQ(results.size(), size_t(2));
-    EXPECT_TRUE(results["example_task_1"].is_success());
-
-    loader.unload(path.string());
 }
 
 TEST_MAIN("Plugin Tests")

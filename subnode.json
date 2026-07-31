@@ -2,33 +2,6 @@
   "version": "1.0",
   "submodules": [
     {
-      "name": "task1",
-      "url": "./submodules/task1",
-      "ref": "main",
-      "type": "local",
-      "tasks": [
-        "example_task_1"
-      ]
-    },
-    {
-      "name": "task2",
-      "url": "./submodules/task2",
-      "ref": "main",
-      "type": "local",
-      "tasks": [
-        "example_task_2"
-      ]
-    },
-    {
-      "name": "task_processor",
-      "url": "./submodules/task_processor",
-      "ref": "main",
-      "type": "local",
-      "tasks": [
-        "data_processor"
-      ]
-    },
-    {
       "name": "image_filtering",
       "url": "./submodules/opencv/image_processing/image_filtering",
       "ref": "main",
