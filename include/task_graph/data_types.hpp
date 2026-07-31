@@ -45,9 +45,12 @@ enum class MemoryLocation {
     BOTH = 2
 };
 
+class GpuBuffer;
+
 struct Image {
     std::shared_ptr<std::vector<uint8_t>> data;
     uintptr_t gpu_handle{0};
+    std::shared_ptr<GpuBuffer> gpu_buffer;
     int width{0};
     int height{0};
     int channels{0};

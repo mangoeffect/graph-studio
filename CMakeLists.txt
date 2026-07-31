@@ -84,11 +84,16 @@ if(TASK_GRAPH_ENABLE_METAL AND APPLE)
     target_sources(task_graph PRIVATE
         src/gpu_backends/metal_backend.mm
     )
+    set_source_files_properties(src/gpu_backends/metal_backend.mm PROPERTIES
+        COMPILE_FLAGS "-fobjc-arc"
+    )
     find_library(METAL_FRAMEWORK Metal)
     find_library(CORE_FOUNDATION_FRAMEWORK CoreFoundation)
+    find_library(FOUNDATION_FRAMEWORK Foundation)
     target_link_libraries(task_graph PUBLIC
         ${METAL_FRAMEWORK}
         ${CORE_FOUNDATION_FRAMEWORK}
+        ${FOUNDATION_FRAMEWORK}
     )
 endif()
 

@@ -1,4 +1,5 @@
 ﻿#include <task_graph/gpu_image_ops.hpp>
+#include <task_graph/gpu_buffer.hpp>
 #include <mutex>
 #include <stdexcept>
 
@@ -79,6 +80,8 @@ bool to_gpu(Image& image) {
     }
 
     if (backend->upload_to_gpu(image)) {
+        image.gpu_buffer = std::make_shared<GpuBuffer>(
+            image.gpu_handle, image.total_size(), backend);
         image.location = MemoryLocation::BOTH;
         return true;
     }
