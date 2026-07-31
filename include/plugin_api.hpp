@@ -153,12 +153,12 @@ class TaskContext;
 
 using ExecutionContextPtr = std::shared_ptr<IExecutionContext>;
 
-class IPluginTask {
+class INode {
 public:
-    IPluginTask(const std::string& id, const TaskConfig& config = TaskConfig())
+    INode(const std::string& id, const TaskConfig& config = TaskConfig())
         : id_(id), config_(config) {}
 
-    virtual ~IPluginTask() noexcept = default;
+    virtual ~INode() noexcept = default;
 
     const std::string& id() const { return id_; }
     virtual const std::string& type() const = 0;
@@ -203,22 +203,25 @@ private:
     std::atomic<bool> initialized_{false};
 };
 
-using PluginTaskPtr = std::shared_ptr<IPluginTask>;
+using NodePtr = std::shared_ptr<INode>;
+// 向后兼容别名
+using IPluginTask = INode;
+using PluginTaskPtr = NodePtr;
 
 class IPluginRegistry {
 public:
     virtual ~IPluginRegistry() = default;
 
     virtual void register_task(const std::string& task_type,
-                               std::function<PluginTaskPtr(const std::string&, const TaskConfig&)> creator) = 0;
+                               std::function<NodePtr(const std::string&, const TaskConfig&)> creator) = 0;
 
     virtual void unregister_task(const std::string& task_type) = 0;
 
     virtual bool has_task(const std::string& task_type) const = 0;
 
-    virtual PluginTaskPtr create_task(const std::string& task_type) const = 0;
-    virtual PluginTaskPtr create_task(const std::string& task_type, const TaskConfig& config) const = 0;
-    virtual PluginTaskPtr create_task(const std::string& task_id, const std::string& task_type, const TaskConfig& config) const = 0;
+    virtual NodePtr create_task(const std::string& task_type) const = 0;
+    virtual NodePtr create_task(const std::string& task_type, const TaskConfig& config) const = 0;
+    virtual NodePtr create_task(const std::string& task_id, const std::string& task_type, const TaskConfig& config) const = 0;
 
     virtual std::vector<std::string> available_tasks() const = 0;
 };
@@ -228,15 +231,15 @@ public:
     static PluginRegistry& instance();
 
     void register_task(const std::string& task_type,
-                       std::function<PluginTaskPtr(const std::string&, const TaskConfig&)> creator) override;
+                       std::function<NodePtr(const std::string&, const TaskConfig&)> creator) override;
 
     void unregister_task(const std::string& task_type) override;
 
     bool has_task(const std::string& task_type) const override;
 
-    PluginTaskPtr create_task(const std::string& task_type) const override;
-    PluginTaskPtr create_task(const std::string& task_type, const TaskConfig& config) const override;
-    PluginTaskPtr create_task(const std::string& task_id, const std::string& task_type, const TaskConfig& config) const override;
+    NodePtr create_task(const std::string& task_type) const override;
+    NodePtr create_task(const std::string& task_type, const TaskConfig& config) const override;
+    NodePtr create_task(const std::string& task_id, const std::string& task_type, const TaskConfig& config) const override;
 
     std::vector<std::string> available_tasks() const override;
 

@@ -11,7 +11,7 @@ namespace task_graph {
 // 子类只需声明 type()、execute()（调 run_gpu_op）和 param_specs()。
 class GpuImageTaskBase : public IPluginTask {
 public:
-    using IPluginTask::IPluginTask;
+    using INode::INode;
 
     std::vector<PortSpec> input_specs() const override;
     std::vector<PortSpec> output_specs() const override;

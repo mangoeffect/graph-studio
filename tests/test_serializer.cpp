@@ -19,7 +19,7 @@ static TaskPtr noop(const std::string& id, TaskConfig cfg = {}) {
 // 声明 specs 的任务，验证 specs 落盘
 class ImageProducer : public Task {
 public:
-    ImageProducer(const std::string& id) : Task(id, [](auto&) {
+    ImageProducer(const std::string& id) : LambdaNode(id, [](auto&) {
         return TaskResult{.status = TaskStatus::COMPLETED};
     }) {}
     std::vector<PortSpec> output_specs() const override {
@@ -29,7 +29,7 @@ public:
 
 class DualInputTask : public Task {
 public:
-    DualInputTask(const std::string& id) : Task(id, [](auto&) {
+    DualInputTask(const std::string& id) : LambdaNode(id, [](auto&) {
         return TaskResult{.status = TaskStatus::COMPLETED};
     }) {}
     std::vector<PortSpec> input_specs() const override {

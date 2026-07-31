@@ -11,7 +11,7 @@ namespace task_graph {
 
 class ExamplePluginTask : public IPluginTask {
 public:
-    using IPluginTask::IPluginTask;
+    using INode::INode;
 
     const std::string& type() const override {
         static std::string type = "example_plugin_task";
@@ -28,7 +28,7 @@ public:
 // 跨 task 数据通过 TaskResult.value 流转；不再用 set_value 误导跨 task 黑板。
 class DataProcessorTask : public IPluginTask {
 public:
-    using IPluginTask::IPluginTask;
+    using INode::INode;
 
     const std::string& type() const override {
         static std::string type = "data_processor";

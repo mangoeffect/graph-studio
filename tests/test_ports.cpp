@@ -29,7 +29,7 @@ using namespace task_graph;
 // 声明两个必填 int 输入端口 "a"/"b"，输出 a+b
 class SumTask : public Task {
 public:
-    SumTask(const std::string& id) : Task(id, [this](auto& ctx) { return run(ctx); }) {}
+    SumTask(const std::string& id) : LambdaNode(id, [this](auto& ctx) { return run(ctx); }) {}
     std::vector<PortSpec> input_specs() const override {
         return {make_port<int>("a"), make_port<int>("b")};
     }
@@ -44,7 +44,7 @@ private:
 
 class ImageProducer : public Task {
 public:
-    ImageProducer(const std::string& id) : Task(id, [](auto&) {
+    ImageProducer(const std::string& id) : LambdaNode(id, [](auto&) {
         return TaskResult{.status = TaskStatus::COMPLETED};
     }) {}
     std::vector<PortSpec> output_specs() const override {
@@ -54,7 +54,7 @@ public:
 
 class ImageConsumer : public Task {
 public:
-    ImageConsumer(const std::string& id) : Task(id, [](auto&) {
+    ImageConsumer(const std::string& id) : LambdaNode(id, [](auto&) {
         return TaskResult{.status = TaskStatus::COMPLETED};
     }) {}
     std::vector<PortSpec> input_specs() const override {
@@ -64,7 +64,7 @@ public:
 
 class IntConsumer : public Task {
 public:
-    IntConsumer(const std::string& id) : Task(id, [](auto&) {
+    IntConsumer(const std::string& id) : LambdaNode(id, [](auto&) {
         return TaskResult{.status = TaskStatus::COMPLETED};
     }) {}
     std::vector<PortSpec> input_specs() const override {

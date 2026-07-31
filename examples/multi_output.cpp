@@ -10,7 +10,7 @@
 class DetectorTask : public task_graph::Task {
 public:
     DetectorTask(const std::string& id)
-        : Task(id, [](task_graph::TaskContext& ctx) {
+        : LambdaNode(id, [](task_graph::TaskContext& ctx) {
             (void)ctx;
             task_graph::Image img(640, 480, 3);
             task_graph::Image mask(640, 480, 1);
@@ -34,7 +34,7 @@ public:
 class AnnotatorTask : public task_graph::Task {
 public:
     AnnotatorTask(const std::string& id)
-        : Task(id, [](task_graph::TaskContext& ctx) {
+        : LambdaNode(id, [](task_graph::TaskContext& ctx) {
             auto in = ctx.input<task_graph::Image>("in");
             if (!in) return task_graph::TaskResult{.status = task_graph::TaskStatus::FAILED};
             return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED,
@@ -53,7 +53,7 @@ public:
 class StatsTask : public task_graph::Task {
 public:
     StatsTask(const std::string& id)
-        : Task(id, [](task_graph::TaskContext& ctx) {
+        : LambdaNode(id, [](task_graph::TaskContext& ctx) {
             auto in = ctx.input<task_graph::Image>("in");
             if (!in) return task_graph::TaskResult{.status = task_graph::TaskStatus::FAILED};
             return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED,

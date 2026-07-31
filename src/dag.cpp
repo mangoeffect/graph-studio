@@ -45,77 +45,43 @@ void DAG::add_task(const std::string& id, TaskPtr task) {
 }
 
 // 添加插件任务（自动生成唯一 ID）
-// 通过 PluginRegistry 按 task_type 创建实例，并包装为框架内部 Task 加入 DAG
+// 通过 PluginRegistry 按 task_type 创建 INode 实例，直接加入 DAG（无包装器）
 void DAG::add_plugin_task(const std::string& task_type) {
     TG_LOG_DEBUG("Adding plugin task type '" + task_type + "' to DAG");
 
-    auto plugin_task = PluginRegistry::instance().create_task(task_type);
-    if (!plugin_task) {
+    auto node = PluginRegistry::instance().create_task(task_type);
+    if (!node) {
         TG_LOG_ERROR("Plugin task type '" + task_type + "' not found in registry");
         throw std::runtime_error("Plugin task type '" + task_type + "' not found in registry");
     }
 
-    // 包装为 Task，但保留 plugin_task 的 specs（通过共享所有权传递给 Task 的 spec 委托）
-    auto plugin_ptr = std::shared_ptr<IPluginTask>(plugin_task);
-    auto task = std::make_shared<Task>(
-        plugin_task->id(),
-        plugin_task->type(),
-        [plugin_ptr](TaskContext& ctx) {
-            return plugin_ptr->execute(ctx);
-        },
-        plugin_task->config()
-    );
-    task->set_spec_delegate(plugin_ptr);
-
-    add_task(task);
-    TG_LOG_INFO("Added plugin task instance '" + task->id() + "' of type '" + task_type + "' to DAG");
+    add_task(node);
+    TG_LOG_INFO("Added plugin task instance '" + node->id() + "' of type '" + task_type + "' to DAG");
 }
 
 void DAG::add_plugin_task(const std::string& task_id, const std::string& task_type) {
     TG_LOG_DEBUG("Adding plugin task instance '" + task_id + "' of type '" + task_type + "' to DAG");
 
-    auto plugin_task = PluginRegistry::instance().create_task(task_id, task_type, TaskConfig{});
-    if (!plugin_task) {
+    auto node = PluginRegistry::instance().create_task(task_id, task_type, TaskConfig{});
+    if (!node) {
         TG_LOG_ERROR("Plugin task type '" + task_type + "' not found in registry");
         throw std::runtime_error("Plugin task type '" + task_type + "' not found in registry");
     }
 
-    auto plugin_ptr = std::shared_ptr<IPluginTask>(plugin_task);
-    auto task = std::make_shared<Task>(
-        task_id,
-        plugin_task->type(),
-        [plugin_ptr](TaskContext& ctx) {
-            return plugin_ptr->execute(ctx);
-        },
-        plugin_task->config()
-    );
-    task->set_spec_delegate(plugin_ptr);
-
-    add_task(task_id, task);
+    add_task(task_id, node);
     TG_LOG_INFO("Added plugin task instance '" + task_id + "' of type '" + task_type + "' to DAG");
 }
 
 void DAG::add_plugin_task(const std::string& task_id, const std::string& task_type, const TaskConfig& config) {
     TG_LOG_DEBUG("Adding plugin task instance '" + task_id + "' of type '" + task_type + "' with config to DAG");
 
-    auto plugin_task = PluginRegistry::instance().create_task(task_id, task_type, config);
-    if (!plugin_task) {
+    auto node = PluginRegistry::instance().create_task(task_id, task_type, config);
+    if (!node) {
         TG_LOG_ERROR("Plugin task type '" + task_type + "' not found in registry");
         throw std::runtime_error("Plugin task type '" + task_type + "' not found in registry");
     }
 
-    auto plugin_ptr = std::shared_ptr<IPluginTask>(plugin_task);
-    auto task = std::make_shared<Task>(
-        task_id,
-        plugin_task->type(),
-        [plugin_ptr](TaskContext& ctx) {
-            return plugin_ptr->execute(ctx);
-        },
-        plugin_task->config()
-    );
-    task->set_spec_delegate(plugin_ptr);
-
-    add_task(task_id, task);
+    add_task(task_id, node);
     TG_LOG_INFO("Added plugin task instance '" + task_id + "' of type '" + task_type + "' with config to DAG");
 }
 
@@ -247,29 +213,9 @@ void DAG::update_task_config(const TaskId& id, const TaskConfig& config) {
         TG_LOG_ERROR("Cannot update task: '" + id + "' does not exist");
         throw std::runtime_error("Task '" + id + "' does not exist");
     }
-
-    const std::string& type = it->second->type();
-    if (!type.empty() && type != id &&
-        PluginRegistry::instance().has_task(type)) {
-        // plugin task：重建 IPluginTask + Task 包装，保证 config 与 spec delegate 一致
-        auto plugin_task = PluginRegistry::instance().create_task(id, type, config);
-        if (!plugin_task) {
-            TG_LOG_ERROR("Failed to recreate plugin task '" + type + "' for update");
-            throw std::runtime_error("Failed to recreate plugin task '" + type + "'");
-        }
-        auto plugin_ptr = std::shared_ptr<IPluginTask>(plugin_task);
-        auto wrapper = std::make_shared<Task>(
-            id, type,
-            [plugin_ptr](TaskContext& ctx) { return plugin_ptr->execute(ctx); },
-            config);
-        wrapper->set_spec_delegate(plugin_ptr);
-        tasks_[id] = wrapper;
-        TG_LOG_DEBUG("Updated plugin task '" + id + "' config (recreated instance)");
-    } else {
-        // 普通 lambda Task：直接更新 config_（Task::set_config 同步 spec_delegate_）
-        it->second->set_config(config);
-        TG_LOG_DEBUG("Updated task '" + id + "' config (in-place)");
-    }
+    // 直接调用 INode::set_config()，无需重建实例
+    it->second->set_config(config);
+    TG_LOG_DEBUG("Updated task '" + id + "' config");
     notify({DAGChangeEvent::Type::TaskUpdated, id});
 }
 

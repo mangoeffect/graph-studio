@@ -98,9 +98,9 @@ TEST_CASE(task_context_get_param_bool) {
 
 // ---- param_specs() 委托（Task 经 spec_delegate 转发） ----
 
-class TaskWithParams : public IPluginTask {
+class TaskWithParams : public INode {
 public:
-    using IPluginTask::IPluginTask;
+    using INode::INode;
     const std::string& type() const override { static std::string t = "with_params"; return t; }
     TaskResult execute(TaskContext&) override {
         return TaskResult{.status = TaskStatus::COMPLETED};
@@ -110,12 +110,9 @@ public:
     }
 };
 
-TEST_CASE(task_delegates_param_specs) {
-    auto plugin = std::make_shared<TaskWithParams>("p");
-    auto wrapper = std::make_shared<Task>("w", "with_params",
-        [plugin](TaskContext& ctx) { return plugin->execute(ctx); });
-    wrapper->set_spec_delegate(plugin);
-    auto specs = wrapper->param_specs();
+TEST_CASE(node_exposes_param_specs_directly) {
+    auto node = std::make_shared<TaskWithParams>("p");
+    auto specs = node->param_specs();
     EXPECT_EQ(specs.size(), size_t(1));
     EXPECT_TRUE(specs[0].name == "k");
 }
@@ -157,7 +154,7 @@ TEST_CASE(deserialize_params_by_declared_type) {
 
 class FloatParamTask : public IPluginTask {
 public:
-    using IPluginTask::IPluginTask;
+    using INode::INode;
     const std::string& type() const override { static std::string t = "float_param_task"; return t; }
     TaskResult execute(TaskContext&) override {
         return TaskResult{.status = TaskStatus::COMPLETED};

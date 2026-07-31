@@ -16,7 +16,7 @@ using namespace task_graph;
 
 class TestPluginTask : public IPluginTask {
 public:
-    using IPluginTask::IPluginTask;
+    using INode::INode;
     const std::string& type() const override {
         static const std::string t = "test_plugin_type";
         return t;

@@ -7,37 +7,19 @@
 
 namespace task_graph {
 
-Task::Task(std::string id, TaskFunction func, TaskConfig config)
-    : IPluginTask(std::move(id), std::move(config)), func_(std::move(func)) {
+LambdaNode::LambdaNode(std::string id, TaskFunction func, TaskConfig config)
+    : INode(std::move(id), std::move(config)), func_(std::move(func)) {
     type_ = this->id();
 }
 
-Task::Task(std::string id, std::string type, TaskFunction func, TaskConfig config)
-    : IPluginTask(std::move(id), std::move(config)), type_(std::move(type)), func_(std::move(func)) {}
+LambdaNode::LambdaNode(std::string id, std::string type, TaskFunction func, TaskConfig config)
+    : INode(std::move(id), std::move(config)), type_(std::move(type)), func_(std::move(func)) {}
 
-std::vector<PortSpec> Task::input_specs() const {
-    return spec_delegate_ ? spec_delegate_->input_specs() : IPluginTask::input_specs();
-}
-
-std::vector<PortSpec> Task::output_specs() const {
-    return spec_delegate_ ? spec_delegate_->output_specs() : IPluginTask::output_specs();
-}
-
-std::vector<ParamSpec> Task::param_specs() const {
-    return spec_delegate_ ? spec_delegate_->param_specs() : IPluginTask::param_specs();
-}
-
-void Task::on_init() {
-    if (spec_delegate_) {
-        spec_delegate_->init();
-    }
-}
-
-// IPluginTask::check_input(map) 默认实现：
+// INode::check_input 默认实现：
 //  1) 每个声明的 required input port 必须存在
 //  2) 已注册的类型名必须与实际 any 中的类型名匹配
 // 子类通常无需重写，只需正确实现 input_specs()。
-CheckResult IPluginTask::check_input(
+CheckResult INode::check_input(
     const std::unordered_map<std::string, std::any>& inputs_by_port) const {
     for (const auto& spec : input_specs()) {
         auto it = inputs_by_port.find(spec.name);
@@ -61,7 +43,7 @@ CheckResult IPluginTask::check_input(
     return CheckResult(true);
 }
 
-TaskResult Task::execute(TaskContext& ctx) {
+TaskResult LambdaNode::execute(TaskContext& ctx) {
     TaskResult result;
     auto start_time = std::chrono::high_resolution_clock::now();
 

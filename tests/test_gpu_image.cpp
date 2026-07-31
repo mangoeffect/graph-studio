@@ -145,7 +145,7 @@ bool test_gpu_handle_field() {
 
 class InitCounterTask : public task_graph::IPluginTask {
 public:
-    using IPluginTask::IPluginTask;
+    using INode::INode;
     int init_count = 0;
     const std::string& type() const override {
         static const std::string t("init_counter");
