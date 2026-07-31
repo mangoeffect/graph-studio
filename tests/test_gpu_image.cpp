@@ -1,5 +1,6 @@
 #include <task_graph/data_types.hpp>
 #include <task_graph/gpu_image_ops.hpp>
+#include <plugin_api.hpp>
 #if TASK_GRAPH_ENABLE_METAL
 #include <task_graph/gpu_backends/metal_backend.hpp>
 #include <task_graph/gpu_image_task.hpp>
