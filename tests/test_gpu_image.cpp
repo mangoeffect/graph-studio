@@ -1,5 +1,8 @@
 #include <task_graph/data_types.hpp>
 #include <task_graph/gpu_image_ops.hpp>
+#if TASK_GRAPH_ENABLE_METAL
+#include <task_graph/gpu_backends/metal_backend.hpp>
+#endif
 #include <iostream>
 
 bool test_memory_location() {
@@ -131,6 +134,115 @@ bool test_gpu_handle_field() {
     return true;
 }
 
+#if TASK_GRAPH_ENABLE_METAL
+bool test_metal_backend_basic() {
+    std::cout << "Test: Metal backend basic init... ";
+
+    auto backend = std::make_shared<task_graph::MetalGpuBackend>();
+    bool result = backend->init();
+
+    if (!result) {
+        std::cout << "FAILED (init failed, Metal not available)" << std::endl;
+        return false;
+    }
+
+    if (backend->get_backend_name() != "metal") {
+        std::cout << "FAILED (wrong backend name)" << std::endl;
+        backend->shutdown();
+        return false;
+    }
+
+    if (!backend->is_available()) {
+        std::cout << "FAILED (backend reports not available)" << std::endl;
+        backend->shutdown();
+        return false;
+    }
+
+    // Test allocate
+    uintptr_t handle = backend->allocate_gpu_memory(1024);
+    if (handle == 0) {
+        std::cout << "FAILED (allocation failed)" << std::endl;
+        backend->shutdown();
+        return false;
+    }
+
+    // Free
+    backend->free_gpu_memory(handle);
+    backend->shutdown();
+
+    std::cout << "PASSED" << std::endl;
+    return true;
+}
+
+bool test_metal_upload_download() {
+    std::cout << "Test: Metal upload/download... ";
+
+    auto backend = std::make_shared<task_graph::MetalGpuBackend>();
+    if (!backend->init()) {
+        std::cout << "SKIPPED (Metal not available)" << std::endl;
+        backend->shutdown();
+        return true;
+    }
+
+    task_graph::Image img(32, 32, 3);
+    // Fill test pattern
+    for (int y = 0; y < 32; y++) {
+        for (int x = 0; x < 32; x++) {
+            for (int c = 0; c < 3; c++) {
+                img.ptr()[y * 32 * 3 + x * 3 + c] = (uint8_t)(x + y + c);
+            }
+        }
+    }
+
+    task_graph::set_gpu_backend(backend);
+    bool uploaded = task_graph::to_gpu(img);
+    if (!uploaded) {
+        std::cout << "FAILED (upload failed)" << std::endl;
+        backend->shutdown();
+        return false;
+    }
+
+    if (!img.is_on_gpu()) {
+        std::cout << "FAILED (image not marked as on GPU)" << std::endl;
+        backend->shutdown();
+        return false;
+    }
+
+    // Clear CPU data and download back
+    img.data->clear();
+    bool downloaded = task_graph::to_cpu(img);
+    if (!downloaded) {
+        std::cout << "FAILED (download failed)" << std::endl;
+        backend->shutdown();
+        return false;
+    }
+
+    // Verify data integrity
+    bool ok = true;
+    for (int y = 0; y < 32; y++) {
+        for (int x = 0; x < 32; x++) {
+            for (int c = 0; c < 3; c++) {
+                uint8_t expected = (uint8_t)(x + y + c);
+                if (img.ptr()[y * 32 * 3 + x * 3 + c] != expected) {
+                    ok = false;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (!ok) {
+        std::cout << "FAILED (data mismatch after round trip)" << std::endl;
+        backend->shutdown();
+        return false;
+    }
+
+    backend->shutdown();
+    std::cout << "PASSED" << std::endl;
+    return true;
+}
+#endif
+
 int main() {
     std::cout << "=== GPU Image Operations Tests ===\n" << std::endl;
 
@@ -142,6 +254,11 @@ int main() {
     all_passed &= test_member_ensure_cpu();
     all_passed &= test_member_ensure_gpu();
     all_passed &= test_gpu_handle_field();
+
+#if TASK_GRAPH_ENABLE_METAL
+    all_passed &= test_metal_backend_basic();
+    all_passed &= test_metal_upload_download();
+#endif
 
     std::cout << "\n=== All tests " << (all_passed ? "PASSED" : "FAILED") << " ===" << std::endl;
     return all_passed ? 0 : 1;

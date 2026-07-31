@@ -27,6 +27,22 @@ if(TASK_GRAPH_ENABLE_CUDA)
     add_definitions(-DTASK_GRAPH_ENABLE_CUDA)
 endif()
 
+# Metal support (Apple only)
+if(APPLE)
+    option(TASK_GRAPH_ENABLE_METAL "Enable Metal support for GPU image operations" OFF)
+    if(TASK_GRAPH_ENABLE_METAL)
+        add_definitions(-DTASK_GRAPH_ENABLE_METAL)
+    endif()
+endif()
+
+# Vulkan support
+option(TASK_GRAPH_ENABLE_VULKAN "Enable Vulkan support for GPU image operations" OFF)
+if(TASK_GRAPH_ENABLE_VULKAN)
+    find_package(Vulkan REQUIRED)
+    include_directories(${Vulkan_INCLUDE_DIRS})
+    add_definitions(-DTASK_GRAPH_ENABLE_VULKAN)
+endif()
+
 option(TASK_GRAPH_ENABLE_OPENCV "Enable OpenCV support for image conversion" OFF)
 
 if(TASK_GRAPH_ENABLE_OPENCV)
@@ -62,6 +78,25 @@ add_library(task_graph ${TASK_GRAPH_LIB_TYPE}
     src/task_params.cpp
     src/profiler.cpp
 )
+
+# Add GPU backend sources
+if(TASK_GRAPH_ENABLE_METAL AND APPLE)
+    target_sources(task_graph PRIVATE
+        src/gpu_backends/metal_backend.mm
+    )
+    find_library(METAL_FRAMEWORK Metal)
+    find_library(CORE_FOUNDATION_FRAMEWORK CoreFoundation)
+    target_link_libraries(task_graph PUBLIC
+        ${METAL_FRAMEWORK}
+        ${CORE_FOUNDATION_FRAMEWORK}
+    )
+endif()
+
+if(TASK_GRAPH_ENABLE_VULKAN)
+    target_sources(task_graph PRIVATE
+        src/gpu_backends/vulkan_backend.cpp
+    )
+endif()
 
 target_include_directories(task_graph
     PUBLIC
