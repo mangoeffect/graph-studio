@@ -200,10 +200,25 @@ GraphViewModel::GraphViewModel(GraphModel& model, QObject* parent)
     // 注册框架日志 sink：把 TG_LOG_* / ctx.log() 等日志转发到 UI 线程。
     // sink 可能在 executor 工作线程触发，用 QueuedConnection 编组到 UI 线程后 emit。
     task_graph::set_log_sink(
-        [this](task_graph::LogLevel level, const std::string& msg,
-               const char* /*file*/, int /*line*/) {
-            QString qmsg = QString::fromStdString(msg);
-            int ilevel = static_cast<int>(level);
+        [this](const task_graph::LogEntry& e) {
+            // 格式化：[thread_name/thread_id] [file:line] msg
+            // 级别由信号参数携带；时间戳暂不显示（避免消息过长）
+            QString prefix;
+            if (!e.thread_name.empty()) {
+                prefix += QStringLiteral("[%1/%2] ")
+                    .arg(QString::fromStdString(e.thread_name),
+                         QString::fromStdString(e.thread_id));
+            } else if (!e.thread_id.empty()) {
+                prefix += QStringLiteral("[T/%1] ")
+                    .arg(QString::fromStdString(e.thread_id));
+            }
+            if (!e.filename.empty() && e.line > 0) {
+                prefix += QStringLiteral("[%1:%2] ")
+                    .arg(QString::fromStdString(e.filename),
+                         QString::number(e.line));
+            }
+            QString qmsg = prefix + QString::fromStdString(e.msg);
+            int ilevel = static_cast<int>(e.level);
             QMetaObject::invokeMethod(this, [this, ilevel, qmsg]() {
                 emit logMessage(ilevel, qmsg);
             }, Qt::QueuedConnection);

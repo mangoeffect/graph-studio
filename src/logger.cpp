@@ -132,39 +132,48 @@ namespace {
             if (!is_enabled(level)) return;
 
             LogSink sink_copy;
+            LogEntry entry;
             {
                 std::lock_guard<std::mutex> lock(mutex_);
 
-                std::stringstream ss;
-                ss << "[" << get_timestamp() << "] ";
-                ss << "[" << std::setw(5) << get_level_name(level) << "] ";
-
+                std::string timestamp = get_timestamp();
                 std::string thread_name = get_thread_name();
                 std::string thread_id = get_thread_id();
+                std::string filename = get_filename(file);
+
+                std::stringstream ss;
+                ss << "[" << timestamp << "] ";
+                ss << "[" << std::setw(5) << get_level_name(level) << "] ";
                 if (!thread_name.empty()) {
                     ss << "[" << thread_name << "/" << thread_id << "] ";
                 } else {
                     ss << "[T/" << thread_id << "] ";
                 }
-
-                std::string filename = get_filename(file);
                 if (!filename.empty() && line > 0) {
                     ss << "[" << filename << ":" << line << "] ";
                 } else if (!filename.empty()) {
                     ss << "[" << filename << "] ";
                 }
-
                 ss << msg << std::endl;
 
                 std::cout << ss.str();
                 std::cout.flush();
+
+                entry.level = level;
+                entry.msg = msg;
+                entry.file = file;
+                entry.line = line;
+                entry.filename = std::move(filename);
+                entry.timestamp = std::move(timestamp);
+                entry.thread_name = std::move(thread_name);
+                entry.thread_id = std::move(thread_id);
 
                 sink_copy = sink_;
             }
             // 锁外调用 sink：避免 sink 内部再调 tg_log 导致重入死锁。
             // 可能在任意线程触发，调用方需自行 marshal 回目标线程。
             if (sink_copy) {
-                sink_copy(level, msg, file, line);
+                sink_copy(entry);
             }
         }
 
