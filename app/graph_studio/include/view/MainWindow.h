@@ -14,6 +14,7 @@
 #include <QHash>
 #include <QMimeData>
 #include <QComboBox>
+#include <QTabWidget>
 
 #include "view/GraphView.h"
 #include "viewmodel/GraphViewModel.h"
@@ -25,6 +26,7 @@ class GraphScene;
 class GraphViewModel;
 class NodeItem;
 class EdgeItem;
+class ProfilePanel;
 
 // QListWidget subclass that emits plain-text mime data on drag, so the canvas
 // GraphView (which checks hasText()) can accept the drop.
@@ -92,6 +94,7 @@ private:
     QWidget* CreateNodePropertyPanel();
     QWidget* CreateLogPanel();
     QWidget* CreateOutputPanel();
+    QWidget* CreateBottomTabs();
     void CreateCanvas();
     void CreateStatusBar();
     void PopulateTaskLibrary();
@@ -150,6 +153,8 @@ private:
     bool selfParamEdit_ = false;
     QPlainTextEdit* logWidget_ = nullptr;
     QPlainTextEdit* outputWidget_ = nullptr;
+    QTabWidget* bottomTabs_ = nullptr;
+    ProfilePanel* profilePanel_ = nullptr;
     QLabel* zoomLabel_ = nullptr;
 
     // Property panel widgets

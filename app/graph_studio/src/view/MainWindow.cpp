@@ -3,6 +3,7 @@
 #include "view/GraphView.h"
 #include "view/NodeItem.h"
 #include "view/EdgeItem.h"
+#include "view/ProfilePanel.h"
 #include "viewmodel/GraphViewModel.h"
 
 #include <QMenu>
@@ -200,11 +201,9 @@ void MainWindow::InitializeLayout()
     topSplitter_->addWidget(graphicsView_);
 
     topSplitter_->addWidget(CreateImageResultPanel());
-
     bottomSplitter_ = new QSplitter(Qt::Horizontal, mainSplitter_);
     bottomSplitter_->addWidget(CreateNodePropertyPanel());
-    bottomSplitter_->addWidget(CreateLogPanel());
-    bottomSplitter_->addWidget(CreateOutputPanel());
+    bottomSplitter_->addWidget(CreateBottomTabs());
 
     mainSplitter_->addWidget(topSplitter_);
     mainSplitter_->addWidget(bottomSplitter_);
@@ -219,9 +218,8 @@ void MainWindow::InitializeLayout()
     topSplitter_->setSizes({200, 800, 400});
 
     bottomSplitter_->setStretchFactor(0, 1);
-    bottomSplitter_->setStretchFactor(1, 2);
-    bottomSplitter_->setStretchFactor(2, 1);
-    bottomSplitter_->setSizes({250, 500, 250});
+    bottomSplitter_->setStretchFactor(1, 4);
+    bottomSplitter_->setSizes({250, 900});
 
     setCentralWidget(mainSplitter_);
 
@@ -295,6 +293,12 @@ void MainWindow::ConnectSignals()
     if (resultSelector_) {
         connect(resultSelector_, qOverload<int>(&QComboBox::currentIndexChanged),
                 this, &MainWindow::onResultSelectorChanged);
+    }
+
+    // 性能分析：执行完成后填充 Profile tab
+    if (profilePanel_) {
+        connect(&vm_, &GraphViewModel::profileDataReady,
+                profilePanel_, &ProfilePanel::onProfileDataReady);
     }
 }
 
@@ -581,6 +585,21 @@ QWidget* MainWindow::CreateOutputPanel()
     layout->addWidget(outputWidget_);
 
     return container;
+}
+
+QWidget* MainWindow::CreateBottomTabs()
+{
+    bottomTabs_ = new QTabWidget();
+    bottomTabs_->setTabPosition(QTabWidget::South);
+    bottomTabs_->setDocumentMode(true);
+
+    bottomTabs_->addTab(CreateLogPanel(), "Log");
+    bottomTabs_->addTab(CreateOutputPanel(), "Output");
+
+    profilePanel_ = new ProfilePanel(vm_);
+    bottomTabs_->addTab(profilePanel_, "Profile");
+
+    return bottomTabs_;
 }
 
 void MainWindow::CreateCanvas()
@@ -1185,6 +1204,10 @@ void MainWindow::onExecutionFinished()
     UpdateRunActions();
     if (statusBar_)
         statusBar_->showMessage("Execution finished", 3000);
+    // Switch to Profile tab to show execution analysis
+    if (bottomTabs_ && bottomTabs_->indexOf(profilePanel_) >= 0) {
+        bottomTabs_->setCurrentWidget(profilePanel_);
+    }
 }
 
 void MainWindow::onExecutingChanged()

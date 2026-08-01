@@ -87,6 +87,39 @@ public:
     QStringList imageResultKeys() const;
     QImage imageResult(const QString& key) const;
 
+    // 性能分析数据（执行完成后填充）
+    struct ProfileTaskInfo {
+        QString taskId;
+        QString taskType;
+        double waitMs;
+        double execMs;
+        double totalMs;
+        double startMs;  // 相对 DAG 开始的偏移
+        double endMs;
+        int status;      // 0=completed 1=failed 2=skipped
+    };
+    struct ProfileDagInfo {
+        double totalMs;
+        int totalTasks;
+        int completedTasks;
+        int failedTasks;
+        int skippedTasks;
+        double criticalPathMs;
+    };
+    struct ProfileFrame {
+        ProfileDagInfo dag;
+        QList<ProfileTaskInfo> tasks;
+        QString traceJson;
+        QString reportJson;
+    };
+
+    int profileFrameCount() const { return profileFrames_.size(); }
+    const ProfileFrame* profileFrame(int index) const;
+    ProfileFrame profileAverage() const;
+    QString profileTraceJson() const;
+    QString profileReportJson() const;
+    void clearProfileHistory();
+
 signals:
     void taskAdded(const NodeData& node);
     void taskRemoved(const QString& taskId);
@@ -103,8 +136,8 @@ signals:
     void executionStarted();
     void executionFinished();
     void executingChanged();
-    // 执行完成且采集到图像结果时发出，keys 为 imageResultKeys 的快照。
     void imageResultsReady(QStringList keys);
+    void profileDataReady(int frameIndex);
 
 private:
     QString generateUniqueId(const QString& taskType) const;
@@ -127,6 +160,10 @@ private:
     // QImage 通过 cleanup function 持有源 cv::Mat/shared_ptr 的引用计数，
     // 析构时自动释放，无需手动管理生命周期。
     QHash<QString, QImage> imageResults_;
+
+    // 性能分析数据：多帧历史（每次执行追加一帧，最多 MAX_PROFILE_FRAMES）
+    static constexpr int MAX_PROFILE_FRAMES = 100;
+    QList<ProfileFrame> profileFrames_;
 };
 
 } // namespace graph_studio

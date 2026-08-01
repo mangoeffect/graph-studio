@@ -58,6 +58,8 @@ set(PROJECT_HEADERS
     include/view/EdgeItem.h
     include/view/GraphScene.h
     include/view/GraphView.h
+    include/view/GanttChart.h
+    include/view/ProfilePanel.h
 )
 
 set(PROJECT_SOURCES
@@ -71,6 +73,8 @@ set(PROJECT_SOURCES
     src/view/EdgeItem.cpp
     src/view/GraphScene.cpp
     src/view/GraphView.cpp
+    src/view/GanttChart.cpp
+    src/view/ProfilePanel.cpp
 )
 
 set(PROJECT_SOURCES
@@ -84,6 +88,8 @@ set(PROJECT_SOURCES
     src/view/EdgeItem.cpp
     src/view/GraphScene.cpp
     src/view/GraphView.cpp
+    src/view/GanttChart.cpp
+    src/view/ProfilePanel.cpp
 )
 
 if(EMSCRIPTEN)
@@ -194,6 +200,8 @@ qt_add_executable(test_gui
     include/view/GraphView.h
     include/view/NodeItem.h
     include/view/EdgeItem.h
+    include/view/GanttChart.h
+    include/view/ProfilePanel.h
     src/model/GraphModel.cpp
     src/viewmodel/GraphViewModel.cpp
     src/command/CommandStack.cpp
@@ -202,6 +210,8 @@ qt_add_executable(test_gui
     src/view/GraphView.cpp
     src/view/NodeItem.cpp
     src/view/EdgeItem.cpp
+    src/view/GanttChart.cpp
+    src/view/ProfilePanel.cpp
 )
 target_link_libraries(test_gui PRIVATE Qt6::Widgets Qt6::Test Qt6::Gui task_graph ${OpenCV_LIBS})
 add_test(NAME test_gui COMMAND test_gui)

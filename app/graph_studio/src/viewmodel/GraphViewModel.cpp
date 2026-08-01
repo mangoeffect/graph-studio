@@ -816,9 +816,62 @@ void GraphViewModel::finishExecution()
                         .arg(completed)
                         .arg(failed));
 
+    // 采集性能分析数据（executor 销毁前），存为一帧
+    if (executor_) {
+        const auto& profiler = executor_->profiler();
+        const auto dagStats = profiler.compute_dag_stats();
+        const auto taskStats = profiler.compute_task_stats();
+
+        ProfileFrame frame;
+
+        frame.dag.totalMs = std::chrono::duration<double, std::milli>(dagStats.total_duration).count();
+        frame.dag.totalTasks = static_cast<int>(dagStats.total_tasks);
+        frame.dag.completedTasks = static_cast<int>(dagStats.completed_tasks);
+        frame.dag.failedTasks = static_cast<int>(dagStats.failed_tasks);
+        frame.dag.skippedTasks = static_cast<int>(dagStats.skipped_tasks);
+        frame.dag.criticalPathMs = std::chrono::duration<double, std::milli>(dagStats.critical_path).count();
+
+        for (const auto& ts : taskStats) {
+            ProfileTaskInfo info;
+            info.taskId = QString::fromStdString(ts.task_id);
+            info.taskType = QString::fromStdString(ts.task_type);
+            info.waitMs = std::chrono::duration<double, std::milli>(ts.wait_duration).count();
+            info.execMs = std::chrono::duration<double, std::milli>(ts.exec_duration).count();
+            info.totalMs = std::chrono::duration<double, std::milli>(ts.total_duration).count();
+
+            if (dagStats.has_start && ts.has_start) {
+                info.startMs = std::chrono::duration<double, std::milli>(
+                    ts.start_time - dagStats.start_time).count();
+            }
+            if (dagStats.has_start && ts.has_end) {
+                info.endMs = std::chrono::duration<double, std::milli>(
+                    ts.end_time - dagStats.start_time).count();
+            }
+
+            if (ts.final_status == task_graph::TaskStatus::COMPLETED) info.status = 0;
+            else if (ts.final_status == task_graph::TaskStatus::FAILED) info.status = 1;
+            else if (ts.final_status == task_graph::TaskStatus::SKIPPED) info.status = 2;
+            else info.status = 1;
+
+            frame.tasks.append(info);
+        }
+
+        frame.traceJson = QString::fromStdString(profiler.to_trace_string(false));
+        frame.reportJson = QString::fromStdString(profiler.to_json_string(true));
+
+        profileFrames_.append(frame);
+        if (profileFrames_.size() > MAX_PROFILE_FRAMES) {
+            profileFrames_.removeFirst();
+        }
+    }
+
     executing_ = false;
     emit executingChanged();
     emit executionFinished();
+
+    if (!profileFrames_.isEmpty()) {
+        emit profileDataReady(profileFrames_.size() - 1);
+    }
 
     if (!imageKeys.isEmpty()) {
         emit imageResultsReady(imageKeys);
@@ -857,4 +910,89 @@ QImage GraphViewModel::imageResult(const QString& key) const
 {
     auto it = imageResults_.constFind(key);
     return it != imageResults_.end() ? it.value() : QImage();
+}
+
+QString GraphViewModel::profileTraceJson() const
+{
+    if (profileFrames_.isEmpty()) return {};
+    return profileFrames_.last().traceJson;
+}
+
+QString GraphViewModel::profileReportJson() const
+{
+    if (profileFrames_.isEmpty()) return {};
+    return profileFrames_.last().reportJson;
+}
+
+const GraphViewModel::ProfileFrame* GraphViewModel::profileFrame(int index) const
+{
+    if (index < 0 || index >= profileFrames_.size()) return nullptr;
+    return &profileFrames_[index];
+}
+
+GraphViewModel::ProfileFrame GraphViewModel::profileAverage() const
+{
+    ProfileFrame avg;
+    if (profileFrames_.isEmpty()) return avg;
+
+    int n = profileFrames_.size();
+
+    // Average DAG stats
+    double sumTotal = 0, sumCritical = 0;
+    int sumTasks = 0, sumCompleted = 0, sumFailed = 0, sumSkipped = 0;
+    for (const auto& f : profileFrames_) {
+        sumTotal += f.dag.totalMs;
+        sumCritical += f.dag.criticalPathMs;
+        sumTasks += f.dag.totalTasks;
+        sumCompleted += f.dag.completedTasks;
+        sumFailed += f.dag.failedTasks;
+        sumSkipped += f.dag.skippedTasks;
+    }
+    avg.dag.totalMs = sumTotal / n;
+    avg.dag.criticalPathMs = sumCritical / n;
+    avg.dag.totalTasks = sumTasks / n;
+    avg.dag.completedTasks = sumCompleted / n;
+    avg.dag.failedTasks = sumFailed / n;
+    avg.dag.skippedTasks = sumSkipped / n;
+
+    // Average per-task stats: match by taskId across frames
+    // Use first frame's task list as template, average matching tasks from all frames
+    const auto& templateFrame = profileFrames_.first();
+    for (const auto& tmplTask : templateFrame.tasks) {
+        ProfileTaskInfo avgTask;
+        avgTask.taskId = tmplTask.taskId;
+        avgTask.taskType = tmplTask.taskType;
+        avgTask.status = tmplTask.status;
+
+        double sumWait = 0, sumExec = 0, sumTotal = 0, sumStart = 0, sumEnd = 0;
+        int count = 0;
+        for (const auto& f : profileFrames_) {
+            for (const auto& t : f.tasks) {
+                if (t.taskId == tmplTask.taskId) {
+                    sumWait += t.waitMs;
+                    sumExec += t.execMs;
+                    sumTotal += t.totalMs;
+                    sumStart += t.startMs;
+                    sumEnd += t.endMs;
+                    ++count;
+                    break;
+                }
+            }
+        }
+        if (count > 0) {
+            avgTask.waitMs = sumWait / count;
+            avgTask.execMs = sumExec / count;
+            avgTask.totalMs = sumTotal / count;
+            avgTask.startMs = sumStart / count;
+            avgTask.endMs = sumEnd / count;
+        }
+        avg.tasks.append(avgTask);
+    }
+
+    return avg;
+}
+
+void GraphViewModel::clearProfileHistory()
+{
+    profileFrames_.clear();
 }
