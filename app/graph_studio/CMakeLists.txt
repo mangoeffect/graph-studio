@@ -61,11 +61,13 @@ set(PROJECT_HEADERS
     include/view/GanttChart.h
     include/view/ProfilePanel.h
     include/view/GpuImageViewer.h
+    include/GpuBootstrap.h
 )
 
 set(PROJECT_SOURCES
     src/platform/macos/entry.cpp
     src/PluginBootstrap.cpp
+    src/GpuBootstrap.cpp
     src/model/GraphModel.cpp
     src/viewmodel/GraphViewModel.cpp
     src/command/CommandStack.cpp
@@ -82,6 +84,7 @@ set(PROJECT_SOURCES
 set(PROJECT_SOURCES
     src/platform/macos/entry.cpp
     src/PluginBootstrap.cpp
+    src/GpuBootstrap.cpp
     src/model/GraphModel.cpp
     src/viewmodel/GraphViewModel.cpp
     src/command/CommandStack.cpp

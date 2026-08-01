@@ -3,6 +3,7 @@
 #include <task_graph/gpu_buffer.hpp>
 #include <task_graph/gpu_image_ops.hpp>
 #include <task_graph/data_types.hpp>
+#include <plugin_api.hpp>
 
 namespace task_graph {
 
@@ -18,7 +19,7 @@ const char* const kGpuComputeType          = "gpu_compute";
 // ====================== GpuImageTaskBase ======================
 
 std::vector<PortSpec> GpuImageTaskBase::input_specs() const {
-    return { make_port<Image>("in") };
+    return { PortSpec{"in", "", true} };
 }
 
 std::vector<PortSpec> GpuImageTaskBase::output_specs() const {
@@ -27,7 +28,10 @@ std::vector<PortSpec> GpuImageTaskBase::output_specs() const {
 
 void GpuImageTaskBase::on_init() {
     auto backend = get_gpu_backend();
-    if (!backend || !backend->supports_compute()) return;
+    if (!backend || !backend->supports_compute()) {
+        TG_LOG_WARN(("gpu task '" + id() + "': backend not compute-capable, kernel precompile skipped").c_str());
+        return;
+    }
 
     const GpuImageOp* op = GpuKernelLibrary::instance().find(type());
     if (!op) return;
@@ -38,33 +42,53 @@ void GpuImageTaskBase::on_init() {
 TaskResult GpuImageTaskBase::run_gpu_op(TaskContext& ctx, const std::string& op_name) {
     auto backend = get_gpu_backend();
     if (!backend || !backend->supports_compute()) {
+        TG_LOG_ERROR(("gpu task '" + id() + "': no compute-capable GPU backend (got '" +
+                      (backend ? backend->get_backend_name() : std::string("null")) +
+                      "'); did the app call InitGpuBackend()?").c_str());
         return TaskResult{.status = TaskStatus::FAILED};
     }
 
     const GpuImageOp* op = GpuKernelLibrary::instance().find(op_name);
     if (!op) {
+        TG_LOG_ERROR(("gpu task '" + id() + "': op '" + op_name + "' not found in kernel library").c_str());
         return TaskResult{.status = TaskStatus::FAILED};
     }
 
-    auto input_opt = ctx.input<Image>("in");
-    if (!input_opt) {
+    Image input_img;
+    if (auto img_opt = ctx.input<Image>("in")) {
+        input_img = std::move(*img_opt);
+    } else {
+#ifdef TASK_GRAPH_ENABLE_OPENCV
+        auto mat_opt = ctx.input<cv::Mat>("in");
+        if (!mat_opt) {
+            TG_LOG_ERROR(("gpu task '" + id() + "': input 'in' is neither Image nor cv::Mat").c_str());
+            return TaskResult{.status = TaskStatus::FAILED};
+        }
+        input_img = Image::from_mat(*mat_opt);
+#else
+        TG_LOG_ERROR(("gpu task '" + id() + "': input 'in' is not Image (OpenCV disabled, cv::Mat path unavailable)").c_str());
         return TaskResult{.status = TaskStatus::FAILED};
+#endif
     }
-    Image input_img = std::move(*input_opt);
 
     // 当前 kernel 仅支持 RGB uint8 输入
     if (input_img.channels != 3 || input_img.data_type != DataType::UINT8) {
+        TG_LOG_ERROR(("gpu task '" + id() + "': input not RGB UINT8 (channels=" +
+                      std::to_string(input_img.channels) + ", dtype=" +
+                      std::to_string(static_cast<int>(input_img.data_type)) + ")").c_str());
         return TaskResult{.status = TaskStatus::FAILED};
     }
 
     // 确保输入在 GPU（链式传递命中时直接复用上游 gpu_buffer）
     if (!ensure_gpu(input_img)) {
+        TG_LOG_ERROR(("gpu task '" + id() + "': ensure_gpu failed (upload to GPU failed)").c_str());
         return TaskResult{.status = TaskStatus::FAILED};
     }
 
     // 编译 kernel（backend 内部缓存，首次编译后续复用）
     uintptr_t kernel = backend->compile_kernel(op->kernel_name, op->kernel_source);
     if (kernel == 0) {
+        TG_LOG_ERROR(("gpu task '" + id() + "': compile_kernel failed for '" + op->kernel_name + "'").c_str());
         return TaskResult{.status = TaskStatus::FAILED};
     }
 
@@ -72,6 +96,9 @@ TaskResult GpuImageTaskBase::run_gpu_op(TaskContext& ctx, const std::string& op_
     int out_w = 0, out_h = 0, out_c = 0;
     op->compute_output_size(input_img, ctx.params(), out_w, out_h, out_c);
     if (out_w <= 0 || out_h <= 0 || out_c <= 0) {
+        TG_LOG_ERROR(("gpu task '" + id() + "': invalid output size " +
+                      std::to_string(out_w) + "x" + std::to_string(out_h) + "x" +
+                      std::to_string(out_c)).c_str());
         return TaskResult{.status = TaskStatus::FAILED};
     }
 
@@ -79,6 +106,8 @@ TaskResult GpuImageTaskBase::run_gpu_op(TaskContext& ctx, const std::string& op_
     size_t out_bytes = static_cast<size_t>(out_w) * out_h * out_c;
     uintptr_t dst_handle = backend->allocate_gpu_memory(out_bytes);
     if (dst_handle == 0) {
+        TG_LOG_ERROR(("gpu task '" + id() + "': allocate_gpu_memory failed (" +
+                      std::to_string(out_bytes) + " bytes)").c_str());
         return TaskResult{.status = TaskStatus::FAILED};
     }
 
@@ -97,6 +126,7 @@ TaskResult GpuImageTaskBase::run_gpu_op(TaskContext& ctx, const std::string& op_
                             uniform_data.data(), uniform_data.size(),
                             grid_x, grid_y, grid_z)) {
         backend->free_gpu_memory(dst_handle);
+        TG_LOG_ERROR(("gpu task '" + id() + "': dispatch failed for kernel '" + op->kernel_name + "'").c_str());
         return TaskResult{.status = TaskStatus::FAILED};
     }
 
@@ -215,7 +245,10 @@ std::vector<ParamSpec> GpuComputeTask::param_specs() const {
 
 void GpuComputeTask::on_init() {
     auto backend = get_gpu_backend();
-    if (!backend || !backend->supports_compute()) return;
+    if (!backend || !backend->supports_compute()) {
+        TG_LOG_WARN(("gpu task '" + id() + "': backend not compute-capable, kernel precompile skipped").c_str());
+        return;
+    }
 
     const GpuImageOp* op = GpuKernelLibrary::instance().find(op_name_);
     if (!op) return;

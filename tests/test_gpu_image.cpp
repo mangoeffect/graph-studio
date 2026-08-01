@@ -482,6 +482,68 @@ bool test_metal_dag_integration() {
     return true;
 }
 
+#ifdef TASK_GRAPH_ENABLE_OPENCV
+class CvMatSourceNode : public task_graph::INode {
+public:
+    using INode::INode;
+    const std::string& type() const override {
+        static const std::string t("cv_mat_source");
+        return t;
+    }
+    task_graph::TaskResult execute(task_graph::TaskContext&) override {
+        cv::Mat mat(32, 32, CV_8UC3);
+        for (int i = 0; i < 32 * 32 * 3; i++)
+            mat.ptr()[i] = static_cast<uint8_t>((i * 7 + 13) % 256);
+        return task_graph::TaskResult{
+            .status = task_graph::TaskStatus::COMPLETED, .value = mat};
+    }
+    std::vector<task_graph::PortSpec> output_specs() const override {
+        return { task_graph::make_port<cv::Mat>("out") };
+    }
+};
+
+bool test_metal_dag_mat_source() {
+    std::cout << "Test: Metal DAG cv::Mat source -> gpu_box_blur... ";
+
+    auto backend = std::make_shared<task_graph::MetalGpuBackend>();
+    if (!backend->init()) {
+        std::cout << "SKIPPED (Metal not available)" << std::endl;
+        backend->shutdown();
+        return true;
+    }
+    task_graph::set_gpu_backend(backend);
+
+    task_graph::DAG dag;
+    auto src = std::make_shared<CvMatSourceNode>("src");
+    dag.add_task(src);
+    dag.add_plugin_task("blur", "gpu_box_blur");
+    dag.connect("src", "blur");
+
+    task_graph::DAGExecutor executor;
+    executor.execute(dag).wait();
+
+    auto results = executor.get_results();
+    if (!results["blur"].is_success()) {
+        std::cout << "FAILED (blur task failed)" << std::endl;
+        backend->shutdown();
+        return false;
+    }
+
+    task_graph::Image out = std::any_cast<task_graph::Image>(results["blur"].value);
+    task_graph::ensure_cpu(out);
+
+    if (out.channels != 3 || out.width != 32 || out.height != 32) {
+        std::cout << "FAILED (output dims/channels wrong)" << std::endl;
+        backend->shutdown();
+        return false;
+    }
+
+    backend->shutdown();
+    std::cout << "PASSED" << std::endl;
+    return true;
+}
+#endif
+
 bool test_metal_brightness_contrast() {
     std::cout << "Test: Metal brightness_contrast (float params)... ";
 
@@ -613,6 +675,9 @@ int main() {
     all_passed &= test_metal_compute_box_blur();
     all_passed &= test_metal_chain_gpu_pass();
     all_passed &= test_metal_dag_integration();
+#ifdef TASK_GRAPH_ENABLE_OPENCV
+    all_passed &= test_metal_dag_mat_source();
+#endif
     all_passed &= test_metal_brightness_contrast();
     all_passed &= test_metal_init_precompile();
 #endif

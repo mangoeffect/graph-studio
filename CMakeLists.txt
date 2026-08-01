@@ -221,6 +221,11 @@ if(TASK_GRAPH_ENABLE_METAL AND TARGET gpu_image_processing)
     target_link_libraries(test_gpu_image PRIVATE gpu_image_processing)
 endif()
 
+# test_gpu_image 的 cv::Mat 兼容用例需要 OpenCV 符号
+if(TASK_GRAPH_ENABLE_OPENCV)
+    target_link_libraries(test_gpu_image PRIVATE ${OpenCV_LIBS})
+endif()
+
 # ============================================================
 # ctest 注册（全部核心测试）
 # ============================================================

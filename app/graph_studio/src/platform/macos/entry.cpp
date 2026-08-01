@@ -8,6 +8,7 @@
 #include "viewmodel/GraphViewModel.h"
 #include "view/MainWindow.h"
 #include "PluginBootstrap.h"
+#include "GpuBootstrap.h"
 
 using namespace graph_studio;
 
@@ -42,9 +43,16 @@ int main(int argc, char* argv[])
     // 放在 ViewModel 之后：此时日志 sink 已注册，插件加载日志能进 log 面板。
     LoadBuiltinPlugins();
 
+    // 初始化 GPU backend（macOS->Metal），让 gpu_* 节点可用。
+    // fail-open：init 失败仅记 WARN，非 GPU 节点仍可执行。
+    InitGpuBackend();
+
     MainWindow window(vm);
 
     window.show();
 
-    return app.exec();
+    int ret = app.exec();
+
+    ShutdownGpuBackend();
+    return ret;
 }
