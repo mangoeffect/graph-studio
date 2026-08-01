@@ -124,6 +124,22 @@ if(APPLE AND NOT EMSCRIPTEN)
     )
 endif()
 
+# ---- 应用图标资源 ----
+qt_add_resources(ICON_RESOURCES resources/resources.qrc)
+target_sources(graph_studio PRIVATE ${ICON_RESOURCES})
+
+# macOS: 将 .icns 打入 app bundle 的 Resources 目录
+if(APPLE AND NOT EMSCRIPTEN)
+    set_source_files_properties(resources/icons/app_icon.icns
+        PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+    target_sources(graph_studio PRIVATE resources/icons/app_icon.icns)
+endif()
+
+# Windows: 通过 RC 文件嵌入 .ico
+if(WIN32 AND NOT EMSCRIPTEN)
+    target_sources(graph_studio PRIVATE resources/icons/app_icon.rc)
+endif()
+
 # ---- 单元测试与集成测试（仅在非 WASM 平台编译） ----
 if(NOT EMSCRIPTEN)
 enable_testing()

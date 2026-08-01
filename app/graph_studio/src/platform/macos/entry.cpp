@@ -1,5 +1,7 @@
 ﻿#include <QApplication>
 #include <QMainWindow>
+#include <QIcon>
+#include <QSize>
 
 #include "model/GraphModel.h"
 #include "viewmodel/GraphViewModel.h"
@@ -11,6 +13,16 @@ using namespace graph_studio;
 int main(int argc, char* argv[])
 {
     QApplication app(argc, argv);
+
+    QIcon appIcon;
+    appIcon.addFile(":/icons/app_icon_16.png", QSize(16, 16));
+    appIcon.addFile(":/icons/app_icon_32.png", QSize(32, 32));
+    appIcon.addFile(":/icons/app_icon_48.png", QSize(48, 48));
+    appIcon.addFile(":/icons/app_icon_64.png", QSize(64, 64));
+    appIcon.addFile(":/icons/app_icon_128.png", QSize(128, 128));
+    appIcon.addFile(":/icons/app_icon_256.png", QSize(256, 256));
+    appIcon.addFile(":/icons/app_icon_512.png", QSize(512, 512));
+    app.setWindowIcon(appIcon);
 
     GraphModel model;
     GraphViewModel vm(model);
