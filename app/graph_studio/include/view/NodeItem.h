@@ -34,11 +34,15 @@ public:
     // Hit-test a scene point against ports
     Port hitPort(const QPointF& scenePos) const;
 
+    // Highlight target input port during edge-drag (drop target feedback)
+    void setDropHighlighted(bool on);
+
     // Edge registration for movement tracking
     void registerEdge(EdgeItem* edge);
     void unregisterEdge(EdgeItem* edge);
 
     QRectF boundingRect() const override;
+    QPainterPath shape() const override;
     void paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget = nullptr) override;
     int type() const override;
 
@@ -47,6 +51,8 @@ public:
 
 protected:
     QVariant itemChange(GraphicsItemChange change, const QVariant& value) override;
+    void hoverMoveEvent(QGraphicsSceneHoverEvent* event) override;
+    void hoverLeaveEvent(QGraphicsSceneHoverEvent* event) override;
 
 private:
     void notifyEdges();
@@ -55,10 +61,13 @@ private:
     QString nodeType_;
     QSet<EdgeItem*> edges_;
     RunStatus runStatus_ = RunStatus::None;
+    Port hoverPort_ = Port::None;
+    bool dropHighlighted_ = false;
 
     static const qreal NODE_WIDTH;
     static const qreal NODE_HEIGHT;
     static const qreal PORT_RADIUS;
+    static const qreal PORT_HIT_RADIUS;
 };
 
 } // namespace graph_studio

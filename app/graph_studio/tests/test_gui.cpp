@@ -289,11 +289,10 @@ void TestGui::testEdgeCreationViaPortDrag()
     QCOMPARE(vm_->edgeCount(), 0);
     QCOMPARE(countSceneItems(scene_, EdgeItem::Type), 0);
 
-    // 端口中心位于节点 boundingRect 边界上（x = ±nodeWidth/2），QRectF 半开，
-    // itemAt 会落空。故向内偏移几像素：仍在 hitPort 命中半径(PORT_RADIUS+6)内，
-    // 同时保证落在节点 shape 内部。
-    qreal outX = NodeItem::nodeWidth() / 2 - 4;
-    qreal inX = -NodeItem::nodeWidth() / 2 + 4;
+    // 端口中心位于节点 shape 圆内（shape() 已包含端口圆区域），
+    // itemAt 可直接命中。使用端口正中心坐标。
+    qreal outX = NodeItem::nodeWidth() / 2;
+    qreal inX = -NodeItem::nodeWidth() / 2;
     QPoint start = view_->mapFromScene(nodeA->mapToScene(QPointF(outX, 0)));
     QPoint end = view_->mapFromScene(nodeB->mapToScene(QPointF(inX, 0)));
 

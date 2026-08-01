@@ -4,12 +4,14 @@
 #include <QPainter>
 #include <QStyleOptionGraphicsItem>
 #include <QGraphicsScene>
+#include <QGraphicsSceneHoverEvent>
 
 using namespace graph_studio;
 
 const qreal NodeItem::NODE_WIDTH = 140;
 const qreal NodeItem::NODE_HEIGHT = 70;
 const qreal NodeItem::PORT_RADIUS = 7;
+const qreal NodeItem::PORT_HIT_RADIUS = 14;
 
 NodeItem::NodeItem(const QString& nodeId, const QString& nodeType, QGraphicsItem* parent)
     : QGraphicsItem(parent), nodeId_(nodeId), nodeType_(nodeType)
@@ -20,9 +22,6 @@ NodeItem::NodeItem(const QString& nodeId, const QString& nodeType, QGraphicsItem
 
 NodeItem::~NodeItem()
 {
-    // 不在析构中操作 scene 或 edge 对象：QGraphicsScene::clear() 批量销毁
-    // items 时析构顺序不确定，交叉访问会导致 UAF。edge 的删除由
-    // MainWindow 在运行时统一管理（先删 edge 再删 node）。
     edges_.clear();
 }
 
@@ -52,18 +51,24 @@ QPointF NodeItem::outputPortPos() const
 
 NodeItem::Port NodeItem::hitPort(const QPointF& scenePos) const
 {
-    QPointF inputLocal = mapFromScene(scenePos);
-    // Check input port (left side)
+    QPointF local = mapFromScene(scenePos);
     QPointF inputCenter(-NODE_WIDTH / 2, 0);
-    qreal hitRadius = PORT_RADIUS + 6; // generous hit area
-    if (QLineF(inputCenter, inputLocal).length() <= hitRadius)
+    if (QLineF(inputCenter, local).length() <= PORT_HIT_RADIUS)
         return Port::Input;
 
     QPointF outputCenter(NODE_WIDTH / 2, 0);
-    if (QLineF(outputCenter, inputLocal).length() <= hitRadius)
+    if (QLineF(outputCenter, local).length() <= PORT_HIT_RADIUS)
         return Port::Output;
 
     return Port::None;
+}
+
+void NodeItem::setDropHighlighted(bool on)
+{
+    if (dropHighlighted_ == on)
+        return;
+    dropHighlighted_ = on;
+    update();
 }
 
 void NodeItem::registerEdge(EdgeItem* edge)
@@ -78,7 +83,20 @@ void NodeItem::unregisterEdge(EdgeItem* edge)
 
 QRectF NodeItem::boundingRect() const
 {
-    return QRectF(-NODE_WIDTH / 2, -NODE_HEIGHT / 2, NODE_WIDTH, NODE_HEIGHT);
+    qreal margin = PORT_HIT_RADIUS + 2;
+    return QRectF(-NODE_WIDTH / 2 - margin, -NODE_HEIGHT / 2,
+                  NODE_WIDTH + margin * 2, NODE_HEIGHT);
+}
+
+QPainterPath NodeItem::shape() const
+{
+    QPainterPath path;
+    // Node body
+    path.addRoundedRect(QRectF(-NODE_WIDTH / 2, -NODE_HEIGHT / 2, NODE_WIDTH, NODE_HEIGHT), 8, 8);
+    // Port hit areas (circles extending beyond the body edges)
+    path.addEllipse(QPointF(-NODE_WIDTH / 2, 0), PORT_HIT_RADIUS, PORT_HIT_RADIUS);
+    path.addEllipse(QPointF(NODE_WIDTH / 2, 0), PORT_HIT_RADIUS, PORT_HIT_RADIUS);
+    return path.simplified();
 }
 
 QVariant NodeItem::itemChange(GraphicsItemChange change, const QVariant& value)
@@ -100,11 +118,34 @@ void NodeItem::notifyEdges()
     }
 }
 
+void NodeItem::hoverMoveEvent(QGraphicsSceneHoverEvent* event)
+{
+    Port p = hitPort(event->scenePos());
+    if (p != hoverPort_) {
+        hoverPort_ = p;
+        if (p == Port::None) {
+            setCursor(Qt::ArrowCursor);
+        } else {
+            setCursor(Qt::CrossCursor);
+        }
+        update();
+    }
+    QGraphicsItem::hoverMoveEvent(event);
+}
+
+void NodeItem::hoverLeaveEvent(QGraphicsSceneHoverEvent* event)
+{
+    hoverPort_ = Port::None;
+    setCursor(Qt::ArrowCursor);
+    update();
+    QGraphicsItem::hoverLeaveEvent(event);
+}
+
 void NodeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget)
 {
     Q_UNUSED(widget);
 
-    QRectF rect = boundingRect();
+    QRectF bodyRect(-NODE_WIDTH / 2, -NODE_HEIGHT / 2, NODE_WIDTH, NODE_HEIGHT);
     bool sel = option->state & QStyle::State_Selected;
 
     QColor bodyColor;
@@ -126,7 +167,6 @@ void NodeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, 
     QColor borderColor = sel ? QColor(100, 180, 255) : QColor(80, 80, 80);
     qreal borderWidth = sel ? 2.5 : 1.5;
 
-    // 执行状态优先覆盖边框：运行中蓝、成功绿、失败红。
     switch (runStatus_) {
         case RunStatus::Running:   borderColor = QColor(66, 165, 245); borderWidth = 3.0; break;
         case RunStatus::Completed: borderColor = QColor(102, 187, 106); borderWidth = 3.0; break;
@@ -135,9 +175,9 @@ void NodeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, 
     }
 
     QPainterPath path;
-    path.addRoundedRect(rect, 8, 8);
+    path.addRoundedRect(bodyRect, 8, 8);
 
-    QLinearGradient gradient(rect.topLeft(), rect.bottomLeft());
+    QLinearGradient gradient(bodyRect.topLeft(), bodyRect.bottomLeft());
     gradient.setColorAt(0, fillColor.lighter(115));
     gradient.setColorAt(1, fillColor);
     painter->fillPath(path, gradient);
@@ -170,21 +210,47 @@ void NodeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, 
     painter->setPen(accentColor.lighter(130));
     painter->drawText(typeRect, Qt::AlignLeft | Qt::AlignVCenter, nodeType_);
 
-    // Ports
+    // ── Ports ──
     QPointF inputPort(-NODE_WIDTH / 2, 0);
     QPointF outputPort(NODE_WIDTH / 2, 0);
 
-    painter->setPen(QPen(QColor(120, 120, 120), 1.5));
-    painter->setBrush(QColor(60, 60, 60));
-    painter->drawEllipse(inputPort, PORT_RADIUS, PORT_RADIUS);
+    bool inHover = (hoverPort_ == Port::Input);
+    bool outHover = (hoverPort_ == Port::Output);
 
-    painter->setBrush(QColor(80, 80, 80));
-    painter->drawEllipse(outputPort, PORT_RADIUS, PORT_RADIUS);
+    // Input port
+    if (dropHighlighted_) {
+        // Glow ring for drop target
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(QColor(100, 200, 255, 60));
+        painter->drawEllipse(inputPort, PORT_RADIUS + 8, PORT_RADIUS + 8);
+        painter->setBrush(QColor(100, 200, 255, 100));
+        painter->drawEllipse(inputPort, PORT_RADIUS + 4, PORT_RADIUS + 4);
+    }
 
-    painter->setPen(QPen(QColor(180, 180, 180), 1.5));
+    qreal inR = inHover || dropHighlighted_ ? PORT_RADIUS + 2 : PORT_RADIUS;
+    QColor inFill = inHover || dropHighlighted_ ? QColor(100, 200, 255) : QColor(60, 60, 60);
+    QColor inRing = inHover || dropHighlighted_ ? QColor(150, 220, 255) : QColor(120, 120, 120);
+
+    painter->setPen(QPen(inRing, 1.5));
+    painter->setBrush(inFill);
+    painter->drawEllipse(inputPort, inR, inR);
+
+    painter->setPen(QPen(inRing.lighter(130), 1.0));
     painter->setBrush(Qt::NoBrush);
-    painter->drawEllipse(inputPort, PORT_RADIUS - 2, PORT_RADIUS - 2);
-    painter->drawEllipse(outputPort, PORT_RADIUS - 2, PORT_RADIUS - 2);
+    painter->drawEllipse(inputPort, inR - 3, inR - 3);
+
+    // Output port
+    qreal outR = outHover ? PORT_RADIUS + 2 : PORT_RADIUS;
+    QColor outFill = outHover ? QColor(100, 200, 255) : QColor(80, 80, 80);
+    QColor outRing = outHover ? QColor(150, 220, 255) : QColor(120, 120, 120);
+
+    painter->setPen(QPen(outRing, 1.5));
+    painter->setBrush(outFill);
+    painter->drawEllipse(outputPort, outR, outR);
+
+    painter->setPen(QPen(outRing.lighter(130), 1.0));
+    painter->setBrush(Qt::NoBrush);
+    painter->drawEllipse(outputPort, outR - 3, outR - 3);
 }
 
 int NodeItem::type() const { return Type; }

@@ -38,6 +38,15 @@
         "gpu_brightness_contrast",
         "gpu_resize"
       ]
+    },
+    {
+      "name": "js_task",
+      "url": "./submodules/scripting/js_task",
+      "ref": "main",
+      "type": "local",
+      "tasks": [
+        "js_script"
+      ]
     }
   ]
 }

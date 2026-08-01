@@ -40,6 +40,7 @@ private:
     bool portDragging_ = false;
     NodeItem* dragSource_ = nullptr;
     EdgeItem* tempEdge_ = nullptr;
+    NodeItem* highlightedTarget_ = nullptr;
     QStringList availableTaskTypes_;
 };
 

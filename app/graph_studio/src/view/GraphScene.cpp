@@ -88,21 +88,34 @@ void GraphScene::mousePressEvent(QGraphicsSceneMouseEvent* event)
 void GraphScene::mouseMoveEvent(QGraphicsSceneMouseEvent* event)
 {
     if (portDragging_ && tempEdge_) {
-        // Snap to target node if hovering over input port
+        // Snap to target node if hovering over input port.
+        // Search all NodeItems directly (temp edge shape may mask target).
         bool snapped = false;
-        for (auto* item : items(event->scenePos())) {
-            if (item->type() == NodeItem::Type) {
-                auto* node = static_cast<NodeItem*>(item);
-                if (node != dragSource_ && node->hitPort(event->scenePos()) == NodeItem::Port::Input) {
-                    tempEdge_->setFreeEnd(node->inputPortPos());
-                    snapped = true;
-                    break;
-                }
+        NodeItem* newTarget = nullptr;
+        for (auto* item : items()) {
+            if (item->type() != NodeItem::Type)
+                continue;
+            auto* node = static_cast<NodeItem*>(item);
+            if (node != dragSource_ && node->hitPort(event->scenePos()) == NodeItem::Port::Input) {
+                newTarget = node;
+                tempEdge_->setFreeEnd(node->inputPortPos());
+                snapped = true;
+                break;
             }
         }
         if (!snapped) {
             tempEdge_->setFreeEnd(event->scenePos());
         }
+
+        // Update drop highlight
+        if (newTarget != highlightedTarget_) {
+            if (highlightedTarget_)
+                highlightedTarget_->setDropHighlighted(false);
+            highlightedTarget_ = newTarget;
+            if (highlightedTarget_)
+                highlightedTarget_->setDropHighlighted(true);
+        }
+
         event->accept();
         return;
     }
@@ -112,15 +125,20 @@ void GraphScene::mouseMoveEvent(QGraphicsSceneMouseEvent* event)
 void GraphScene::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
 {
     if (portDragging_ && event->button() == Qt::LeftButton) {
-        // Find target node at release position
+        // Find target node at release position.
+        // Don't rely on items(pos) because the temp edge's shape() may cover
+        // the target and mask the NodeItem. Instead, search all NodeItems
+        // and hit-test their input ports directly.
         NodeItem* targetNode = nullptr;
-        for (auto* item : items(event->scenePos())) {
-            if (item->type() == NodeItem::Type) {
-                auto* node = static_cast<NodeItem*>(item);
-                if (node != dragSource_ && node->hitPort(event->scenePos()) == NodeItem::Port::Input) {
-                    targetNode = node;
-                    break;
-                }
+        for (auto* item : items()) {
+            if (item->type() != NodeItem::Type)
+                continue;
+            auto* node = static_cast<NodeItem*>(item);
+            if (node == dragSource_)
+                continue;
+            if (node->hitPort(event->scenePos()) == NodeItem::Port::Input) {
+                targetNode = node;
+                break;
             }
         }
 
@@ -130,6 +148,12 @@ void GraphScene::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
             removeItem(tempEdge_);
             delete tempEdge_;
             tempEdge_ = nullptr;
+        }
+
+        // Clear drop highlight
+        if (highlightedTarget_) {
+            highlightedTarget_->setDropHighlighted(false);
+            highlightedTarget_ = nullptr;
         }
 
         if (targetNode) {
