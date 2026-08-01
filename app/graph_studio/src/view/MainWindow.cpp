@@ -184,6 +184,35 @@ void MainWindow::ApplyDarkTheme()
 
         QScrollArea { border: none; background-color: transparent; }
         QToolTip { background-color: #2d2d30; color: #d4d4d4; border: 1px solid #3c3c3c; }
+
+        QTabWidget::pane { border: 1px solid #3c3c3c; background-color: #1e1e1e; }
+        QTabBar::tab {
+            background-color: #2d2d30;
+            color: #d4d4d4;
+            border: 1px solid #3c3c3c;
+            padding: 4px 16px;
+            border-top-left-radius: 3px;
+            border-top-right-radius: 3px;
+        }
+        QTabBar::tab:selected { background-color: #1e1e1e; border-bottom: 2px solid #007acc; }
+        QTabBar::tab:hover:!selected { background-color: #3c3c3c; }
+        QTabBar { background-color: #2d2d30; }
+        QTableWidget {
+            background-color: #1e1e1e;
+            border: 1px solid #3c3c3c;
+            border-radius: 4px;
+            gridline-color: #3c3c3c;
+            color: #d4d4d4;
+        }
+        QTableWidget::item { padding: 2px; }
+        QTableWidget::item:selected { background-color: #094771; color: #ffffff; }
+        QHeaderView::section {
+            background-color: #2d2d30;
+            color: #d4d4d4;
+            border: 1px solid #3c3c3c;
+            padding: 3px;
+            font-weight: bold;
+        }
     )");
 }
 
@@ -591,7 +620,6 @@ QWidget* MainWindow::CreateBottomTabs()
 {
     bottomTabs_ = new QTabWidget();
     bottomTabs_->setTabPosition(QTabWidget::South);
-    bottomTabs_->setDocumentMode(true);
 
     bottomTabs_->addTab(CreateLogPanel(), "Log");
     bottomTabs_->addTab(CreateOutputPanel(), "Output");
