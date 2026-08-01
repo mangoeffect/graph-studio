@@ -52,23 +52,6 @@ MainWindow::MainWindow(GraphViewModel& vm, QWidget* parent)
     InitializeLayout();
     ConnectSignals();
 
-    // Seed a demo graph through the ViewModel.
-    // 仅添加已注册的 task 类型（WASM 下 image_filtering 等可能不可用）。
-    auto tryAddTask = [&](const QString& type, qreal x, qreal y) {
-        if (vm_.hasTaskType(type)) {
-            vm_.addTask(type, x, y);
-        }
-    };
-    tryAddTask("file_input", -300, -50);
-    tryAddTask("opencv_blur_filter", -50, -50);
-    tryAddTask("opencv_sobel_filter", 200, -100);
-    tryAddTask("display", 450, -50);
-    tryAddTask("save_image", 200, 100);
-    vm_.addEdge("file_input", "opencv_blur_filter");
-    vm_.addEdge("opencv_blur_filter", "opencv_sobel_filter");
-    vm_.addEdge("opencv_sobel_filter", "display");
-    vm_.addEdge("opencv_blur_filter", "save_image");
-
     graphicsView_->centerOn(0, 0);
     UpdateStatusBar();
     UpdateUndoRedoActions();
