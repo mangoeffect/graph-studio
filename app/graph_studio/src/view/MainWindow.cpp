@@ -4,6 +4,7 @@
 #include "view/NodeItem.h"
 #include "view/EdgeItem.h"
 #include "view/ProfilePanel.h"
+#include "view/GpuImageViewer.h"
 #include "viewmodel/GraphViewModel.h"
 
 #include <QMenu>
@@ -507,19 +508,25 @@ QWidget* MainWindow::CreateImageResultPanel()
     header->setStyleSheet("padding: 4px;");
     layout->addWidget(header);
 
-    // 节点结果选择下拉框：执行后填充，按 "nodeId:port" 粒度
     resultSelector_ = new QComboBox();
     resultSelector_->setPlaceholderText(QStringLiteral("No results"));
     resultSelector_->setEnabled(false);
     layout->addWidget(resultSelector_);
 
-    auto* scrollArea = new QScrollArea();
-    scrollArea->setWidgetResizable(true);
-    imageResultLabel_ = new QLabel("No image");
-    imageResultLabel_->setObjectName("ImageResultLabel");
-    imageResultLabel_->setMinimumSize(300, 200);
-    scrollArea->setWidget(imageResultLabel_);
-    layout->addWidget(scrollArea);
+    // GPU-accelerated image viewer
+    imageViewer_ = new GpuImageViewer();
+    imageViewer_->setMinimumSize(300, 200);
+    layout->addWidget(imageViewer_, 1);
+
+    // Pixel info bar
+    pixelInfoLabel_ = new QLabel("x: -, y: -");
+    pixelInfoLabel_->setStyleSheet(
+        "color: #d4d4d4; background-color: #2d2d30; padding: 2px 6px; "
+        "border-top: 1px solid #3c3c3c; font-family: Menlo, Consolas, monospace; font-size: 11px;");
+    layout->addWidget(pixelInfoLabel_);
+
+    connect(imageViewer_, &GpuImageViewer::pixelInfoChanged,
+            pixelInfoLabel_, &QLabel::setText);
 
     return container;
 }
@@ -1220,9 +1227,8 @@ void MainWindow::onExecutionStarted()
         resultSelector_->setEnabled(false);
         resultSelector_->blockSignals(false);
     }
-    if (imageResultLabel_) {
-        imageResultLabel_->setPixmap(QPixmap());
-        imageResultLabel_->setText("Running...");
+    if (imageViewer_) {
+        imageViewer_->clearImage();
     }
     UpdateRunActions();
 }
@@ -1295,29 +1301,17 @@ void MainWindow::RebuildResultSelector(const QStringList& keys)
 
 void MainWindow::ShowResultImage(const QString& key)
 {
-    if (!imageResultLabel_) return;
+    if (!imageViewer_) return;
     if (key.isEmpty()) {
-        imageResultLabel_->setPixmap(QPixmap());
-        imageResultLabel_->setText("No image");
+        imageViewer_->clearImage();
         return;
     }
     QImage img = vm_.imageResult(key);
     if (img.isNull()) {
-        imageResultLabel_->setPixmap(QPixmap());
-        imageResultLabel_->setText("No image");
+        imageViewer_->clearImage();
         return;
     }
-    QPixmap pm = QPixmap::fromImage(img);
-    // 缩放适应面板宽度，保持比例；小图原样显示
-    int availW = imageResultLabel_->parentWidget()
-                     ? imageResultLabel_->parentWidget()->width()
-                     : imageResultLabel_->width();
-    if (availW < 50) availW = 300;
-    if (pm.width() > availW) {
-        pm = pm.scaledToWidth(availW, Qt::SmoothTransformation);
-    }
-    imageResultLabel_->setText(QString());
-    imageResultLabel_->setPixmap(pm);
+    imageViewer_->setImage(img);
 }
 
 void MainWindow::keyPressEvent(QKeyEvent* event)

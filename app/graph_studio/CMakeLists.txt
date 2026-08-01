@@ -35,9 +35,9 @@ elseif(APPLE)
 endif()
 
 if(EMSCRIPTEN)
-    set(QT_COMPONENTS Widgets)
+    set(QT_COMPONENTS Widgets OpenGL OpenGLWidgets)
 else()
-    set(QT_COMPONENTS Widgets Test)
+    set(QT_COMPONENTS Widgets Test OpenGL OpenGLWidgets)
 endif()
 find_package(Qt6 REQUIRED COMPONENTS ${QT_COMPONENTS})
 qt_standard_project_setup()
@@ -60,6 +60,7 @@ set(PROJECT_HEADERS
     include/view/GraphView.h
     include/view/GanttChart.h
     include/view/ProfilePanel.h
+    include/view/GpuImageViewer.h
 )
 
 set(PROJECT_SOURCES
@@ -75,6 +76,7 @@ set(PROJECT_SOURCES
     src/view/GraphView.cpp
     src/view/GanttChart.cpp
     src/view/ProfilePanel.cpp
+    src/view/GpuImageViewer.cpp
 )
 
 set(PROJECT_SOURCES
@@ -90,6 +92,7 @@ set(PROJECT_SOURCES
     src/view/GraphView.cpp
     src/view/GanttChart.cpp
     src/view/ProfilePanel.cpp
+    src/view/GpuImageViewer.cpp
 )
 
 if(EMSCRIPTEN)
@@ -115,6 +118,8 @@ endif()
 
 target_link_libraries(graph_studio PRIVATE
     Qt6::Widgets
+    Qt6::OpenGL
+    Qt6::OpenGLWidgets
     task_graph
 )
 # 桌面端显式链接 OpenCV（WASM 在末尾 EMSCRIPTEN 块条件链接）
@@ -202,6 +207,7 @@ qt_add_executable(test_gui
     include/view/EdgeItem.h
     include/view/GanttChart.h
     include/view/ProfilePanel.h
+    include/view/GpuImageViewer.h
     src/model/GraphModel.cpp
     src/viewmodel/GraphViewModel.cpp
     src/command/CommandStack.cpp
@@ -212,8 +218,9 @@ qt_add_executable(test_gui
     src/view/EdgeItem.cpp
     src/view/GanttChart.cpp
     src/view/ProfilePanel.cpp
+    src/view/GpuImageViewer.cpp
 )
-target_link_libraries(test_gui PRIVATE Qt6::Widgets Qt6::Test Qt6::Gui task_graph ${OpenCV_LIBS})
+target_link_libraries(test_gui PRIVATE Qt6::Widgets Qt6::Test Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets task_graph ${OpenCV_LIBS})
 add_test(NAME test_gui COMMAND test_gui)
 endif()
 

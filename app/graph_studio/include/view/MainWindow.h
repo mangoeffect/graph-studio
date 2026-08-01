@@ -27,6 +27,7 @@ class GraphViewModel;
 class NodeItem;
 class EdgeItem;
 class ProfilePanel;
+class GpuImageViewer;
 
 // QListWidget subclass that emits plain-text mime data on drag, so the canvas
 // GraphView (which checks hasText()) can accept the drop.
@@ -140,7 +141,8 @@ private:
     QStatusBar* statusBar_ = nullptr;
 
     TaskListWidget* taskList_ = nullptr;
-    QLabel* imageResultLabel_ = nullptr;
+    GpuImageViewer* imageViewer_ = nullptr;
+    QLabel* pixelInfoLabel_ = nullptr;
     QComboBox* resultSelector_ = nullptr;
     QFormLayout* nodePropertyLayout_ = nullptr;
     QGroupBox* nodePropertyGroup_ = nullptr;

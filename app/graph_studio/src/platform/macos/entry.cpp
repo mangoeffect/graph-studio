@@ -2,6 +2,7 @@
 #include <QMainWindow>
 #include <QIcon>
 #include <QSize>
+#include <QSurfaceFormat>
 
 #include "model/GraphModel.h"
 #include "viewmodel/GraphViewModel.h"
@@ -12,6 +13,15 @@ using namespace graph_studio;
 
 int main(int argc, char* argv[])
 {
+    // Request a 3.3 Core profile context for QOpenGLWidget (required on macOS).
+    // WASM uses OpenGL ES natively and does not need this.
+#ifndef __EMSCRIPTEN__
+    QSurfaceFormat fmt;
+    fmt.setVersion(3, 3);
+    fmt.setProfile(QSurfaceFormat::CoreProfile);
+    QSurfaceFormat::setDefaultFormat(fmt);
+#endif
+
     QApplication app(argc, argv);
 
     QIcon appIcon;
