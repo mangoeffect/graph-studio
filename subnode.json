@@ -47,6 +47,18 @@
       "tasks": [
         "js_script"
       ]
+    },
+    {
+      "name": "mediapipe_vision",
+      "url": "./submodules/mediapipe/mediapipe_vision",
+      "ref": "main",
+      "type": "local",
+      "tasks": [
+        "mp_face_landmarker",
+        "mp_hand_landmarker",
+        "mp_pose_landmarker",
+        "mp_object_detector"
+      ]
     }
   ]
 }

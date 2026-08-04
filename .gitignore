@@ -1,6 +1,7 @@
 ﻿build/
 build_wasm/
-submodules/
+submodules/*
+!submodules/mediapipe/
 .DS_Store
 app/graph_studio/build/
 app/graph_studio/build_wasm/profiler_trace.json
