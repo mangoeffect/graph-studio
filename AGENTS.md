@@ -22,7 +22,7 @@ task_graph is a C++20 cross-platform DAG task-execution framework (Desktop / iOS
 
 - Core library `task_graph` (SHARED on desktop, STATIC on mobile/WASM) in `src/`, headers in `include/task_graph/`.
 - Plugin model: `INode` (override `type()/execute()/input_specs()/output_specs()/param_specs()`). Tasks exchange data via ports as `std::any`; `TaskContext::input<T>("port")` reads upstream output. Return via `TaskResult.value` (default port `"out"`) or `outputs`.
-- Subnodes in `submodules/` are compile-time-linked plugins driven by `subnode.json` + `cmake/Subnode.cmake`. `submodules/` is gitignored except `submodules/mediapipe/` (via `.gitignore` negation).
+- Subnodes in `submodules/` are compile-time-linked plugins driven by `subnode.json` + `cmake/Subnode.cmake`. Each category dir under `submodules/` (opencv/, gpu/, scripting/, mediapipe/) is its own embedded git repo (no remote yet; migrate to GitHub later by adding a remote), and the whole `submodules/` tree is gitignored by the main repo.
 - Custom domain types used across ports must be registered with `TG_REGISTER_TYPE(Type, "stable::name")` for stable cross-SO type names.
 - GPU backends: Metal (Apple), Vulkan, CUDA — all opt-in CMake flags (`TASK_GRAPH_ENABLE_METAL/VULKAN/CUDA`), all OFF by default. OpenCV is also opt-in (`TASK_GRAPH_ENABLE_OPENCV`).
 
