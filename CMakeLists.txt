@@ -175,7 +175,6 @@ add_tg_test(test_ports)
 add_tg_test(test_params)
 add_tg_test(test_serializer)
 add_tg_test(test_data_types)
-add_tg_test(test_gpu_image)
 add_tg_test(test_task_params)
 add_tg_test(test_profiler)
 add_tg_test(test_type_registry)
@@ -186,9 +185,6 @@ add_tg_test(test_plugin)
 if(TASK_GRAPH_ENABLE_OPENCV)
     add_executable(test_opencv_convert tests/test_opencv_convert.cpp)
     target_link_libraries(test_opencv_convert PRIVATE task_graph ${OpenCV_LIBS})
-
-    add_executable(test_opencv_image_filtering tests/test_opencv_image_filtering.cpp)
-    target_link_libraries(test_opencv_image_filtering PRIVATE task_graph ${OpenCV_LIBS} image_filtering)
 endif()
 
 # ============================================================
@@ -216,16 +212,6 @@ endforeach()
 
 if(NOT TASK_GRAPH_MOBILE)
 
-# test_gpu_image 需要 GPU subnode 的 task 注册（Metal compute 端到端测试）
-if(TASK_GRAPH_ENABLE_METAL AND TARGET gpu_image_processing)
-    target_link_libraries(test_gpu_image PRIVATE gpu_image_processing)
-endif()
-
-# test_gpu_image 的 cv::Mat 兼容用例需要 OpenCV 符号
-if(TASK_GRAPH_ENABLE_OPENCV)
-    target_link_libraries(test_gpu_image PRIVATE ${OpenCV_LIBS})
-endif()
-
 # ============================================================
 # ctest 注册（全部核心测试）
 # ============================================================
@@ -235,7 +221,6 @@ add_test(NAME test_ports COMMAND test_ports)
 add_test(NAME test_params COMMAND test_params)
 add_test(NAME test_serializer COMMAND test_serializer)
 add_test(NAME test_data_types COMMAND test_data_types)
-add_test(NAME test_gpu_image COMMAND test_gpu_image)
 add_test(NAME test_task_params COMMAND test_task_params)
 add_test(NAME test_profiler COMMAND test_profiler)
 add_test(NAME test_type_registry COMMAND test_type_registry)
@@ -243,6 +228,5 @@ add_test(NAME test_logger COMMAND test_logger)
 add_test(NAME test_plugin COMMAND test_plugin)
 if(TASK_GRAPH_ENABLE_OPENCV)
     add_test(NAME test_opencv_convert COMMAND test_opencv_convert)
-    add_test(NAME test_opencv_image_filtering COMMAND test_opencv_image_filtering)
 endif()
 endif() # NOT TASK_GRAPH_MOBILE

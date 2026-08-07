@@ -10,13 +10,25 @@ task_graph is a C++20 cross-platform DAG task-execution framework (Desktop / iOS
 - Submodule scaffolding: `python3 scripts/generate_submodule.py` (CLI or interactive). New subnodes must also be registered in `subnode.json`.
 - Build dir is `build/` (gitignored). WASM builds to `build_wasm/`; iOS/Android OpenCV prebuilds live in `build_ios/`/`build_android/`.
 
+## Submodule graph-driven tests (uniform pattern)
+
+All subnode tests are JSON-graph-driven: each test executable loads a `<name>_graph.json` (via `DAGSerializer::from_string`, executed by `DAGExecutor`) describing `opencv_image_read` (committed `tests/data/test.png`) → task(s). This covers `mediapipe_vision`, plus the `opencv` (`image_filtering`, `image_reader`), `gpu`, and `scripting` submodules.
+
+- **Layout** (all inside each submodule dir): `tests/graphs/*.json.in` templates, `tests/data/test.png` (deterministic 128×128 synthetic), test binary `tests/test_<name>_graph.cpp`, and the CMake `add_test` registration lives in the submodule's own `CMakeLists.txt`.
+- **Path mechanism**: `configure_file` bakes absolute paths at configure time — graphs use `@DATA_DIR@`/`@SCRIPTS_DIR@` placeholders; generated `.json` goes to `<binary_dir>/graphs/`. Unlike the mediapipe shell-script `.example` flow, committed assets use `configure_file` (@ONLY) so no post-configure script is needed.
+- **`configure_file` placeholder gotcha**: the CMake variable name must match the placeholder exactly (e.g. `DATA_DIR`, not `TEST_DATA_DIR`), or the value substitutes empty.
+- **Ordering in `subnode.json`**: the compile-time-linked subnode that provides a task type must be listed *before* any subnode whose tests link it (CMake `target_link_libraries` needs the target to exist at configure time). `image_reader` is listed first because all graph tests use `opencv_image_read` as the source.
+- **Test content and SKIPs**: `gpu` tests set up a Metal backend and soft-SKIP if it fails to init; asserts pixel-exact box_blur vs a CPU reference. `scripting` tests use `tests/scripts/*.js` (engine_arith/mat_ops/error_throw) and assert output values + the JS-thrown-error path fails the task with a readable message.
+- The four mediapipe tests still read `*.json` materialized from `*.json.example` by `scripts/gen_mediapipe_test_graphs.sh` (absolute paths into the gitignored downloaded models dir).
+
 ## Scripting test history (previously failing, now fixed)
 
-`test_js_engine` and `test_js_mat` (quickjs submodule) used to fail on a clean checkout. Root causes found and fixed (15/15 tests now pass):
+The old `test_js_engine`/`test_js_mat` binaries were replaced by the JSON-graph-driven `test_js_script_graph` (see below). The historical root causes and their source fixes remain relevant:
 
-- **`test_js_mat` — `JS_SetClassProto` assertion** (`quickjs.c`): `MatWrapper::class_id_` is static, so `registerClass` only called `JS_NewClass` for the *first* `JsRuntime`. Each `JsEngine` owns its own runtime, so the second engine hit the assertion. Fix: gate `JS_NewClass` on `JS_IsRegisteredClass(rt, class_id_)` (not a static guard) so every runtime registers the class once. (`submodules/scripting/js_task/src/js_mat_wrapper.cpp`)
-- **`test_js_engine` — error message missing**: `JsEngine::getLastError()` read the `stack` property first; in QuickJS `stack` holds only the backtrace (no message), so the `throw new Error('test error')` message was lost. Fix: read the `message` property first, fall back to `stack`, then `toString`. (`submodules/scripting/js_task/src/js_engine.cpp`)
-- **Latent `test_js_mat` stage-3 assertion** (only reachable after the runtime fix): `cv.createMat(width, height, channels)` is width-first (per `brightness.js` usage), so `createMat(100, 200, 3)` → `"100x200x3"`; the old expectation `"200x100x3"` (copied from the rows-first `cv::Mat` ctor) was wrong. (`submodules/scripting/js_task/tests/test_js_mat.cpp`)
+- **`JS_SetClassProto` assertion** (`quickjs.c`): `MatWrapper::class_id_` is static, so `registerClass` only called `JS_NewClass` for the *first* `JsRuntime`. Each `JsEngine` owns its own runtime, so a second engine hit the assertion. Fix: gate `JS_NewClass` on `JS_IsRegisteredClass(rt, class_id_)` (not a static guard) so every runtime registers the class once. (`submodules/scripting/js_task/src/js_mat_wrapper.cpp`)
+- **Error message missing**: `JsEngine::getLastError()` read the `stack` property first; in QuickJS `stack` holds only the backtrace (no message), so `throw new Error('test error')` lost the message. Fix: read `message` first, fall back to `stack`, then `toString`. (`submodules/scripting/js_task/src/js_engine.cpp`)
+- **`cv.createMat` is width-first**: `createMat(W, H, C)` → cols=W, rows=H (per `brightness.js`), unlike the rows-first `cv::Mat` ctor. Covered by `mat_ops.js` in the graph tests.
+- **`JsTask` leaked the `execute` JS function** (found by the new graph tests): `loadScript()` does `jsExecuteFunc_ = JS_DupValue(...)` but nothing freed it, so `JS_FreeRuntime` aborted under `DUMP_LEAKS`. Fix: add `~JsTask()` that `JS_FreeValue`s `jsExecuteFunc_` before the `JsEngine` (member) is destroyed. (`submodules/scripting/js_task/src/js_task.cpp`)
 
 ## Architecture
 

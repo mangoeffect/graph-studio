@@ -2,6 +2,15 @@
   "version": "1.0",
   "submodules": [
     {
+      "name": "image_reader",
+      "url": "./submodules/opencv/image_io/image_reader",
+      "ref": "main",
+      "type": "local",
+      "tasks": [
+        "opencv_image_read"
+      ]
+    },
+    {
       "name": "image_filtering",
       "url": "./submodules/opencv/image_processing/image_filtering",
       "ref": "main",
@@ -15,15 +24,6 @@
         "opencv_sobel_filter",
         "opencv_scharr_filter",
         "opencv_laplacian_filter"
-      ]
-    },
-    {
-      "name": "image_reader",
-      "url": "./submodules/opencv/image_io/image_reader",
-      "ref": "main",
-      "type": "local",
-      "tasks": [
-        "opencv_image_read"
       ]
     },
     {
