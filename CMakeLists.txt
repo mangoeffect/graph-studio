@@ -56,7 +56,7 @@ if(TASK_GRAPH_ENABLE_VULKAN)
     add_definitions(-DTASK_GRAPH_ENABLE_VULKAN)
 endif()
 
-option(TASK_GRAPH_ENABLE_OPENCV "Enable OpenCV support for image conversion" OFF)
+option(TASK_GRAPH_ENABLE_OPENCV "Enable OpenCV support for image conversion" ON)
 
 if(TASK_GRAPH_ENABLE_OPENCV)
     # WASM 下优先用 emcmake 构建的 OpenCV 静态库
