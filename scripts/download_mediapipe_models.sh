@@ -30,12 +30,21 @@ url_for() {
         pose_landmarker)
             echo "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task"
             ;;
+        # Royalty-free test image (Unsplash license: free, no attribution required).
+        portrait)
+            echo "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=640&q=80"
+            ;;
+        # Hand close-up. Attribution: "Hand Image" by Adams890, CC BY-SA 4.0,
+        # via Wikimedia Commons (https://commons.wikimedia.org/wiki/File:Hand_Image.jpg).
+        hand_image)
+            echo "https://upload.wikimedia.org/wikipedia/commons/thumb/3/30/Hand_Image.jpg/960px-Hand_Image.jpg"
+            ;;
         *)
             return 1 ;;
     esac
 }
 
-ALL_NAMES="object_detector face_landmarker hand_landmarker pose_landmarker"
+ALL_NAMES="object_detector face_landmarker hand_landmarker pose_landmarker portrait hand_image"
 
 LIST_ONLY=0
 TARGET=""
@@ -62,8 +71,13 @@ download() {
     local name="$1"
     local url
     url="$(url_for "$name")" || { echo "未知模型: $name" >&2; exit 1; }
-    # 保留 URL 自身的扩展名（.tflite / .task）
-    local ext="${url##*.}"
+    # 保留 URL 自身的扩展名（去掉 query string 后取后缀；无扩展名的 CDN 链接默认 .jpg）
+    local clean="${url%%\?*}"
+    local ext="${clean##*.}"
+    case "$ext" in
+        jpg|jpeg|png|tflite|task) ;;  # 已知扩展名
+        *) ext="jpg" ;;               # 如 images.unsplash.com/photo-<id>?...
+    esac
     local out="${MODELS_DIR}/${name}.${ext}"
     if [[ -f "${out}" ]]; then
         echo "[skip] 已存在: ${out}"
