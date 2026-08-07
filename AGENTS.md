@@ -10,9 +10,13 @@ task_graph is a C++20 cross-platform DAG task-execution framework (Desktop / iOS
 - Submodule scaffolding: `python3 scripts/generate_submodule.py` (CLI or interactive). New subnodes must also be registered in `subnode.json`.
 - Build dir is `build/` (gitignored). WASM builds to `build_wasm/`; iOS/Android OpenCV prebuilds live in `build_ios/`/`build_android/`.
 
-## Known test failures (pre-existing, NOT caused by your changes)
+## Scripting test history (previously failing, now fixed)
 
-`test_js_engine` and `test_js_mat` (quickjs submodule) crash with `JS_SetClassProto` assertion in `quickjs.c`. They fail on a clean checkout too — do not chase them.
+`test_js_engine` and `test_js_mat` (quickjs submodule) used to fail on a clean checkout. Root causes found and fixed (15/15 tests now pass):
+
+- **`test_js_mat` — `JS_SetClassProto` assertion** (`quickjs.c`): `MatWrapper::class_id_` is static, so `registerClass` only called `JS_NewClass` for the *first* `JsRuntime`. Each `JsEngine` owns its own runtime, so the second engine hit the assertion. Fix: gate `JS_NewClass` on `JS_IsRegisteredClass(rt, class_id_)` (not a static guard) so every runtime registers the class once. (`submodules/scripting/js_task/src/js_mat_wrapper.cpp`)
+- **`test_js_engine` — error message missing**: `JsEngine::getLastError()` read the `stack` property first; in QuickJS `stack` holds only the backtrace (no message), so the `throw new Error('test error')` message was lost. Fix: read the `message` property first, fall back to `stack`, then `toString`. (`submodules/scripting/js_task/src/js_engine.cpp`)
+- **Latent `test_js_mat` stage-3 assertion** (only reachable after the runtime fix): `cv.createMat(width, height, channels)` is width-first (per `brightness.js` usage), so `createMat(100, 200, 3)` → `"100x200x3"`; the old expectation `"200x100x3"` (copied from the rows-first `cv::Mat` ctor) was wrong. (`submodules/scripting/js_task/tests/test_js_mat.cpp`)
 
 ## Architecture
 
