@@ -185,6 +185,15 @@ if old in s:
 PYEOF
     fi
 
+    # OpenCV5 API 兼容:image_transformation_calculator 的 getRotationMatrix2D 移到
+    # geometry/2d.hpp(holistic/gesture 等新 C API 才拉入该 calculator)。与上方
+    # getPerspectiveTransform 同一模式:CV5 下显式 include geometry/2d.hpp。
+    if [[ -f "${MP_SRC}/mediapipe/calculators/image/image_transformation_calculator.cc" ]]; then
+        grep -q "geometry/2d.hpp" "${MP_SRC}/mediapipe/calculators/image/image_transformation_calculator.cc" || \
+            sed -i '' 's|#include "mediapipe/framework/port/opencv_imgproc_inc.h"|#include "mediapipe/framework/port/opencv_imgproc_inc.h"\n#if CV_VERSION_MAJOR >= 5\n#include <opencv2/geometry/2d.hpp>\n#endif|' \
+            "${MP_SRC}/mediapipe/calculators/image/image_transformation_calculator.cc"
+    fi
+
     # 构建 libvision.dylib 时只导出 C API 符号,避免 protobuf 符号冲突
     if [[ "${MP_TARGETS_FULL[0]}" == *"libvision.dylib"* ]] && [[ -f "${MP_SRC}/mediapipe/tasks/c/vision/BUILD" ]]; then
         python3 - "${MP_SRC}" << 'PYEOF'
@@ -192,31 +201,64 @@ import sys, os
 src = sys.argv[1]
 build = os.path.join(src, "mediapipe/tasks/c/vision/BUILD")
 s = open(build).read()
-# 修正 VISION_LIBRARIES 为 4 个 MVP 的 C API
-new_lib = ('VISION_LIBRARIES = [\n'
-           '    "//mediapipe/tasks/c/vision/face_landmarker:face_landmarker_c_lib",\n'
-           '    "//mediapipe/tasks/c/vision/hand_landmarker:hand_landmarker_c_lib",\n'
-           '    "//mediapipe/tasks/c/vision/pose_landmarker:pose_landmarker_c_lib",\n'
-           '    "//mediapipe/tasks/c/vision/object_detector:object_detector_c_lib",\n'
-           ']')
+# 修正 VISION_LIBRARIES 为全部 11 个模块的 C API(把一次性全量重建,避免反复 bazel)
+ALL_VISION_LIBS = [
+    "//mediapipe/tasks/c/vision/face_detector:face_detector_c_lib",
+    "//mediapipe/tasks/c/vision/face_landmarker:face_landmarker_c_lib",
+    "//mediapipe/tasks/c/vision/gesture_recognizer:gesture_recognizer_c_lib",
+    "//mediapipe/tasks/c/vision/hand_landmarker:hand_landmarker_c_lib",
+    "//mediapipe/tasks/c/vision/holistic_landmarker:holistic_landmarker_c_lib",
+    "//mediapipe/tasks/c/vision/image_classifier:image_classifier_c_lib",
+    "//mediapipe/tasks/c/vision/image_embedder:image_embedder_c_lib",
+    "//mediapipe/tasks/c/vision/image_segmenter:image_segmenter_c_lib",
+    "//mediapipe/tasks/c/vision/object_detector:object_detector_c_lib",
+    "//mediapipe/tasks/c/vision/pose_landmarker:pose_landmarker_c_lib",
+]
+new_lib = "VISION_LIBRARIES = [\n" + ",\n".join(
+    '    "{}"'.format(l) for l in ALL_VISION_LIBS) + ",\n]"
 import re
 s = re.sub(r'VISION_LIBRARIES = \[.*?\]', new_lib, s, flags=re.S)
-# exported symbols 文件(静态列表,只导出 C API,避免 protobuf 符号冲突)
-exp = os.path.join(src, "mediapipe/tasks/c/vision/exported_symbols.txt")
-if not os.path.exists(exp) or os.path.getsize(exp) == 0:
-    symbols = """_MpErrorFree
+
+# 导出符号白名单:静态列表,只导出 C API,避免 protobuf 符号冲突。
+# 幂等合并:每次把「已有的符号」与「期望的新符号」并集写回,保证已有 checkout
+# 也会被更新(而不是只在文件不存在/为空时写入)。
+EXPECTED_SYMBOLS = """_MpErrorFree
+_MpFaceDetectorClose
+_MpFaceDetectorCloseResult
+_MpFaceDetectorCreate
+_MpFaceDetectorDetectAsync
+_MpFaceDetectorDetectForVideo
+_MpFaceDetectorDetectImage
 _MpFaceLandmarkerClose
 _MpFaceLandmarkerCloseResult
 _MpFaceLandmarkerCreate
 _MpFaceLandmarkerDetectAsync
 _MpFaceLandmarkerDetectForVideo
 _MpFaceLandmarkerDetectImage
+_MpGestureRecognizerClose
+_MpGestureRecognizerCloseResult
+_MpGestureRecognizerCreate
+_MpGestureRecognizerRecognizeAsync
+_MpGestureRecognizerRecognizeForVideo
+_MpGestureRecognizerRecognizeImage
 _MpHandLandmarkerClose
 _MpHandLandmarkerCloseResult
 _MpHandLandmarkerCreate
 _MpHandLandmarkerDetectAsync
 _MpHandLandmarkerDetectForVideo
 _MpHandLandmarkerDetectImage
+_MpHolisticLandmarkerClose
+_MpHolisticLandmarkerCloseResult
+_MpHolisticLandmarkerCreate
+_MpHolisticLandmarkerDetectAsync
+_MpHolisticLandmarkerDetectForVideo
+_MpHolisticLandmarkerDetectImage
+_MpImageClassifierClose
+_MpImageClassifierCloseResult
+_MpImageClassifierCreate
+_MpImageClassifierClassifyAsync
+_MpImageClassifierClassifyForVideo
+_MpImageClassifierClassifyImage
 _MpImageCreateFromFile
 _MpImageCreateFromFloatData
 _MpImageCreateFromImageFrame
@@ -225,6 +267,13 @@ _MpImageCreateFromUint8Data
 _MpImageDataFloat32
 _MpImageDataUint16
 _MpImageDataUint8
+_MpImageEmbedderClose
+_MpImageEmbedderCloseResult
+_MpImageEmbedderCosineSimilarity
+_MpImageEmbedderCreate
+_MpImageEmbedderEmbedAsync
+_MpImageEmbedderEmbedForVideo
+_MpImageEmbedderEmbedImage
 _MpImageFree
 _MpImageGetByteDepth
 _MpImageGetChannels
@@ -238,6 +287,13 @@ _MpImageGetWidthStep
 _MpImageIsAligned
 _MpImageIsContiguous
 _MpImageIsEmpty
+_MpImageSegmenterClose
+_MpImageSegmenterCloseResult
+_MpImageSegmenterCreate
+_MpImageSegmenterGetLabels
+_MpImageSegmenterSegmentAsync
+_MpImageSegmenterSegmentForVideo
+_MpImageSegmenterSegmentImage
 _MpImageUsesGpu
 _MpObjectDetectorClose
 _MpObjectDetectorCloseResult
@@ -253,8 +309,18 @@ _MpPoseLandmarkerDetectForVideo
 _MpPoseLandmarkerDetectImage
 _MpStringListFree
 """
-    os.makedirs(os.path.dirname(build), exist_ok=True)
-    open(exp, 'w').write(symbols)
+exp = os.path.join(src, "mediapipe/tasks/c/vision/exported_symbols.txt")
+os.makedirs(os.path.dirname(exp), exist_ok=True)
+existing = set()
+if os.path.exists(exp) and os.path.getsize(exp) > 0:
+    for line in open(exp):
+        line = line.strip()
+        if line:
+            existing.add(line)
+expected = set(l for l in EXPECTED_SYMBOLS.splitlines() if l.strip())
+merged = sorted(existing | expected)
+open(exp, 'w').write("".join(l + "\n" for l in merged))
+print("merged %d exported symbols (%d new)" % (len(merged), len(expected - existing)))
 # dylib linkopts
 if 'exported_symbols_list' not in s:
     s = s.replace('"-Wl,-install_name,libvision.dylib",',

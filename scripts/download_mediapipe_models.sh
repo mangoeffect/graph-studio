@@ -21,6 +21,9 @@ url_for() {
         object_detector)
             echo "https://storage.googleapis.com/mediapipe-tasks/object_detector/efficientdet_lite0_uint8.tflite"
             ;;
+        face_detector)
+            echo "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/latest/blaze_face_short_range.tflite"
+            ;;
         face_landmarker)
             echo "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task"
             ;;
@@ -29,6 +32,21 @@ url_for() {
             ;;
         pose_landmarker)
             echo "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task"
+            ;;
+        gesture_recognizer)
+            echo "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/latest/gesture_recognizer.task"
+            ;;
+        holistic_landmarker)
+            echo "https://storage.googleapis.com/mediapipe-models/holistic_landmarker/holistic_landmarker/float16/latest/holistic_landmarker.task"
+            ;;
+        image_classifier)
+            echo "https://storage.googleapis.com/mediapipe-models/image_classifier/efficientnet_lite0/float32/latest/efficientnet_lite0.tflite"
+            ;;
+        image_embedder)
+            echo "https://storage.googleapis.com/mediapipe-models/image_embedder/mobilenet_v3_small/float32/latest/mobilenet_v3_small.tflite"
+            ;;
+        image_segmenter)
+            echo "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite"
             ;;
         # Royalty-free test image (Unsplash license: free, no attribution required).
         portrait)
@@ -44,7 +62,7 @@ url_for() {
     esac
 }
 
-ALL_NAMES="object_detector face_landmarker hand_landmarker pose_landmarker portrait hand_image"
+ALL_NAMES="object_detector face_detector face_landmarker hand_landmarker pose_landmarker gesture_recognizer holistic_landmarker image_classifier image_embedder image_segmenter portrait hand_image"
 
 LIST_ONLY=0
 TARGET=""
