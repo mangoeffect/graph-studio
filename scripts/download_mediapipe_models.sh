@@ -21,12 +21,21 @@ url_for() {
         object_detector)
             echo "https://storage.googleapis.com/mediapipe-tasks/object_detector/efficientdet_lite0_uint8.tflite"
             ;;
+        face_landmarker)
+            echo "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task"
+            ;;
+        hand_landmarker)
+            echo "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task"
+            ;;
+        pose_landmarker)
+            echo "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task"
+            ;;
         *)
             return 1 ;;
     esac
 }
 
-ALL_NAMES="object_detector"
+ALL_NAMES="object_detector face_landmarker hand_landmarker pose_landmarker"
 
 LIST_ONLY=0
 TARGET=""
@@ -53,7 +62,9 @@ download() {
     local name="$1"
     local url
     url="$(url_for "$name")" || { echo "未知模型: $name" >&2; exit 1; }
-    local out="${MODELS_DIR}/${name}.tflite"
+    # 保留 URL 自身的扩展名（.tflite / .task）
+    local ext="${url##*.}"
+    local out="${MODELS_DIR}/${name}.${ext}"
     if [[ -f "${out}" ]]; then
         echo "[skip] 已存在: ${out}"
         return 0
