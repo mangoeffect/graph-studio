@@ -11,6 +11,7 @@
 #include <task_graph/task_graph.hpp>
 #include <task_graph/executor.hpp>
 #include <task_graph/compiler.hpp>
+#include <task_graph/dag_serializer.hpp>
 #include <task_graph/data_types.hpp>
 #include <task_graph/task_context.hpp>
 #include <execution_context.hpp>
@@ -69,6 +70,27 @@ public:
     }) {}
     std::vector<PortSpec> input_specs() const override {
         return {make_port<int>("in")};
+    }
+};
+
+// 声明真实非默认端口（对应 mediapipe 类任务：端口名为 "image"）。
+// ImageSrcNode 只有输出 image；PortedImageNode 只声明输入 image，读取端口。
+class ImageSrcNode : public Task {
+public:
+    ImageSrcNode(const std::string& id) : LambdaNode(id, [](auto&) {
+        return TaskResult{.status = TaskStatus::COMPLETED, .value = Image(16, 16, 3)};
+    }) {}
+    std::vector<PortSpec> output_specs() const override {
+        return {make_port<Image>("image")};
+    }
+};
+class PortedImageNode : public Task {
+public:
+    PortedImageNode(const std::string& id) : LambdaNode(id, [](auto&) {
+        return TaskResult{.status = TaskStatus::COMPLETED};
+    }) {}
+    std::vector<PortSpec> input_specs() const override {
+        return {make_port<Image>("image")};
     }
 };
 
@@ -278,6 +300,39 @@ TEST_CASE(validate_diamond_multi_source_no_error) {
     DAGCompiler c;
     auto errs = c.validate(dag);
     EXPECT_FALSE(has_error(errs));
+}
+
+// 回归：legacy "in"/"out" 默认端口名应被规范化为 task 声明的真实端口（"image"）。
+// 否则老版编辑器保存的图（to_port:"in"）运行时绑定不到 image 输入口。
+TEST_CASE(connect_canonicalizes_legacy_default_ports) {
+    DAG dag;
+    dag.add_task(std::make_shared<ImageSrcNode>("P"));
+    dag.add_task(std::make_shared<PortedImageNode>("C"));
+    dag.connect("P", "C");  // 便捷重载 -> "out"->"in"，应改写为 image->image
+
+    auto edges = dag.edges();
+    EXPECT_EQ(edges.size(), size_t(1));
+    EXPECT_EQ(edges[0].from_port, "image");
+    EXPECT_EQ(edges[0].to_port, "image");
+
+    // 规范化后不应再有"未声明端口"问题，且执行可绑定
+    DAGCompiler c;
+    auto errs = c.validate(dag);
+    EXPECT_FALSE(has_error(errs));
+    EXPECT_EQ(errs.size(), size_t(0));
+
+    DAGExecutor executor;
+    executor.execute(dag).wait();
+    EXPECT_TRUE(executor.get_results()["C"].is_success());
+
+    // 序列化 round-trip：端口保留为真实端口，且再加载仍可连接
+    std::string json = DAGSerializer::to_string(dag);
+    EXPECT_CONTAINS(json, "image");
+    DAG re = DAGSerializer::from_string(json);
+    auto re_edges = re.edges();
+    EXPECT_EQ(re_edges.size(), size_t(1));
+    EXPECT_EQ(re_edges[0].from_port, "image");
+    EXPECT_EQ(re_edges[0].to_port, "image");
 }
 
 TEST_CASE(validate_cycle_is_error) {

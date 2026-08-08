@@ -173,6 +173,8 @@ def gen_header(module_name: str, tasks: list, use_opencv: bool) -> str:
             '',
             '    const std::string& type() const override;',
             '    task_graph::TaskResult execute(task_graph::TaskContext& ctx) override;',
+            '    std::vector<task_graph::PortSpec> input_specs() const override;',
+            '    std::vector<task_graph::PortSpec> output_specs() const override;',
             '    task_graph::CheckResult check_input(const std::unordered_map<std::string, std::any>& inputs) const override;',
             '};',
             '',
@@ -271,6 +273,30 @@ def gen_source(module_name: str, tasks: list, use_opencv: bool) -> str:
                 '    //   int output = *input * 2;',
                 '    //   return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED, .value = output};',
                 '    return task_graph::TaskResult{.status = task_graph::TaskStatus::COMPLETED};',
+                '}',
+                '',
+            ]
+
+        # input_specs() / output_specs()：任务必须声明自己的端口契约
+        if use_opencv:
+            ns_lines += [
+                f'std::vector<task_graph::PortSpec> {class_name}::input_specs() const {{',
+                '    // 接受 cv::Mat 或 task_graph::Image，不严格校验类型',
+                '    return { task_graph::PortSpec{"in", "", true} };',
+                '}',
+                f'std::vector<task_graph::PortSpec> {class_name}::output_specs() const {{',
+                '    // 单输出口：结果以 cv::Mat 输出（端口名 "out"）',
+                '    return { task_graph::make_port<cv::Mat>("out") };',
+                '}',
+                '',
+            ]
+        else:
+            ns_lines += [
+                f'std::vector<task_graph::PortSpec> {class_name}::input_specs() const {{',
+                '    return { task_graph::PortSpec{"in", "", true} };',
+                '}',
+                f'std::vector<task_graph::PortSpec> {class_name}::output_specs() const {{',
+                '    return { task_graph::PortSpec{"out", "", false} };',
                 '}',
                 '',
             ]

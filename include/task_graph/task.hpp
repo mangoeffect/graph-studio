@@ -20,6 +20,11 @@ public:
     const std::string& type() const override { return type_; }
     const TaskFunction& func() const { return func_; }
 
+    // 通用 lambda 包装：无固定端口契约。如需声明端口，请直接子类化 INode
+    // 或使用可配置 spec 的专用节点。
+    std::vector<PortSpec> input_specs() const override;
+    std::vector<PortSpec> output_specs() const override;
+
     TaskResult execute(TaskContext& ctx) override;
 
 private:

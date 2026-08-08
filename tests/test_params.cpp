@@ -108,6 +108,8 @@ public:
     std::vector<ParamSpec> param_specs() const override {
         return {make_int_param("k", 5, 1, 10)};
     }
+    std::vector<PortSpec> input_specs() const override { return {}; }
+    std::vector<PortSpec> output_specs() const override { return {}; }
 };
 
 TEST_CASE(node_exposes_param_specs_directly) {
@@ -162,6 +164,8 @@ public:
     std::vector<ParamSpec> param_specs() const override {
         return {make_float_param("sigma", 0.0f, 0.0, 100.0)};
     }
+    std::vector<PortSpec> input_specs() const override { return {}; }
+    std::vector<PortSpec> output_specs() const override { return {}; }
 };
 
 TEST_CASE(deserialize_float_param_with_declared_spec) {

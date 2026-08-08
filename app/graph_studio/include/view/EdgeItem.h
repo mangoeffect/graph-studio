@@ -13,18 +13,25 @@ class EdgeItem : public QGraphicsItem
 public:
     enum { Type = UserType + 2 };
 
-    // Permanent edge between two nodes
-    EdgeItem(NodeItem* source, NodeItem* target, QGraphicsItem* parent = nullptr);
+    // Permanent edge between two nodes (port-aware)
+    EdgeItem(NodeItem* source, NodeItem* target,
+             const QString& sourcePort = QStringLiteral("out"),
+             const QString& targetPort = QStringLiteral("in"),
+             QGraphicsItem* parent = nullptr);
 
     // Temporary edge for drag-preview: source node + free endpoint
-    EdgeItem(NodeItem* source, const QPointF& freeEnd, QGraphicsItem* parent = nullptr);
+    EdgeItem(NodeItem* source, const QPointF& freeEnd,
+             const QString& sourcePort = QStringLiteral("out"),
+             QGraphicsItem* parent = nullptr);
 
     ~EdgeItem() override;
 
     NodeItem* sourceNode() const;
     NodeItem* targetNode() const;
+    QString sourcePort() const;
+    QString targetPort() const;
 
-    void setTargetNode(NodeItem* target);
+    void setTargetNode(NodeItem* target, const QString& targetPort = QStringLiteral("in"));
     void setFreeEnd(const QPointF& pos);
     void adjust();
 
@@ -45,6 +52,8 @@ private:
     NodeItem* source_ = nullptr;
     NodeItem* target_ = nullptr;
     bool isTemporary_ = false;
+    QString sourcePort_;
+    QString targetPort_;
 
     QPointF sourcePoint_;
     QPointF targetPoint_;

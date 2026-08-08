@@ -10,8 +10,11 @@ using namespace graph_studio;
 
 const qreal EdgeItem::ARROW_SIZE = 10;
 
-EdgeItem::EdgeItem(NodeItem* source, NodeItem* target, QGraphicsItem* parent)
-    : QGraphicsItem(parent), source_(source), target_(target)
+EdgeItem::EdgeItem(NodeItem* source, NodeItem* target,
+                   const QString& sourcePort, const QString& targetPort,
+                   QGraphicsItem* parent)
+    : QGraphicsItem(parent), source_(source), target_(target),
+      sourcePort_(sourcePort), targetPort_(targetPort)
 {
     setZValue(-1);
     setFlags(QGraphicsItem::ItemIsSelectable);
@@ -20,8 +23,11 @@ EdgeItem::EdgeItem(NodeItem* source, NodeItem* target, QGraphicsItem* parent)
     adjust();
 }
 
-EdgeItem::EdgeItem(NodeItem* source, const QPointF& freeEnd, QGraphicsItem* parent)
-    : QGraphicsItem(parent), source_(source), isTemporary_(true), freeEnd_(freeEnd)
+EdgeItem::EdgeItem(NodeItem* source, const QPointF& freeEnd,
+                   const QString& sourcePort,
+                   QGraphicsItem* parent)
+    : QGraphicsItem(parent), source_(source), isTemporary_(true),
+      freeEnd_(freeEnd), sourcePort_(sourcePort)
 {
     setZValue(100); // on top during drag
     setAcceptedMouseButtons(Qt::NoButton);
@@ -39,13 +45,16 @@ EdgeItem::~EdgeItem()
 
 NodeItem* EdgeItem::sourceNode() const { return source_; }
 NodeItem* EdgeItem::targetNode() const { return target_; }
+QString EdgeItem::sourcePort() const { return sourcePort_; }
+QString EdgeItem::targetPort() const { return targetPort_; }
 
-void EdgeItem::setTargetNode(NodeItem* target)
+void EdgeItem::setTargetNode(NodeItem* target, const QString& targetPort)
 {
     if (target_) {
         target_->unregisterEdge(this);
     }
     target_ = target;
+    targetPort_ = targetPort;
     isTemporary_ = false;
     if (target_) {
         target_->registerEdge(this);
@@ -69,13 +78,11 @@ void EdgeItem::adjust()
     prepareGeometryChange();
 
     if (source_) {
-        QRectF sourceRect = source_->boundingRect();
-        sourcePoint_ = source_->mapToScene(QPointF(sourceRect.right(), sourceRect.center().y()));
+        sourcePoint_ = source_->outputPortPos(sourcePort_.isEmpty() ? QStringLiteral("out") : sourcePort_);
     }
 
     if (target_) {
-        QRectF targetRect = target_->boundingRect();
-        targetPoint_ = target_->mapToScene(QPointF(targetRect.left(), targetRect.center().y()));
+        targetPoint_ = target_->inputPortPos(targetPort_.isEmpty() ? QStringLiteral("in") : targetPort_);
     } else if (isTemporary_) {
         targetPoint_ = freeEnd_;
     }

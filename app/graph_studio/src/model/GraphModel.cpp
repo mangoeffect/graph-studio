@@ -39,14 +39,20 @@ bool GraphModel::add_task(const std::string& task_id, const std::string& task_ty
     }
 }
 
-bool GraphModel::add_edge(const std::string& from_id, const std::string& to_id)
+bool GraphModel::add_edge(const std::string& from_id, const std::string& from_port,
+                          const std::string& to_id, const std::string& to_port)
 {
     try {
-        dag_->add_dependency(from_id, to_id);
+        dag_->connect(from_id, from_port, to_id, to_port);
         return true;
     } catch (const std::exception&) {
         return false;
     }
+}
+
+bool GraphModel::add_edge(const std::string& from_id, const std::string& to_id)
+{
+    return add_edge(from_id, "out", to_id, "in");
 }
 
 void GraphModel::clear()

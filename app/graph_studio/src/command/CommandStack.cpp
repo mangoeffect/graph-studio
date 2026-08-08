@@ -59,20 +59,26 @@ void RemoveTaskCommand::undo()
     }
     // Restore edges
     for (const auto& e : connectedEdges_) {
-        vm_.addEdge(e.fromId, e.toId);
+        vm_.addEdge(e.fromId, e.fromPort, e.toId, e.toPort);
     }
 }
 
 // ---- AddEdgeCommand ----
 
+AddEdgeCommand::AddEdgeCommand(GraphViewModel& vm, const QString& fromId, const QString& fromPort,
+                               const QString& toId, const QString& toPort)
+    : vm_(vm), fromId_(fromId), fromPort_(fromPort), toId_(toId), toPort_(toPort)
+{
+}
+
 AddEdgeCommand::AddEdgeCommand(GraphViewModel& vm, const QString& fromId, const QString& toId)
-    : vm_(vm), fromId_(fromId), toId_(toId)
+    : AddEdgeCommand(vm, fromId, QStringLiteral("out"), toId, QStringLiteral("in"))
 {
 }
 
 void AddEdgeCommand::execute()
 {
-    vm_.addEdge(fromId_, toId_);
+    vm_.addEdge(fromId_, fromPort_, toId_, toPort_);
 }
 
 void AddEdgeCommand::undo()
@@ -82,8 +88,9 @@ void AddEdgeCommand::undo()
 
 // ---- RemoveEdgeCommand ----
 
-RemoveEdgeCommand::RemoveEdgeCommand(GraphViewModel& vm, const QString& fromId, const QString& toId)
-    : vm_(vm), fromId_(fromId), toId_(toId)
+RemoveEdgeCommand::RemoveEdgeCommand(GraphViewModel& vm, const QString& fromId, const QString& fromPort,
+                                     const QString& toId, const QString& toPort)
+    : vm_(vm), fromId_(fromId), fromPort_(fromPort), toId_(toId), toPort_(toPort)
 {
 }
 
@@ -94,7 +101,7 @@ void RemoveEdgeCommand::execute()
 
 void RemoveEdgeCommand::undo()
 {
-    vm_.addEdge(fromId_, toId_);
+    vm_.addEdge(fromId_, fromPort_, toId_, toPort_);
 }
 
 // ---- ChangeParamCommand ----

@@ -192,9 +192,11 @@ public:
     // 若子类持有 spec_delegate_（如 Task 包装 IPluginTask），应重写以同步委托对象。
     virtual void set_config(const TaskConfig& config) { config_ = config; }
 
-    // 端口契约声明（默认空，等价于"无约束"）。子类应重写以参与构图期校验。
-    virtual std::vector<PortSpec> input_specs()  const { return {}; }
-    virtual std::vector<PortSpec> output_specs() const { return {}; }
+    // 端口契约声明（纯虚：每个 task 子类必须声明自己的输入/输出端口，
+    // 供构图期校验 + 编辑器按端口连线）。通用包装类（如 LambdaNode）视为
+    // 无固定契约，override 返回空即可。
+    virtual std::vector<PortSpec> input_specs()  const = 0;
+    virtual std::vector<PortSpec> output_specs() const = 0;
 
     // 参数契约声明（默认空）。子类重写以声明可配置参数的类型/默认值/范围/枚举，
     // 供 UI / 工具链自动发现（对齐 input_specs/output_specs 的做法）。

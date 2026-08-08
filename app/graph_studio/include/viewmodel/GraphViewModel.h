@@ -28,11 +28,15 @@ struct NodeData {
     qreal x = 0;
     qreal y = 0;
     QVariantMap params;
+    QStringList inputPorts;   // 节点声明的输入端口名（input_specs）
+    QStringList outputPorts;  // 节点声明的输出端口名（output_specs）
 };
 
 struct EdgeData {
     QString fromId;
     QString toId;
+    QString fromPort;  // 输出端口名（如 "out"）
+    QString toPort;    // 输入端口名（如 "image"）
 };
 
 class GraphViewModel : public QObject
@@ -57,6 +61,8 @@ public:
     Q_INVOKABLE bool moveNode(const QString& taskId, qreal x, qreal y);
 
     Q_INVOKABLE bool addEdge(const QString& fromId, const QString& toId);
+    Q_INVOKABLE bool addEdge(const QString& fromId, const QString& fromPort,
+                             const QString& toId, const QString& toPort);
     Q_INVOKABLE bool removeEdge(const QString& fromId, const QString& toId);
 
     Q_INVOKABLE void selectNode(const QString& taskId);
@@ -72,6 +78,11 @@ public:
     Q_INVOKABLE bool setNodeParam(const QString& taskId, const QString& key, const QVariant& value);
     Q_INVOKABLE QStringList availableTaskTypes() const;
     Q_INVOKABLE bool hasTaskType(const QString& type) const;
+
+    // 端口查询：按 task 类型返回其 input_specs()/output_specs() 的端口名。
+    // 无声明时返回空（UI 退化为默认 in/out 锚点）。
+    Q_INVOKABLE QStringList inputPorts(const QString& taskType) const;
+    Q_INVOKABLE QStringList outputPorts(const QString& taskType) const;
 
     Q_INVOKABLE void clear();
     Q_INVOKABLE bool saveToFile(const QString& filePath);

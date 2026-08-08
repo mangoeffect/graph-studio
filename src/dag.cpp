@@ -5,6 +5,18 @@
 
 namespace task_graph {
 
+// 端口规范化：当给定端口名未在 task 声明的端口列表中，而 task 恰好只有
+// 一个输入/输出端口时，把未声明名改写为真实端口名。用于兼容旧数据/便捷调用
+// 中伪造的默认端口名（如 mp_face_detector 的真实输入端口是 "image"，
+// 而旧版编辑器写成了 "in"）。声明了多个端口的 task 不做改写（保持原样，
+// 交由 DAGCompiler::validate() 提示未声明端口 warning）。
+static std::string canonical_single_port(const std::vector<PortSpec>& specs,
+                                         const std::string& port) {
+    if (specs.size() != 1) return port;
+    if (port.empty() || specs[0].name == port) return port;
+    return specs[0].name;
+}
+
 void DAG::add_task(TaskPtr task) {
     if (!task) {
         TG_LOG_ERROR("Cannot add null task to DAG");
@@ -97,6 +109,16 @@ void DAG::connect(const TaskId& from, std::string from_port,
     if (!tasks_.contains(to)) {
         TG_LOG_ERROR("Cannot connect: task '" + to + "' does not exist");
         throw std::runtime_error("Task '" + to + "' does not exist");
+    }
+
+    // 端口规范化：把 legacy/便捷默认端口名改写为 task 声明的唯一端口
+    // （仅当端口名未声明且 task 恰好一个同名端口时）。这样保存/加载的图
+    // 即便带着伪造的 "in"/"out"，运行时也能正确绑定到 image 等真实端口。
+    {
+        const auto from_task = tasks_.at(from);
+        const auto to_task = tasks_.at(to);
+        from_port = canonical_single_port(from_task->output_specs(), from_port);
+        to_port   = canonical_single_port(to_task->input_specs(), to_port);
     }
 
     // 端口级幂等：完全相同的四元组直接跳过

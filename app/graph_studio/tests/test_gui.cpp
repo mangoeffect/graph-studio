@@ -14,8 +14,31 @@
 #include "view/GraphView.h"
 #include "view/NodeItem.h"
 #include "view/EdgeItem.h"
+#include <plugin_api.hpp>
 
 using namespace graph_studio;
+
+// 模拟声明真实非默认输入端口（image）的 task，用于确定性复现 mediapipe
+// 类节点的端口问题，不依赖运行时 dlopen 的插件。
+namespace {
+class PortedNode : public task_graph::INode {
+public:
+    using task_graph::INode::INode;
+    const std::string& type() const override {
+        static std::string t = "ported_node";
+        return t;
+    }
+    task_graph::TaskResult execute(task_graph::TaskContext&) override {
+        return task_graph::TaskResult{task_graph::TaskStatus::COMPLETED};
+    }
+    std::vector<task_graph::PortSpec> input_specs() const override {
+        return { task_graph::PortSpec{"image", "", true} };
+    }
+    std::vector<task_graph::PortSpec> output_specs() const override {
+        return { task_graph::PortSpec{"out", "", false} };
+    }
+};
+}
 
 // 默认无头运行：未显式指定 QT_QPA_PLATFORM 时回落到 offscreen，便于 CI/ctest。
 // 开发者想观察画面时可设 QT_QPA_PLATFORM=cocoa 等覆盖。
@@ -59,6 +82,7 @@ private slots:
     void testUndoRedo();
     void testZoomActions();
     void testEdgeCreationViaPortDrag();
+    void testPortAwareEdgeDragAndSerialize();
 
 private:
     GraphModel* model_ = nullptr;
@@ -305,6 +329,59 @@ void TestGui::testEdgeCreationViaPortDrag()
     QCOMPARE(edges.size(), 1);
     QCOMPARE(edges[0].fromId, idA);
     QCOMPARE(edges[0].toId, idB);
+}
+
+// 确定性地复现用户场景：一个声明了真实非默认输入端口（image）的 task，
+// 从输出端口拖到它的输入端口。此前端口未并入序列化/快捷连线，保存的图
+// 会把 to_port 写成 "in"，导致图校验失败、无输入边。
+void TestGui::testPortAwareEdgeDragAndSerialize()
+{
+    task_graph::PluginRegistry::instance().register_task(
+        "ported_node",
+        [](const std::string& id, const task_graph::TaskConfig& cfg) {
+            return std::make_shared<PortedNode>(id, cfg);
+        });
+
+    QString src = vm_->addTask("ported_node", -200, 0);
+    QString dst = vm_->addTask("ported_node", 200, 0);
+    QVERIFY(!src.isEmpty() && !dst.isEmpty());
+
+    // 节点元数据应为该 task 声明的真实端口（非默认 in/out）
+    QCOMPARE(vm_->nodeData(src).outputPorts, QStringList{QStringLiteral("out")});
+    QCOMPARE(vm_->nodeData(dst).inputPorts, QStringList{QStringLiteral("image")});
+
+    // GUI 的真实手动拖线：从输出端口中心拖到输入端口中心
+    auto* nodeA = scene_->findNodeItem(src);
+    auto* nodeB = scene_->findNodeItem(dst);
+    QVERIFY(nodeA && nodeB);
+    qreal outX = NodeItem::nodeWidth() / 2;
+    qreal inX = -NodeItem::nodeWidth() / 2;
+    QPoint start = view_->mapFromScene(nodeA->mapToScene(QPointF(outX, 0)));
+    QPoint end = view_->mapFromScene(nodeB->mapToScene(QPointF(inX, 0)));
+    mouseDrag(start, end);
+
+    // 拖线产生的边必须带真实端口（out -> image）
+    QCOMPARE(vm_->edgeCount(), 1);
+    auto edges = vm_->edges();
+    QCOMPARE(edges[0].fromId, src);
+    QCOMPARE(edges[0].toId, dst);
+    QCOMPARE(edges[0].fromPort, QStringLiteral("out"));
+    QCOMPARE(edges[0].toPort, QStringLiteral("image"));
+
+    // 序列化：to_port 必须写真实端口 "image"，绝不出现伪造的 "in"
+    std::string json = model_->to_json_string();
+    QVERIFY(json.find("\"to_port\": \"image\"") != std::string::npos);
+    QVERIFY(json.find("\"to_port\": \"in\"") == std::string::npos);
+    QVERIFY(json.find("\"from_port\": \"out\"") != std::string::npos);
+
+    // round-trip：加载回同一 JSON，端口边原样恢复
+    QVERIFY(model_->from_json_string(json));
+    auto reloaded = vm_->edges();
+    QCOMPARE(reloaded.size(), 1);
+    QCOMPARE(reloaded[0].fromPort, QStringLiteral("out"));
+    QCOMPARE(reloaded[0].toPort, QStringLiteral("image"));
+
+    task_graph::PluginRegistry::instance().unregister_task("ported_node");
 }
 
 // 自定义 main：GUI 测试必须用 QApplication（而非 QCoreApplication）

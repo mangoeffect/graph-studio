@@ -5,6 +5,7 @@
 #include <QStyleOptionGraphicsItem>
 #include <QGraphicsScene>
 #include <QGraphicsSceneHoverEvent>
+#include <algorithm>
 
 using namespace graph_studio;
 
@@ -29,6 +30,17 @@ QString NodeItem::nodeId() const { return nodeId_; }
 QString NodeItem::nodeType() const { return nodeType_; }
 void NodeItem::setNodeType(const QString& type) { nodeType_ = type; update(); }
 
+QStringList NodeItem::inputPorts() const { return inputPorts_; }
+QStringList NodeItem::outputPorts() const { return outputPorts_; }
+
+void NodeItem::setPorts(const QStringList& inputs, const QStringList& outputs)
+{
+    inputPorts_ = inputs;
+    outputPorts_ = outputs;
+    update();
+    notifyEdges();
+}
+
 void NodeItem::setRunStatus(RunStatus status)
 {
     if (runStatus_ == status)
@@ -39,28 +51,83 @@ void NodeItem::setRunStatus(RunStatus status)
 
 NodeItem::RunStatus NodeItem::runStatus() const { return runStatus_; }
 
-QPointF NodeItem::inputPortPos() const
+// 空端口列表退化为单个默认锚点，端口名 "in"/"out"
+QStringList NodeItem::effectiveInput() const { return inputPorts_.isEmpty() ? QStringList{QStringLiteral("in")} : inputPorts_; }
+QStringList NodeItem::effectiveOutput() const { return outputPorts_.isEmpty() ? QStringList{QStringLiteral("out")} : outputPorts_; }
+
+qreal NodeItem::height() const
 {
-    return mapToScene(QPointF(-NODE_WIDTH / 2, 0));
+    const int n = std::max(effectiveInput().size(), effectiveOutput().size());
+    return std::max(NODE_HEIGHT, qreal(PORT_HIT_RADIUS * 2 + 16 + n * 20));
 }
 
-QPointF NodeItem::outputPortPos() const
+// 端口中心在节点本地坐标。dir: 0=输入(左) 1=输出(右)
+QPointF NodeItem::portLocalPos(int dir, int index, int count) const
 {
-    return mapToScene(QPointF(NODE_WIDTH / 2, 0));
+    const qreal x = (dir == 0 ? -1.0 : 1.0) * NODE_WIDTH / 2;
+    const qreal h = height();
+    const qreal pad = PORT_HIT_RADIUS + 7;
+    const qreal usable = h - 2 * pad;
+    const qreal y = (count <= 1)
+        ? 0
+        : -usable / 2 + qreal(index) * usable / (count - 1);
+    return QPointF(x, y);
 }
 
-NodeItem::Port NodeItem::hitPort(const QPointF& scenePos) const
+bool NodeItem::hitPortAt(const QPointF& scenePos, int dir, const QStringList& ports, QString& name) const
 {
     QPointF local = mapFromScene(scenePos);
-    QPointF inputCenter(-NODE_WIDTH / 2, 0);
-    if (QLineF(inputCenter, local).length() <= PORT_HIT_RADIUS)
-        return Port::Input;
+    for (int i = 0; i < ports.size(); ++i) {
+        if (QLineF(portLocalPos(dir, i, ports.size()), local).length() <= PORT_HIT_RADIUS) {
+            name = ports[i];
+            return true;
+        }
+    }
+    return false;
+}
 
-    QPointF outputCenter(NODE_WIDTH / 2, 0);
-    if (QLineF(outputCenter, local).length() <= PORT_HIT_RADIUS)
-        return Port::Output;
+NodeItem::PortDir NodeItem::hitPort(const QPointF& scenePos) const
+{
+    QString dummy;
+    if (hitPortAt(scenePos, 0, effectiveInput(), dummy)) return PortDir::Input;
+    if (hitPortAt(scenePos, 1, effectiveOutput(), dummy)) return PortDir::Output;
+    return PortDir::None;
+}
 
-    return Port::None;
+QString NodeItem::hitPortName(const QPointF& scenePos) const
+{
+    QString name;
+    if (hitPortAt(scenePos, 0, effectiveInput(), name)) return name;
+    if (hitPortAt(scenePos, 1, effectiveOutput(), name)) return name;
+    return {};
+}
+
+QString NodeItem::inputPortNameAt(const QPointF& scenePos) const
+{
+    QString name;
+    return hitPortAt(scenePos, 0, effectiveInput(), name) ? name : QString();
+}
+
+QString NodeItem::outputPortNameAt(const QPointF& scenePos) const
+{
+    QString name;
+    return hitPortAt(scenePos, 1, effectiveOutput(), name) ? name : QString();
+}
+
+QPointF NodeItem::inputPortPos(const QString& name) const
+{
+    const QStringList ins = effectiveInput();
+    int idx = ins.indexOf(name);
+    if (idx < 0) idx = 0;
+    return mapToScene(portLocalPos(0, idx, ins.size()));
+}
+
+QPointF NodeItem::outputPortPos(const QString& name) const
+{
+    const QStringList outs = effectiveOutput();
+    int idx = outs.indexOf(name);
+    if (idx < 0) idx = 0;
+    return mapToScene(portLocalPos(1, idx, outs.size()));
 }
 
 void NodeItem::setDropHighlighted(bool on)
@@ -84,18 +151,20 @@ void NodeItem::unregisterEdge(EdgeItem* edge)
 QRectF NodeItem::boundingRect() const
 {
     qreal margin = PORT_HIT_RADIUS + 2;
-    return QRectF(-NODE_WIDTH / 2 - margin, -NODE_HEIGHT / 2,
-                  NODE_WIDTH + margin * 2, NODE_HEIGHT);
+    return QRectF(-NODE_WIDTH / 2 - margin, -height() / 2,
+                  NODE_WIDTH + margin * 2, height());
 }
 
 QPainterPath NodeItem::shape() const
 {
     QPainterPath path;
-    // Node body
-    path.addRoundedRect(QRectF(-NODE_WIDTH / 2, -NODE_HEIGHT / 2, NODE_WIDTH, NODE_HEIGHT), 8, 8);
-    // Port hit areas (circles extending beyond the body edges)
-    path.addEllipse(QPointF(-NODE_WIDTH / 2, 0), PORT_HIT_RADIUS, PORT_HIT_RADIUS);
-    path.addEllipse(QPointF(NODE_WIDTH / 2, 0), PORT_HIT_RADIUS, PORT_HIT_RADIUS);
+    path.addRoundedRect(QRectF(-NODE_WIDTH / 2, -height() / 2, NODE_WIDTH, height()), 8, 8);
+    const auto ins = effectiveInput();
+    for (int i = 0; i < ins.size(); ++i)
+        path.addEllipse(portLocalPos(0, i, ins.size()), PORT_HIT_RADIUS, PORT_HIT_RADIUS);
+    const auto outs = effectiveOutput();
+    for (int i = 0; i < outs.size(); ++i)
+        path.addEllipse(portLocalPos(1, i, outs.size()), PORT_HIT_RADIUS, PORT_HIT_RADIUS);
     return path.simplified();
 }
 
@@ -120,14 +189,10 @@ void NodeItem::notifyEdges()
 
 void NodeItem::hoverMoveEvent(QGraphicsSceneHoverEvent* event)
 {
-    Port p = hitPort(event->scenePos());
+    PortDir p = hitPort(event->scenePos());
     if (p != hoverPort_) {
         hoverPort_ = p;
-        if (p == Port::None) {
-            setCursor(Qt::ArrowCursor);
-        } else {
-            setCursor(Qt::CrossCursor);
-        }
+        setCursor(p == PortDir::None ? Qt::ArrowCursor : Qt::CrossCursor);
         update();
     }
     QGraphicsItem::hoverMoveEvent(event);
@@ -135,7 +200,7 @@ void NodeItem::hoverMoveEvent(QGraphicsSceneHoverEvent* event)
 
 void NodeItem::hoverLeaveEvent(QGraphicsSceneHoverEvent* event)
 {
-    hoverPort_ = Port::None;
+    hoverPort_ = PortDir::None;
     setCursor(Qt::ArrowCursor);
     update();
     QGraphicsItem::hoverLeaveEvent(event);
@@ -145,7 +210,7 @@ void NodeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, 
 {
     Q_UNUSED(widget);
 
-    QRectF bodyRect(-NODE_WIDTH / 2, -NODE_HEIGHT / 2, NODE_WIDTH, NODE_HEIGHT);
+    QRectF bodyRect(-NODE_WIDTH / 2, -height() / 2, NODE_WIDTH, height());
     bool sel = option->state & QStyle::State_Selected;
 
     QColor bodyColor;
@@ -187,7 +252,7 @@ void NodeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, 
     painter->drawPath(path);
 
     // Accent bar on left
-    QRectF accentRect(-NODE_WIDTH / 2, -NODE_HEIGHT / 2, 5, NODE_HEIGHT);
+    QRectF accentRect(-NODE_WIDTH / 2, -height() / 2, 5, height());
     QPainterPath accentPath;
     accentPath.addRoundedRect(accentRect, 8, 8);
     accentPath = accentPath.intersected(path);
@@ -199,58 +264,71 @@ void NodeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, 
     font.setBold(true);
     font.setPointSize(10);
     painter->setFont(font);
-    QRectF titleRect(-NODE_WIDTH / 2 + 12, -NODE_HEIGHT / 2 + 6, NODE_WIDTH - 20, 24);
+    QRectF titleRect(-NODE_WIDTH / 2 + 12, -height() / 2 + 6, NODE_WIDTH - 20, 24);
     painter->drawText(titleRect, Qt::AlignLeft | Qt::AlignVCenter, nodeId_);
 
     // Type
     font.setBold(false);
     font.setPointSize(9);
     painter->setFont(font);
-    QRectF typeRect(-NODE_WIDTH / 2 + 12, -NODE_HEIGHT / 2 + 30, NODE_WIDTH - 20, 18);
+    QRectF typeRect(-NODE_WIDTH / 2 + 12, -height() / 2 + 30, NODE_WIDTH - 20, 18);
     painter->setPen(accentColor.lighter(130));
     painter->drawText(typeRect, Qt::AlignLeft | Qt::AlignVCenter, nodeType_);
 
     // ── Ports ──
-    QPointF inputPort(-NODE_WIDTH / 2, 0);
-    QPointF outputPort(NODE_WIDTH / 2, 0);
+    const auto ins = effectiveInput();
+    const auto outs = effectiveOutput();
 
-    bool inHover = (hoverPort_ == Port::Input);
-    bool outHover = (hoverPort_ == Port::Output);
+    for (int i = 0; i < ins.size(); ++i) {
+        QPointF p = portLocalPos(0, i, ins.size());
+        bool active = (hoverPort_ == PortDir::Input) || (dropHighlighted_ && i == ins.size() - 1);
+        bool dropRing = dropHighlighted_ && i == ins.size() - 1;
+        drawPort(painter, p, active, dropRing);
+        drawPortLabel(painter, p, ins[i], true);
+    }
+    for (int i = 0; i < outs.size(); ++i) {
+        QPointF p = portLocalPos(1, i, outs.size());
+        bool active = (hoverPort_ == PortDir::Output);
+        drawPort(painter, p, active, false);
+        drawPortLabel(painter, p, outs[i], false);
+    }
+}
 
-    // Input port
-    if (dropHighlighted_) {
-        // Glow ring for drop target
+void NodeItem::drawPort(QPainter* painter, const QPointF& center, bool active, bool dropRing)
+{
+    qreal r = active ? PORT_RADIUS + 2 : PORT_RADIUS;
+    QColor fill = active ? QColor(100, 200, 255) : QColor(70, 70, 75);
+    QColor ring = active ? QColor(150, 220, 255) : QColor(120, 120, 120);
+
+    if (dropRing) {
         painter->setPen(Qt::NoPen);
         painter->setBrush(QColor(100, 200, 255, 60));
-        painter->drawEllipse(inputPort, PORT_RADIUS + 8, PORT_RADIUS + 8);
+        painter->drawEllipse(center, PORT_RADIUS + 8, PORT_RADIUS + 8);
         painter->setBrush(QColor(100, 200, 255, 100));
-        painter->drawEllipse(inputPort, PORT_RADIUS + 4, PORT_RADIUS + 4);
+        painter->drawEllipse(center, PORT_RADIUS + 4, PORT_RADIUS + 4);
     }
 
-    qreal inR = inHover || dropHighlighted_ ? PORT_RADIUS + 2 : PORT_RADIUS;
-    QColor inFill = inHover || dropHighlighted_ ? QColor(100, 200, 255) : QColor(60, 60, 60);
-    QColor inRing = inHover || dropHighlighted_ ? QColor(150, 220, 255) : QColor(120, 120, 120);
-
-    painter->setPen(QPen(inRing, 1.5));
-    painter->setBrush(inFill);
-    painter->drawEllipse(inputPort, inR, inR);
-
-    painter->setPen(QPen(inRing.lighter(130), 1.0));
+    painter->setPen(QPen(ring, 1.5));
+    painter->setBrush(fill);
+    painter->drawEllipse(center, r, r);
+    painter->setPen(QPen(ring.lighter(130), 1.0));
     painter->setBrush(Qt::NoBrush);
-    painter->drawEllipse(inputPort, inR - 3, inR - 3);
+    painter->drawEllipse(center, r - 3, r - 3);
+}
 
-    // Output port
-    qreal outR = outHover ? PORT_RADIUS + 2 : PORT_RADIUS;
-    QColor outFill = outHover ? QColor(100, 200, 255) : QColor(80, 80, 80);
-    QColor outRing = outHover ? QColor(150, 220, 255) : QColor(120, 120, 120);
-
-    painter->setPen(QPen(outRing, 1.5));
-    painter->setBrush(outFill);
-    painter->drawEllipse(outputPort, outR, outR);
-
-    painter->setPen(QPen(outRing.lighter(130), 1.0));
-    painter->setBrush(Qt::NoBrush);
-    painter->drawEllipse(outputPort, outR - 3, outR - 3);
+void NodeItem::drawPortLabel(QPainter* painter, const QPointF& center, const QString& name, bool input)
+{
+    QFont f = painter->font();
+    f.setPointSize(7);
+    f.setBold(true);
+    painter->setFont(f);
+    painter->setPen(QColor(200, 210, 225));
+    QRectF labelRect;
+    labelRect.setTopLeft(QPointF(center.x() + (input ? -84 : 4), center.y() - 8));
+    labelRect.setSize(QSizeF(80, 16));
+    painter->drawText(labelRect,
+                      input ? Qt::AlignRight | Qt::AlignVCenter : Qt::AlignLeft | Qt::AlignVCenter,
+                      name);
 }
 
 int NodeItem::type() const { return Type; }

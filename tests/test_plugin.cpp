@@ -21,6 +21,8 @@ public:
     TaskResult execute(TaskContext&) override {
         return TaskResult{.status = TaskStatus::COMPLETED};
     }
+    std::vector<PortSpec> input_specs() const override { return {}; }
+    std::vector<PortSpec> output_specs() const override { return {}; }
 };
 
 // ============================================================

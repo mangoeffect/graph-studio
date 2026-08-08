@@ -15,6 +15,10 @@ LambdaNode::LambdaNode(std::string id, TaskFunction func, TaskConfig config)
 LambdaNode::LambdaNode(std::string id, std::string type, TaskFunction func, TaskConfig config)
     : INode(std::move(id), std::move(config)), type_(std::move(type)), func_(std::move(func)) {}
 
+// 通用 lambda 包装无固定端口契约，返回空（相当于"无约束"）。
+std::vector<PortSpec> LambdaNode::input_specs() const { return {}; }
+std::vector<PortSpec> LambdaNode::output_specs() const { return {}; }
+
 // INode::check_input 默认实现：
 //  1) 每个声明的 required input port 必须存在
 //  2) 已注册的类型名必须与实际 any 中的类型名匹配

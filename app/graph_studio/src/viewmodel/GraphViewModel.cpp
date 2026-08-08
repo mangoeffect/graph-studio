@@ -60,6 +60,46 @@ std::vector<task_graph::ParamSpec> queryParamSpecs(const std::string& task_type)
     return probe ? probe->param_specs() : std::vector<task_graph::ParamSpec>{};
 }
 
+// 端口名查询：input=true 查 input_specs()，否则 output_specs()。未注册类型返回空。
+std::vector<std::string> queryPortNames(const std::string& task_type, bool is_input) {
+    if (!task_graph::PluginRegistry::instance().has_task(task_type)) return {};
+    std::vector<task_graph::PortSpec> specs;
+    if (auto probe = task_graph::PluginRegistry::instance().create_task(task_type)) {
+        specs = is_input ? probe->input_specs() : probe->output_specs();
+    }
+    std::vector<std::string> names;
+    names.reserve(specs.size());
+    for (const auto& s : specs) names.push_back(s.name);
+    return names;
+}
+
+QStringList toQStringList(const std::vector<std::string>& v) {
+    QStringList out;
+    out.reserve(static_cast<int>(v.size()));
+    for (const auto& s : v) out.append(QString::fromStdString(s));
+    return out;
+}
+
+// 解析连线时的默认端口：输出取第一个声明的输出口（无则 "out"）。
+QString defaultOutputPort(const std::string& task_type) {
+    auto names = queryPortNames(task_type, false);
+    return names.empty() ? QStringLiteral("out") : QString::fromStdString(names.front());
+}
+
+// 输入端口：优先第一个 required 输入口；否则第一个输入口；无则 "in"。
+QString defaultInputPort(const std::string& task_type) {
+    if (!task_graph::PluginRegistry::instance().has_task(task_type)) return QStringLiteral("in");
+    std::vector<task_graph::PortSpec> specs;
+    if (auto probe = task_graph::PluginRegistry::instance().create_task(task_type)) {
+        specs = probe->input_specs();
+    }
+    for (const auto& s : specs) {
+        if (s.required) return QString::fromStdString(s.name);
+    }
+    if (!specs.empty()) return QString::fromStdString(specs[0].name);
+    return QStringLiteral("in");
+}
+
 QVariantMap defaultParamsForType(const std::string& task_type) {
     QVariantMap out;
     for (const auto& s : queryParamSpecs(task_type)) {
@@ -263,6 +303,8 @@ void GraphViewModel::onDagChanged(const task_graph::DAGChangeEvent& e) {
         nd.x = pos.x();
         nd.y = pos.y();
         nd.params = defaultParamsForType(e.task_type);
+        nd.inputPorts = toQStringList(queryPortNames(e.task_type, true));
+        nd.outputPorts = toQStringList(queryPortNames(e.task_type, false));
         emit taskAdded(nd);
         emit taskCountChanged();
         emit logMessage(kLogInfo, "Task added: " + nd.id + " (" + nd.type + ")");
@@ -287,6 +329,8 @@ void GraphViewModel::onDagChanged(const task_graph::DAGChangeEvent& e) {
         EdgeData ed;
         ed.fromId = QString::fromStdString(e.from);
         ed.toId = QString::fromStdString(e.to);
+        ed.fromPort = QString::fromStdString(e.from_port);
+        ed.toPort = QString::fromStdString(e.to_port);
         emit edgeAdded(ed);
         emit edgeCountChanged();
         emit logMessage(kLogInfo, "Edge added: " + ed.fromId + " -> " + ed.toId);
@@ -311,12 +355,16 @@ void GraphViewModel::onDagChanged(const task_graph::DAGChangeEvent& e) {
             auto cfg = dag.task_config(id);
             nd.params = taskParamsToVariant(cfg ? cfg->params : task_graph::TaskParams{},
                                             queryParamSpecs(dag.task_type(id)));
+            nd.inputPorts = toQStringList(queryPortNames(dag.task_type(id), true));
+            nd.outputPorts = toQStringList(queryPortNames(dag.task_type(id), false));
             emit taskAdded(nd);
         }
-        for (const auto& e : dag.edge_list()) {
+        for (const auto& e : dag.edges()) {
             EdgeData ed;
             ed.fromId = QString::fromStdString(e.from);
             ed.toId = QString::fromStdString(e.to);
+            ed.fromPort = QString::fromStdString(e.from_port);
+            ed.toPort = QString::fromStdString(e.to_port);
             emit edgeAdded(ed);
         }
         emit taskCountChanged();
@@ -363,6 +411,15 @@ bool GraphViewModel::moveNode(const QString& taskId, qreal x, qreal y)
 
 bool GraphViewModel::addEdge(const QString& fromId, const QString& toId)
 {
+    // 便捷重载：按两侧 task 类型自动解析端口名（保留旧调用语义的默认解析）
+    auto fromType = nodeData(fromId).type.toStdString();
+    auto toType = nodeData(toId).type.toStdString();
+    return addEdge(fromId, defaultOutputPort(fromType), toId, defaultInputPort(toType));
+}
+
+bool GraphViewModel::addEdge(const QString& fromId, const QString& fromPort,
+                             const QString& toId, const QString& toPort)
+{
     if (fromId == toId) {
         emit logMessage(kLogWarn, "Cannot create self-loop: " + fromId);
         return false;
@@ -379,7 +436,8 @@ bool GraphViewModel::addEdge(const QString& fromId, const QString& toId)
         emit logMessage(kLogWarn, "Cycle detected, cannot add edge: " + fromId + " -> " + toId);
         return false;
     }
-    if (!model_.add_edge(fromId.toStdString(), toId.toStdString())) {
+    if (!model_.add_edge(fromId.toStdString(), fromPort.toStdString(),
+                         toId.toStdString(), toPort.toStdString())) {
         emit logMessage(kLogError, "Failed to add edge to DAG: " + fromId + " -> " + toId);
         return false;
     }
@@ -423,6 +481,8 @@ QList<NodeData> GraphViewModel::nodes() const
         auto cfg = dag.task_config(id);
         nd.params = taskParamsToVariant(cfg ? cfg->params : task_graph::TaskParams{},
                                         queryParamSpecs(dag.task_type(id)));
+        nd.inputPorts = toQStringList(queryPortNames(dag.task_type(id), true));
+        nd.outputPorts = toQStringList(queryPortNames(dag.task_type(id), false));
         result.append(nd);
     }
     return result;
@@ -431,10 +491,12 @@ QList<NodeData> GraphViewModel::nodes() const
 QList<EdgeData> GraphViewModel::edges() const
 {
     QList<EdgeData> result;
-    for (const auto& e : model_.dag().edge_list()) {
+    for (const auto& e : model_.dag().edges()) {
         EdgeData ed;
         ed.fromId = QString::fromStdString(e.from);
         ed.toId = QString::fromStdString(e.to);
+        ed.fromPort = QString::fromStdString(e.from_port);
+        ed.toPort = QString::fromStdString(e.to_port);
         result.append(ed);
     }
     return result;
@@ -459,6 +521,8 @@ NodeData GraphViewModel::nodeData(const QString& taskId) const
     auto cfg = dag.task_config(id);
     nd.params = taskParamsToVariant(cfg ? cfg->params : task_graph::TaskParams{},
                                     queryParamSpecs(dag.task_type(id)));
+    nd.inputPorts = toQStringList(queryPortNames(dag.task_type(id), true));
+    nd.outputPorts = toQStringList(queryPortNames(dag.task_type(id), false));
     return nd;
 }
 
@@ -512,6 +576,16 @@ QStringList GraphViewModel::availableTaskTypes() const
 bool GraphViewModel::hasTaskType(const QString& type) const
 {
     return task_graph::PluginRegistry::instance().has_task(type.toStdString());
+}
+
+QStringList GraphViewModel::inputPorts(const QString& taskType) const
+{
+    return toQStringList(queryPortNames(taskType.toStdString(), true));
+}
+
+QStringList GraphViewModel::outputPorts(const QString& taskType) const
+{
+    return toQStringList(queryPortNames(taskType.toStdString(), false));
 }
 
 void GraphViewModel::clear()

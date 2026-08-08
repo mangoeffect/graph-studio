@@ -59,6 +59,9 @@ private:
 // Add a dependency edge
 class AddEdgeCommand : public Command {
 public:
+    AddEdgeCommand(GraphViewModel& vm, const QString& fromId, const QString& fromPort,
+                   const QString& toId, const QString& toPort);
+    // 便捷重载：默认 out -> in 端口
     AddEdgeCommand(GraphViewModel& vm, const QString& fromId, const QString& toId);
     void execute() override;
     void undo() override;
@@ -67,13 +70,16 @@ public:
 private:
     GraphViewModel& vm_;
     QString fromId_;
+    QString fromPort_;
     QString toId_;
+    QString toPort_;
 };
 
 // Remove a dependency edge
 class RemoveEdgeCommand : public Command {
 public:
-    RemoveEdgeCommand(GraphViewModel& vm, const QString& fromId, const QString& toId);
+    RemoveEdgeCommand(GraphViewModel& vm, const QString& fromId, const QString& fromPort,
+                      const QString& toId, const QString& toPort);
     void execute() override;
     void undo() override;
     QString description() const override { return "Remove Edge"; }
@@ -81,7 +87,9 @@ public:
 private:
     GraphViewModel& vm_;
     QString fromId_;
+    QString fromPort_;
     QString toId_;
+    QString toPort_;
 };
 
 // Change a single parameter value on a node. Records old value for undo.

@@ -65,17 +65,18 @@ void GraphScene::mousePressEvent(QGraphicsSceneMouseEvent* event)
         auto* itemUnder = itemAt(event->scenePos(), QTransform());
         if (itemUnder && itemUnder->type() == NodeItem::Type) {
             auto* node = static_cast<NodeItem*>(itemUnder);
-            auto port = node->hitPort(event->scenePos());
-            if (port == NodeItem::Port::Output) {
-                // Start edge drag
+            QString outPort = node->outputPortNameAt(event->scenePos());
+            if (!outPort.isEmpty()) {
+                // Start edge drag from the specific output port
                 portDragging_ = true;
                 dragSource_ = node;
-                tempEdge_ = new EdgeItem(node, event->scenePos());
+                dragSourcePort_ = outPort;
+                tempEdge_ = new EdgeItem(node, event->scenePos(), outPort);
                 addItem(tempEdge_);
                 event->accept();
                 return;
             }
-            if (port == NodeItem::Port::Input) {
+            if (node->hitPort(event->scenePos()) == NodeItem::PortDir::Input) {
                 // Ignore - don't start node drag when clicking port
                 event->accept();
                 return;
@@ -96,9 +97,11 @@ void GraphScene::mouseMoveEvent(QGraphicsSceneMouseEvent* event)
             if (item->type() != NodeItem::Type)
                 continue;
             auto* node = static_cast<NodeItem*>(item);
-            if (node != dragSource_ && node->hitPort(event->scenePos()) == NodeItem::Port::Input) {
+            if (node == dragSource_)
+                continue;
+            if (!node->inputPortNameAt(event->scenePos()).isEmpty()) {
                 newTarget = node;
-                tempEdge_->setFreeEnd(node->inputPortPos());
+                tempEdge_->setFreeEnd(node->inputPortPos(node->inputPortNameAt(event->scenePos())));
                 snapped = true;
                 break;
             }
@@ -130,14 +133,17 @@ void GraphScene::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
         // the target and mask the NodeItem. Instead, search all NodeItems
         // and hit-test their input ports directly.
         NodeItem* targetNode = nullptr;
+        QString targetPort;
         for (auto* item : items()) {
             if (item->type() != NodeItem::Type)
                 continue;
             auto* node = static_cast<NodeItem*>(item);
             if (node == dragSource_)
                 continue;
-            if (node->hitPort(event->scenePos()) == NodeItem::Port::Input) {
+            QString inPort = node->inputPortNameAt(event->scenePos());
+            if (!inPort.isEmpty()) {
                 targetNode = node;
+                targetPort = inPort;
                 break;
             }
         }
@@ -157,11 +163,13 @@ void GraphScene::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
         }
 
         if (targetNode) {
-            emit edgeCreationRequested(dragSource_->nodeId(), targetNode->nodeId());
+            emit edgeCreationRequested(dragSource_->nodeId(), dragSourcePort_,
+                                       targetNode->nodeId(), targetPort);
         }
 
         portDragging_ = false;
         dragSource_ = nullptr;
+        dragSourcePort_.clear();
         event->accept();
         return;
     }

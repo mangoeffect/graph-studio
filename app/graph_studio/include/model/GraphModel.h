@@ -16,6 +16,10 @@ public:
 
     // Incremental building (forwarded to DAG)
     bool add_task(const std::string& task_id, const std::string& task_type, const task_graph::TaskConfig& config = {});
+    // 端口化连线：from_port 输出 -> to 的 to_port 输入。
+    bool add_edge(const std::string& from_id, const std::string& from_port,
+                  const std::string& to_id, const std::string& to_port = "in");
+    // 便捷重载（默认 out -> in 端口，仅用于无端口诉求的旧调用方）
     bool add_edge(const std::string& from_id, const std::string& to_id);
     bool remove_task(const std::string& task_id);
     bool remove_edge(const std::string& from_id, const std::string& to_id);

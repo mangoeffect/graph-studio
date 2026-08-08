@@ -644,6 +644,7 @@ void MainWindow::CreateStatusBar()
 void MainWindow::onTaskAdded(const NodeData& node)
 {
     auto* item = new NodeItem(node.id, node.type);
+    item->setPorts(node.inputPorts, node.outputPorts);
     item->setPos(node.x, node.y);
     scene_->addItem(item);
     nodeItems_[node.id] = item;
@@ -686,7 +687,7 @@ void MainWindow::onEdgeAdded(const EdgeData& edge)
     if (!src || !tgt)
         return;
 
-    auto* edgeItem = new EdgeItem(src, tgt);
+    auto* edgeItem = new EdgeItem(src, tgt, edge.fromPort, edge.toPort);
     scene_->addItem(edgeItem);
     edgeItems_[edgeKey(edge.fromId, edge.toId)] = edgeItem;
 }
@@ -784,9 +785,10 @@ void MainWindow::onSceneSelectionChanged()
     }
 }
 
-void MainWindow::onEdgeCreationRequested(const QString& fromId, const QString& toId)
+void MainWindow::onEdgeCreationRequested(const QString& fromId, const QString& fromPort,
+                                         const QString& toId, const QString& toPort)
 {
-    commandStack_.push(std::make_unique<AddEdgeCommand>(vm_, fromId, toId));
+    commandStack_.push(std::make_unique<AddEdgeCommand>(vm_, fromId, fromPort, toId, toPort));
 }
 
 void MainWindow::onNodeMovedScene(const QString& id, qreal x, qreal y)
@@ -805,7 +807,7 @@ void MainWindow::DeleteSelected()
 {
     auto selected = scene_->selectedItems();
     QStringList nodesToDelete;
-    QStringList edgesToDelete; // pairs: from, to
+    QStringList edgesToDelete; // groups of 4: from, fromPort, to, toPort
 
     for (auto* item : selected) {
         if (item->type() == NodeItem::Type) {
@@ -813,7 +815,8 @@ void MainWindow::DeleteSelected()
         } else if (item->type() == EdgeItem::Type) {
             auto* edge = static_cast<EdgeItem*>(item);
             if (edge->sourceNode() && edge->targetNode()) {
-                edgesToDelete << edge->fromId() << edge->toId();
+                edgesToDelete << edge->fromId() << edge->sourcePort()
+                              << edge->toId() << edge->targetPort();
             }
         }
     }
@@ -823,8 +826,10 @@ void MainWindow::DeleteSelected()
 
     // Build a macro command: edges first, then nodes
     auto macro = std::make_unique<MacroCommand>("Delete Selection");
-    for (int i = 0; i < edgesToDelete.size(); i += 2) {
-        macro->add(std::make_unique<RemoveEdgeCommand>(vm_, edgesToDelete[i], edgesToDelete[i + 1]));
+    for (int i = 0; i < edgesToDelete.size(); i += 4) {
+        macro->add(std::make_unique<RemoveEdgeCommand>(vm_,
+                                                       edgesToDelete[i], edgesToDelete[i + 1],
+                                                       edgesToDelete[i + 2], edgesToDelete[i + 3]));
     }
     for (const auto& id : nodesToDelete) {
         macro->add(std::make_unique<RemoveTaskCommand>(vm_, id));

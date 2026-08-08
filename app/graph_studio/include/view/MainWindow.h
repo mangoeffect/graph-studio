@@ -71,7 +71,8 @@ private slots:
     void onLogMessage(int level, const QString& msg);
     void onSelectionChangedVm(const QString& nodeId);
     void onSceneSelectionChanged();
-    void onEdgeCreationRequested(const QString& fromId, const QString& toId);
+    void onEdgeCreationRequested(const QString& fromId, const QString& fromPort,
+                                 const QString& toId, const QString& toPort);
     void onNodeMovedScene(const QString& id, qreal x, qreal y);
     void onNodeDoubleClicked(const QString& id);
 

@@ -22,7 +22,8 @@ public:
     void setAvailableTaskTypes(const QStringList& types) { availableTaskTypes_ = types; }
 
 signals:
-    void edgeCreationRequested(const QString& fromId, const QString& toId);
+    void edgeCreationRequested(const QString& fromId, const QString& fromPort,
+                               const QString& toId, const QString& toPort);
     void nodeMoved(const QString& id, qreal x, qreal y);
     void nodeDoubleClicked(const QString& id);
     void nodeCreateRequested(const QString& taskType, const QPointF& pos);
@@ -39,6 +40,7 @@ protected:
 private:
     bool portDragging_ = false;
     NodeItem* dragSource_ = nullptr;
+    QString dragSourcePort_;   // 源节点被点中的输出端口名
     EdgeItem* tempEdge_ = nullptr;
     NodeItem* highlightedTarget_ = nullptr;
     QStringList availableTaskTypes_;
