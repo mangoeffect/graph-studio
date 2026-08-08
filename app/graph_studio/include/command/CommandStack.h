@@ -15,7 +15,9 @@ namespace graph_studio {
 class Command {
 public:
     virtual ~Command() = default;
-    virtual void execute() = 0;
+    // execute 返回是否真正生效；返回 false 时 CommandStack::push 不记录该命令，
+    // 避免"被拒绝的操作"（如目标输入口已被占用）留下幽灵 undo 记录。
+    virtual bool execute() = 0;
     virtual void undo() = 0;
     virtual QString description() const = 0;
 };
@@ -26,7 +28,7 @@ using CommandPtr = std::unique_ptr<Command>;
 class AddTaskCommand : public Command {
 public:
     AddTaskCommand(GraphViewModel& vm, const QString& taskType, qreal x, qreal y);
-    void execute() override;
+    bool execute() override;
     void undo() override;
     QString description() const override { return "Add Task"; }
     QString taskId() const { return taskId_; }
@@ -43,7 +45,7 @@ private:
 class RemoveTaskCommand : public Command {
 public:
     RemoveTaskCommand(GraphViewModel& vm, const QString& taskId);
-    void execute() override;
+    bool execute() override;
     void undo() override;
     QString description() const override { return "Remove Task"; }
 
@@ -63,7 +65,7 @@ public:
                    const QString& toId, const QString& toPort);
     // 便捷重载：默认 out -> in 端口
     AddEdgeCommand(GraphViewModel& vm, const QString& fromId, const QString& toId);
-    void execute() override;
+    bool execute() override;
     void undo() override;
     QString description() const override { return "Add Edge"; }
 
@@ -80,7 +82,7 @@ class RemoveEdgeCommand : public Command {
 public:
     RemoveEdgeCommand(GraphViewModel& vm, const QString& fromId, const QString& fromPort,
                       const QString& toId, const QString& toPort);
-    void execute() override;
+    bool execute() override;
     void undo() override;
     QString description() const override { return "Remove Edge"; }
 
@@ -97,7 +99,7 @@ class ChangeParamCommand : public Command {
 public:
     ChangeParamCommand(GraphViewModel& vm, const QString& taskId,
                        const QString& key, const QVariant& newValue);
-    void execute() override;
+    bool execute() override;
     void undo() override;
     QString description() const override { return "Change Parameter"; }
 
@@ -115,7 +117,7 @@ class MacroCommand : public Command {
 public:
     explicit MacroCommand(const QString& desc);
     void add(CommandPtr cmd);
-    void execute() override;
+    bool execute() override;
     void undo() override;
     QString description() const override { return desc_; }
 

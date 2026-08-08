@@ -65,7 +65,7 @@ private slots:
     void onTaskAdded(const NodeData& node);
     void onTaskRemoved(const QString& taskId);
     void onEdgeAdded(const EdgeData& edge);
-    void onEdgeRemoved(const QString& fromId, const QString& toId);
+    void onEdgeRemoved(const EdgeData& edge);
     void onNodeMovedVm(const QString& id, qreal x, qreal y);
     void onGraphReset();
     void onLogMessage(int level, const QString& msg);

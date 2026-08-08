@@ -82,7 +82,14 @@ public:
 
     // 增量删除 task（同时移除关联边）与 edge
     void remove_task(const TaskId& id);
+    // 删除 pair 下全部边（保留旧语义：兼容现有调用/测试）
     void remove_edge(const TaskId& from, const TaskId& to);
+    // 删除指定端口的一条边（多端口边支持的核心）
+    void remove_edge(const TaskId& from, const std::string& from_port,
+                     const TaskId& to,   const std::string& to_port);
+    // 是否存在完全相同的端口边（4 元组精确匹配）
+    bool has_edge(const TaskId& from, const std::string& from_port,
+                  const TaskId& to,   const std::string& to_port) const;
 
     // 清空所有 task 和 edge（发出 GraphReset 事件）
     void clear();
@@ -140,8 +147,11 @@ private:
     mutable size_t next_observer_id_{0};
     void notify(const DAGChangeEvent& e) const;
 
-    // 内部删除（不发出事件，供 remove_task 批量删除边时使用）
-    void remove_edge_impl(const TaskId& from, const TaskId& to);
+    // 内部删除（不发出事件，供 remove_task 批量删除边时使用）。
+    // 端口过滤参数为 null 时删除该 pair 下全部边；返回是否删除了边。
+    bool remove_edge_impl(const TaskId& from, const TaskId& to,
+                          const std::string* from_port_filter = nullptr,
+                          const std::string* to_port_filter = nullptr);
 };
 
 using DAGPtr = std::shared_ptr<DAG>;

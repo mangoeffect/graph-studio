@@ -38,6 +38,27 @@ public:
         return { task_graph::PortSpec{"out", "", false} };
     }
 };
+
+// 双输入/双输出端口的 task：同一对节点间可拖两条不同输入口的边
+class DualPortNode : public task_graph::INode {
+public:
+    using task_graph::INode::INode;
+    const std::string& type() const override {
+        static std::string t = "dual_port_node";
+        return t;
+    }
+    task_graph::TaskResult execute(task_graph::TaskContext&) override {
+        return task_graph::TaskResult{task_graph::TaskStatus::COMPLETED};
+    }
+    std::vector<task_graph::PortSpec> input_specs() const override {
+        return { task_graph::PortSpec{"image", "", true},
+                 task_graph::PortSpec{"mask", "", true} };
+    }
+    std::vector<task_graph::PortSpec> output_specs() const override {
+        return { task_graph::PortSpec{"out", "", false},
+                 task_graph::PortSpec{"aux", "", false} };
+    }
+};
 }
 
 // 默认无头运行：未显式指定 QT_QPA_PLATFORM 时回落到 offscreen，便于 CI/ctest。
@@ -83,6 +104,7 @@ private slots:
     void testZoomActions();
     void testEdgeCreationViaPortDrag();
     void testPortAwareEdgeDragAndSerialize();
+    void testDualPortEdgesSeparateItems();
 
 private:
     GraphModel* model_ = nullptr;
@@ -382,6 +404,67 @@ void TestGui::testPortAwareEdgeDragAndSerialize()
     QCOMPARE(reloaded[0].toPort, QStringLiteral("image"));
 
     task_graph::PluginRegistry::instance().unregister_task("ported_node");
+}
+
+// 同一对节点间：可分别拖到两个输入口创建两条边；删除选中一条不影响另一条
+void TestGui::testDualPortEdgesSeparateItems()
+{
+    task_graph::PluginRegistry::instance().register_task(
+        "dual_port_node",
+        [](const std::string& id, const task_graph::TaskConfig& cfg) {
+            return std::make_shared<DualPortNode>(id, cfg);
+        });
+
+    QString a = vm_->addTask("dual_port_node", -200, 0);
+    QString b = vm_->addTask("dual_port_node", 200, 0);
+    auto* nodeA = scene_->findNodeItem(a);
+    auto* nodeB = scene_->findNodeItem(b);
+    QVERIFY(nodeA && nodeB);
+
+    // ① out -> image
+    mouseDrag(view_->mapFromScene(nodeA->outputPortPos("out")),
+              view_->mapFromScene(nodeB->inputPortPos("image")));
+    QCOMPARE(vm_->edgeCount(), 1);
+
+    // ② aux -> mask（同一对节点，不同输入口）
+    mouseDrag(view_->mapFromScene(nodeA->outputPortPos("aux")),
+              view_->mapFromScene(nodeB->inputPortPos("mask")));
+    QCOMPARE(vm_->edgeCount(), 2);
+    QCOMPARE(countSceneItems(scene_, EdgeItem::Type), 2);
+
+    auto edges = vm_->edges();
+    bool sawImage = false, sawMask = false;
+    for (const auto& e : edges) {
+        if (e.fromId == a && e.toId == b && e.fromPort == "out" && e.toPort == "image") sawImage = true;
+        if (e.fromId == a && e.toId == b && e.fromPort == "aux" && e.toPort == "mask") sawMask = true;
+    }
+    QVERIFY(sawImage);
+    QVERIFY(sawMask);
+
+    // 选中其中一条（out->image）并触发 Delete，应只删这一条
+    EdgeItem* target = nullptr;
+    for (auto* it : scene_->items()) {
+        if (it->type() != EdgeItem::Type) continue;
+        auto* e = static_cast<EdgeItem*>(it);
+        if (e->sourcePort() == "out" && e->targetPort() == "image") { target = e; break; }
+    }
+    QVERIFY(target != nullptr);
+    scene_->clearSelection();
+    target->setSelected(true);
+    QTest::qWait(30);
+    QAction* delAct = findAction(window_, "Delete");
+    QVERIFY(delAct != nullptr);
+    delAct->trigger();
+    QTest::qWait(30);
+
+    QCOMPARE(vm_->edgeCount(), 1);
+    edges = vm_->edges();
+    QCOMPARE(edges.size(), 1);
+    QCOMPARE(edges[0].fromPort, QStringLiteral("aux"));
+    QCOMPARE(edges[0].toPort, QStringLiteral("mask"));
+    QCOMPARE(countSceneItems(scene_, EdgeItem::Type), 1);
+
+    task_graph::PluginRegistry::instance().unregister_task("dual_port_node");
 }
 
 // 自定义 main：GUI 测试必须用 QApplication（而非 QCoreApplication）

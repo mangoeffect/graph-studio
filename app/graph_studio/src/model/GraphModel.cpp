@@ -138,6 +138,35 @@ bool GraphModel::remove_edge(const std::string& from_id, const std::string& to_i
     }
 }
 
+bool GraphModel::remove_edge(const std::string& from_id, const std::string& from_port,
+                             const std::string& to_id, const std::string& to_port)
+{
+    if (!dag_->has_edge(from_id, from_port, to_id, to_port)) return false;
+    try {
+        dag_->remove_edge(from_id, from_port, to_id, to_port);
+        return true;
+    } catch (const std::exception&) {
+        return false;
+    }
+}
+
+bool GraphModel::has_edge(const std::string& from_id, const std::string& from_port,
+                          const std::string& to_id, const std::string& to_port) const
+{
+    return dag_->has_edge(from_id, from_port, to_id, to_port);
+}
+
+bool GraphModel::input_port_filled(const std::string& to_id, const std::string& to_port) const
+{
+    try {
+        for (const auto& e : dag_->incoming_edges(to_id)) {
+            if (e.to_port == to_port) return true;
+        }
+    } catch (const std::exception&) {
+    }
+    return false;
+}
+
 std::string GraphModel::to_json_string() const
 {
     try {

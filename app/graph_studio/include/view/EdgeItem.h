@@ -3,6 +3,8 @@
 
 #include <QGraphicsItem>
 #include <QPointF>
+#include <QString>
+#include <QRectF>
 
 namespace graph_studio {
 
@@ -49,6 +51,11 @@ private:
     void registerWithNodes();
     void unregisterFromNodes();
 
+    // 多端口边防重叠：由端口名 hash 决定的确定性 y 向 bow（同一 pair 不同端口
+    // 的边曲线错开，标签不互相遮挡）。
+    qreal edgeBowOffset() const;
+    void paintLabel(QPainter* painter, const QStyleOptionGraphicsItem* option) const;
+
     NodeItem* source_ = nullptr;
     NodeItem* target_ = nullptr;
     bool isTemporary_ = false;
@@ -58,6 +65,7 @@ private:
     QPointF sourcePoint_;
     QPointF targetPoint_;
     QPointF freeEnd_;
+    qreal bowOffset_ = 0;
 
     static const qreal ARROW_SIZE;
 };

@@ -36,9 +36,15 @@
 
 using namespace graph_studio;
 
-static QString edgeKey(const QString& from, const QString& to)
+static QString edgeKey(const QString& from, const QString& fromPort,
+                       const QString& to, const QString& toPort)
 {
-    return from + "->" + to;
+    return from + ":" + fromPort + "->" + to + ":" + toPort;
+}
+
+static QString edgeKey(const EdgeData& e)
+{
+    return edgeKey(e.fromId, e.fromPort, e.toId, e.toPort);
 }
 
 MainWindow::MainWindow(GraphViewModel& vm, QWidget* parent)
@@ -652,9 +658,10 @@ void MainWindow::onTaskAdded(const NodeData& node)
 
 void MainWindow::onTaskRemoved(const QString& taskId)
 {
-    // 先删除关联的 edge（完整删除对象 + 从两端 node 的 edges_ 注销）
-    QString prefix = taskId + "->";
-    QString suffix = "->" + taskId;
+    // 先删除关联的 edge（完整删除对象 + 从两端 node 的 edges_ 注销）。
+    // 键格式："from:fromPort->to:toPort"，按 "from:" / "->to:" 前缀匹配。
+    QString prefix = taskId + ":";
+    QString suffix = "->" + taskId + ":";
     for (auto edgeIt = edgeItems_.begin(); edgeIt != edgeItems_.end();) {
         const QString& key = edgeIt.key();
         if (key.startsWith(prefix) || key.endsWith(suffix)) {
@@ -689,12 +696,12 @@ void MainWindow::onEdgeAdded(const EdgeData& edge)
 
     auto* edgeItem = new EdgeItem(src, tgt, edge.fromPort, edge.toPort);
     scene_->addItem(edgeItem);
-    edgeItems_[edgeKey(edge.fromId, edge.toId)] = edgeItem;
+    edgeItems_[edgeKey(edge)] = edgeItem;
 }
 
-void MainWindow::onEdgeRemoved(const QString& fromId, const QString& toId)
+void MainWindow::onEdgeRemoved(const EdgeData& edge)
 {
-    QString key = edgeKey(fromId, toId);
+    QString key = edgeKey(edge);
     auto it = edgeItems_.find(key);
     if (it != edgeItems_.end()) {
         auto* edge = it.value();

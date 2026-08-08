@@ -335,6 +335,68 @@ TEST_CASE(connect_canonicalizes_legacy_default_ports) {
     EXPECT_EQ(re_edges[0].to_port, "image");
 }
 
+// 端口级删除：同一对节点间按端口精确删一条；pair 语义删全部；事件带端口
+TEST_CASE(remove_edge_port_specific) {
+    DAG dag;
+    dag.add_task(std::make_shared<Task>("pa", [](auto&) {
+        return TaskResult{.status = TaskStatus::COMPLETED, .value = 10};
+    }));
+    dag.add_task(std::make_shared<Task>("pb", [](auto&) {
+        return TaskResult{.status = TaskStatus::COMPLETED, .value = 20};
+    }));
+    dag.add_task(std::make_shared<SumTask>("sum"));
+    dag.connect("pa", "out", "sum", "a");
+    dag.connect("pb", "out", "sum", "b");
+    EXPECT_EQ(dag.edges().size(), size_t(2));
+
+    // 端口级精确存在性 + 删除单条
+    EXPECT_TRUE(dag.has_edge("pa", "out", "sum", "a"));
+    EXPECT_TRUE(dag.has_edge("pb", "out", "sum", "b"));
+    dag.remove_edge("pa", "out", "sum", "a");
+    EXPECT_EQ(dag.edges().size(), size_t(1));
+    EXPECT_FALSE(dag.has_edge("pa", "out", "sum", "a"));
+    EXPECT_TRUE(dag.has_edge("pb", "out", "sum", "b"));
+    // 端口级删除不应破坏 task 级邻接（仍有 pb->sum）
+    EXPECT_TRUE(dag.has_edge("pb", "sum"));
+
+    // 事件带端口
+    std::string ev_from_port, ev_to_port;
+    size_t sub = dag.subscribe([&](const DAGChangeEvent& e) {
+        if (e.type == DAGChangeEvent::Type::EdgeRemoved) {
+            ev_from_port = e.from_port;
+            ev_to_port = e.to_port;
+        }
+    });
+    dag.remove_edge("pb", "out", "sum", "b");
+    EXPECT_EQ(ev_from_port, "out");
+    EXPECT_EQ(ev_to_port, "b");
+    dag.unsubscribe(sub);
+
+    // pair 语义删除：删除 from->to 间全部（多条端口边）边
+    dag.connect("pa", "out", "sum", "a");
+    dag.connect("pa", "out", "sum", "b");
+    EXPECT_EQ(dag.edges().size(), size_t(2));
+
+    // pair 删除必须按端口逐条发事件（每被删的端口边一条），供 UI 端口级 key 匹配
+    std::vector<std::pair<std::string, std::string>> removed;
+    size_t sub2 = dag.subscribe([&](const DAGChangeEvent& e) {
+        if (e.type == DAGChangeEvent::Type::EdgeRemoved) {
+            removed.emplace_back(e.from_port, e.to_port);
+        }
+    });
+    dag.remove_edge("pa", "sum");
+    dag.unsubscribe(sub2);
+    EXPECT_EQ(removed.size(), size_t(2));
+    bool saw_a = false, saw_b = false;
+    for (const auto& [fp, tp] : removed) {
+        if (fp == "out" && tp == "a") saw_a = true;
+        if (fp == "out" && tp == "b") saw_b = true;
+    }
+    EXPECT_TRUE(saw_a);
+    EXPECT_TRUE(saw_b);
+    EXPECT_EQ(dag.edges().size(), size_t(0));
+}
+
 TEST_CASE(validate_cycle_is_error) {
     DAG dag;
     dag.add_task(std::make_shared<Task>("A", [](auto&) {

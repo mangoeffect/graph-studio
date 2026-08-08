@@ -4,6 +4,8 @@
 #include <QPainter>
 #include <QStyleOptionGraphicsItem>
 #include <QGraphicsScene>
+#include <QHash>
+#include <QFontMetricsF>
 #include <cmath>
 
 using namespace graph_studio;
@@ -14,7 +16,7 @@ EdgeItem::EdgeItem(NodeItem* source, NodeItem* target,
                    const QString& sourcePort, const QString& targetPort,
                    QGraphicsItem* parent)
     : QGraphicsItem(parent), source_(source), target_(target),
-      sourcePort_(sourcePort), targetPort_(targetPort)
+      sourcePort_(sourcePort), targetPort_(targetPort), bowOffset_(edgeBowOffset())
 {
     setZValue(-1);
     setFlags(QGraphicsItem::ItemIsSelectable);
@@ -93,11 +95,21 @@ QRectF EdgeItem::boundingRect() const
     if (sourcePoint_ == targetPoint_)
         return QRectF();
 
-    qreal extra = ARROW_SIZE + 5;
+    // 额外留出标签（halo + 字号）与 bow 弯曲的高度
+    qreal extra = ARROW_SIZE + 5 + 18;
     return QRectF(sourcePoint_, QSizeF(targetPoint_.x() - sourcePoint_.x(),
                                        targetPoint_.y() - sourcePoint_.y()))
            .normalized()
            .adjusted(-extra, -extra, extra, extra);
+}
+
+// 确定性 y 向 bow：让同一对节点之间、不同端口的边曲线相互错开，标签不重叠。
+qreal EdgeItem::edgeBowOffset() const
+{
+    uint h = qHash(sourcePort_);
+    h = qHash(targetPort_, h);
+    const qreal amt = 18.0 + static_cast<qreal>(h % 3) * 10.0;  // 18 ~ 38
+    return ((h >> 3) & 1u) ? amt : -amt;
 }
 
 void EdgeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget)
@@ -128,8 +140,8 @@ void EdgeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, 
     QPainterPath curvePath(sourcePoint_);
     qreal dx = targetPoint_.x() - sourcePoint_.x();
     qreal ctrlOffset = std::max(qreal(30), std::abs(dx) * 0.5);
-    QPointF ctrl1(sourcePoint_.x() + ctrlOffset, sourcePoint_.y());
-    QPointF ctrl2(targetPoint_.x() - ctrlOffset, targetPoint_.y());
+    QPointF ctrl1(sourcePoint_.x() + ctrlOffset, sourcePoint_.y() + (isTemporary_ ? 0 : bowOffset_));
+    QPointF ctrl2(targetPoint_.x() - ctrlOffset, targetPoint_.y() + (isTemporary_ ? 0 : bowOffset_));
     curvePath.cubicTo(ctrl1, ctrl2, targetPoint_);
     painter->drawPath(curvePath);
 
@@ -142,6 +154,48 @@ void EdgeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, 
         painter->setBrush(arrowColor);
         painter->drawPolygon(QPolygonF({targetPoint_, arrowP1, arrowP2}));
     }
+
+    // 端口名标签（同 pair 多端口边靠标签区分）
+    if (!isTemporary_)
+        paintLabel(painter, option);
+}
+
+void EdgeItem::paintLabel(QPainter* painter, const QStyleOptionGraphicsItem* option) const
+{
+    // 缩放过小时隐藏标签，避免文字糊成一团
+    qreal lod = option->levelOfDetailFromTransform(painter->worldTransform());
+    if (lod < 0.4)
+        return;
+
+    const QString src = sourcePort_.isEmpty() ? QStringLiteral("out") : sourcePort_;
+    const QString dst = targetPort_.isEmpty() ? QStringLiteral("in") : targetPort_;
+    const QString label = src + QStringLiteral(" → ") + dst;
+
+    // cubic B(t=0.5) 中点：0.125 P0 + 0.375 C1 + 0.375 C2 + 0.125 P3
+    qreal dx = targetPoint_.x() - sourcePoint_.x();
+    qreal ctrlOffset = std::max(qreal(30), std::abs(dx) * 0.5);
+    QPointF c1(sourcePoint_.x() + ctrlOffset, sourcePoint_.y() + bowOffset_);
+    QPointF c2(targetPoint_.x() - ctrlOffset, targetPoint_.y() + bowOffset_);
+    QPointF mid = sourcePoint_ * 0.125 + c1 * 0.375 + c2 * 0.375 + targetPoint_ * 0.125;
+    // 略微向上抬，让标签浮在曲线上方，避免被箭头/曲线压住
+    mid.setY(mid.y() - 6);
+
+    QFont f = painter->font();
+    f.setPointSize(7);
+    painter->setFont(f);
+
+    QFontMetricsF fm = painter->fontMetrics();
+    QRectF lr(mid.x() - fm.horizontalAdvance(label) / 2 - 5,
+              mid.y() - fm.height() / 2 - 1,
+              fm.horizontalAdvance(label) + 10, fm.height() + 2);
+
+    // 深色 halo：对暗色背景的反差
+    painter->setPen(Qt::NoPen);
+    painter->setBrush(QColor(25, 25, 30, 200));
+    painter->drawRoundedRect(lr, 4, 4);
+
+    painter->setPen(QPen(QColor(215, 230, 255), 1));
+    painter->drawText(lr, Qt::AlignCenter, label);
 }
 
 QVariant EdgeItem::itemChange(GraphicsItemChange change, const QVariant& value)

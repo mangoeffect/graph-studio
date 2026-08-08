@@ -64,6 +64,9 @@ public:
     Q_INVOKABLE bool addEdge(const QString& fromId, const QString& fromPort,
                              const QString& toId, const QString& toPort);
     Q_INVOKABLE bool removeEdge(const QString& fromId, const QString& toId);
+    // 端口级删除：只移除该 (from,fromPort,to,toPort) 一条边
+    Q_INVOKABLE bool removeEdge(const QString& fromId, const QString& fromPort,
+                                const QString& toId, const QString& toPort);
 
     Q_INVOKABLE void selectNode(const QString& taskId);
     Q_INVOKABLE void clearSelection();
@@ -135,7 +138,7 @@ signals:
     void taskAdded(const NodeData& node);
     void taskRemoved(const QString& taskId);
     void edgeAdded(const EdgeData& edge);
-    void edgeRemoved(const QString& fromId, const QString& toId);
+    void edgeRemoved(const EdgeData& edge);
     void nodeMoved(const QString& taskId, qreal x, qreal y);
     void taskCountChanged();
     void edgeCountChanged();

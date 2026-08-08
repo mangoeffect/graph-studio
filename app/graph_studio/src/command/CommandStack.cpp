@@ -9,7 +9,7 @@ AddTaskCommand::AddTaskCommand(GraphViewModel& vm, const QString& taskType, qrea
 {
 }
 
-void AddTaskCommand::execute()
+bool AddTaskCommand::execute()
 {
     if (taskId_.isEmpty()) {
         // First execution: let ViewModel generate the id
@@ -18,6 +18,7 @@ void AddTaskCommand::execute()
         // Redo: reuse the original id so edges still reference it
         vm_.addTask(taskType_, x_, y_, taskId_);
     }
+    return !taskId_.isEmpty();
 }
 
 void AddTaskCommand::undo()
@@ -34,7 +35,7 @@ RemoveTaskCommand::RemoveTaskCommand(GraphViewModel& vm, const QString& taskId)
 {
 }
 
-void RemoveTaskCommand::execute()
+bool RemoveTaskCommand::execute()
 {
     // Snapshot node + connected edges before removal (only once)
     if (!snapshotTaken_) {
@@ -46,7 +47,7 @@ void RemoveTaskCommand::execute()
         }
         snapshotTaken_ = true;
     }
-    vm_.removeTask(taskId_);
+    return vm_.removeTask(taskId_);
 }
 
 void RemoveTaskCommand::undo()
@@ -76,14 +77,14 @@ AddEdgeCommand::AddEdgeCommand(GraphViewModel& vm, const QString& fromId, const 
 {
 }
 
-void AddEdgeCommand::execute()
+bool AddEdgeCommand::execute()
 {
-    vm_.addEdge(fromId_, fromPort_, toId_, toPort_);
+    return vm_.addEdge(fromId_, fromPort_, toId_, toPort_);
 }
 
 void AddEdgeCommand::undo()
 {
-    vm_.removeEdge(fromId_, toId_);
+    vm_.removeEdge(fromId_, fromPort_, toId_, toPort_);
 }
 
 // ---- RemoveEdgeCommand ----
@@ -94,9 +95,9 @@ RemoveEdgeCommand::RemoveEdgeCommand(GraphViewModel& vm, const QString& fromId, 
 {
 }
 
-void RemoveEdgeCommand::execute()
+bool RemoveEdgeCommand::execute()
 {
-    vm_.removeEdge(fromId_, toId_);
+    return vm_.removeEdge(fromId_, fromPort_, toId_, toPort_);
 }
 
 void RemoveEdgeCommand::undo()
@@ -112,7 +113,7 @@ ChangeParamCommand::ChangeParamCommand(GraphViewModel& vm, const QString& taskId
 {
 }
 
-void ChangeParamCommand::execute()
+bool ChangeParamCommand::execute()
 {
     if (!snapshotTaken_) {
         // 记录旧值（仅首次执行；redo 时复用同一旧值）
@@ -120,7 +121,7 @@ void ChangeParamCommand::execute()
         oldValue_ = params.value(key_);
         snapshotTaken_ = true;
     }
-    vm_.setNodeParam(taskId_, key_, newValue_);
+    return vm_.setNodeParam(taskId_, key_, newValue_);
 }
 
 void ChangeParamCommand::undo()
@@ -138,10 +139,14 @@ void MacroCommand::add(CommandPtr cmd)
         commands_.push_back(std::move(cmd));
 }
 
-void MacroCommand::execute()
+bool MacroCommand::execute()
 {
-    for (auto& c : commands_)
-        c->execute();
+    // 只要至少一条子命令真正生效就记录整个宏；未生效的子命令 undo 时为无害 no-op
+    bool any = false;
+    for (auto& c : commands_) {
+        if (c->execute()) any = true;
+    }
+    return any;
 }
 
 void MacroCommand::undo()
@@ -163,7 +168,12 @@ void CommandStack::push(CommandPtr cmd)
     if (!cmd)
         return;
 
-    cmd->execute();
+    // 只有真正生效（execute 返回 true）的命令才进入 undo 栈，
+    // 避免被拒绝的操作留下"幽灵"记录：其 redo 可能在目标端口释放后意外生效。
+    if (!cmd->execute()) {
+        emit stackChanged();
+        return;
+    }
     undoStack_.push_back(std::move(cmd));
     // Clear redo stack on new action
     redoStack_.clear();
@@ -200,7 +210,14 @@ bool CommandStack::redo()
 
     CommandPtr cmd = std::move(redoStack_.back());
     redoStack_.pop_back();
-    cmd->execute();
+    // Redo 失败（例如目标输入口被后来的连线重新占用）时丢弃该命令，
+    // 不把它当作可撤销的已生效操作。
+    if (!cmd->execute()) {
+        emit canUndoChanged(canUndo());
+        emit canRedoChanged(canRedo());
+        emit stackChanged();
+        return false;
+    }
     undoStack_.push_back(std::move(cmd));
 
     emit canUndoChanged(canUndo());

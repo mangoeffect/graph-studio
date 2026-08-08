@@ -6,8 +6,27 @@
 #include "model/GraphModel.h"
 #include "viewmodel/GraphViewModel.h"
 #include "command/CommandStack.h"
+#include <plugin_api.hpp>
 
 using namespace graph_studio;
+
+// 双输入/双输出端口的插件 task
+namespace {
+class MultiPortNode : public task_graph::INode {
+public:
+    using task_graph::INode::INode;
+    const std::string& type() const override { static std::string t = "multi_port_node"; return t; }
+    task_graph::TaskResult execute(task_graph::TaskContext&) override {
+        return task_graph::TaskResult{task_graph::TaskStatus::COMPLETED};
+    }
+    std::vector<task_graph::PortSpec> input_specs() const override {
+        return { task_graph::PortSpec{"image", "", true}, task_graph::PortSpec{"mask", "", true} };
+    }
+    std::vector<task_graph::PortSpec> output_specs() const override {
+        return { task_graph::PortSpec{"out", "", false}, task_graph::PortSpec{"aux", "", false} };
+    }
+};
+}
 
 class TestIntegration : public QObject
 {
@@ -17,6 +36,7 @@ private slots:
     void cleanup();
     void testFullWorkflow();
     void testSaveLoad();
+    void testSaveLoadMultiPort();
     void testUndoRedoComplexSequence();
 
 private:
@@ -112,6 +132,45 @@ void TestIntegration::testSaveLoad()
 
     // Cleanup
     QFile::remove(path);
+}
+
+// 同一对节点间多端口边在保存/加载（文件级）后应全部保留
+void TestIntegration::testSaveLoadMultiPort()
+{
+    task_graph::PluginRegistry::instance().register_task(
+        "multi_port_node",
+        [](const std::string& id, const task_graph::TaskConfig& cfg) {
+            return std::make_shared<MultiPortNode>(id, cfg);
+        });
+
+    QString a = vm_->addTask("multi_port_node", 0, 0);
+    QString b = vm_->addTask("multi_port_node", 100, 0);
+    QVERIFY(vm_->addEdge(a, "out", b, "image"));
+    QVERIFY(vm_->addEdge(a, "aux", b, "mask"));
+    QCOMPARE(vm_->edgeCount(), 2);
+
+    QTemporaryFile tmpFile;
+    QVERIFY(tmpFile.open());
+    tmpFile.close();
+    QString path = tmpFile.fileName() + ".json";
+    QVERIFY(vm_->saveToFile(path));
+
+    GraphModel model2;
+    GraphViewModel vm2(model2);
+    QVERIFY(vm2.loadFromFile(path));
+    QCOMPARE(vm2.taskCount(), 2);
+    QCOMPARE(vm2.edgeCount(), 2);
+
+    bool sawImage = false, sawMask = false;
+    for (const auto& e : vm2.edges()) {
+        if (e.fromId == a && e.toId == b && e.fromPort == "out" && e.toPort == "image") sawImage = true;
+        if (e.fromId == a && e.toId == b && e.fromPort == "aux" && e.toPort == "mask") sawMask = true;
+    }
+    QVERIFY(sawImage);
+    QVERIFY(sawMask);
+
+    QFile::remove(path);
+    task_graph::PluginRegistry::instance().unregister_task("multi_port_node");
 }
 
 void TestIntegration::testUndoRedoComplexSequence()

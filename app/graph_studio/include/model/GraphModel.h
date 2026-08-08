@@ -23,6 +23,13 @@ public:
     bool add_edge(const std::string& from_id, const std::string& to_id);
     bool remove_task(const std::string& task_id);
     bool remove_edge(const std::string& from_id, const std::string& to_id);
+    // 端口级删除/查询（多端口边支持）
+    bool remove_edge(const std::string& from_id, const std::string& from_port,
+                     const std::string& to_id, const std::string& to_port);
+    bool has_edge(const std::string& from_id, const std::string& from_port,
+                  const std::string& to_id, const std::string& to_port) const;
+    // to_id 的 to_port 输入口是否已被任何上游连接
+    bool input_port_filled(const std::string& to_id, const std::string& to_port) const;
     // Update params of an existing task in-place (delegates to DAG::update_task_params).
     bool update_task_params(const std::string& task_id, const task_graph::TaskParams& params);
     task_graph::TaskParams task_params(const std::string& task_id) const;

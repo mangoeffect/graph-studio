@@ -3,8 +3,27 @@
 #include "model/GraphModel.h"
 #include "viewmodel/GraphViewModel.h"
 #include "command/CommandStack.h"
+#include <plugin_api.hpp>
 
 using namespace graph_studio;
+
+// 双输入/双输出端口的插件 task，用于多端口边撤销/重做测试
+namespace {
+class MultiPortNode : public task_graph::INode {
+public:
+    using task_graph::INode::INode;
+    const std::string& type() const override { static std::string t = "multi_port_node"; return t; }
+    task_graph::TaskResult execute(task_graph::TaskContext&) override {
+        return task_graph::TaskResult{task_graph::TaskStatus::COMPLETED};
+    }
+    std::vector<task_graph::PortSpec> input_specs() const override {
+        return { task_graph::PortSpec{"image", "", true}, task_graph::PortSpec{"mask", "", true} };
+    }
+    std::vector<task_graph::PortSpec> output_specs() const override {
+        return { task_graph::PortSpec{"out", "", false}, task_graph::PortSpec{"aux", "", false} };
+    }
+};
+}
 
 class TestCommandStack : public QObject
 {
@@ -14,6 +33,8 @@ private slots:
     void cleanupTestCase();
     void testAddTaskUndoRedo();
     void testAddEdgeUndoRedo();
+    void testAddEdgeMultiPortUndoRedo();
+    void testAddEdgeRejectedNotPushed();
     void testRemoveTaskUndoRestoresEdges();
     void testCanUndoRedo();
     void testRedoClearsOnNewCommand();
@@ -73,6 +94,82 @@ void TestCommandStack::testAddEdgeUndoRedo()
 
     QVERIFY(stack->redo());
     QCOMPARE(vm->edgeCount(), 1);
+}
+
+void TestCommandStack::testAddEdgeMultiPortUndoRedo()
+{
+    vm->clear();
+    stack->clear();
+    task_graph::PluginRegistry::instance().register_task(
+        "multi_port_node",
+        [](const std::string& id, const task_graph::TaskConfig& cfg) {
+            return std::make_shared<MultiPortNode>(id, cfg);
+        });
+
+    QString a = vm->addTask("multi_port_node");
+    QString b = vm->addTask("multi_port_node");
+
+    // 同一对节点间两条不同端口边
+    stack->push(std::make_unique<AddEdgeCommand>(*vm, a, "out", b, "image"));
+    stack->push(std::make_unique<AddEdgeCommand>(*vm, a, "aux", b, "mask"));
+    QCOMPARE(vm->edgeCount(), 2);
+
+    // undo 只撤最后一条（aux->mask），不得误删 out->image
+    QVERIFY(stack->undo());
+    QCOMPARE(vm->edgeCount(), 1);
+    auto edges = vm->edges();
+    QCOMPARE(edges[0].fromPort, QStringLiteral("out"));
+    QCOMPARE(edges[0].toPort, QStringLiteral("image"));
+
+    QVERIFY(stack->undo());
+    QCOMPARE(vm->edgeCount(), 0);
+
+    QVERIFY(stack->redo());
+    QVERIFY(stack->redo());
+    QCOMPARE(vm->edgeCount(), 2);
+
+    // RemoveEdgeCommand 只删指定端口那条；undo 恢复
+    stack->push(std::make_unique<RemoveEdgeCommand>(*vm, a, "out", b, "image"));
+    QCOMPARE(vm->edgeCount(), 1);
+    edges = vm->edges();
+    QCOMPARE(edges[0].fromPort, QStringLiteral("aux"));
+    QCOMPARE(edges[0].toPort, QStringLiteral("mask"));
+    QVERIFY(stack->undo());
+    QCOMPARE(vm->edgeCount(), 2);
+
+    task_graph::PluginRegistry::instance().unregister_task("multi_port_node");
+}
+
+void TestCommandStack::testAddEdgeRejectedNotPushed()
+{
+    vm->clear();
+    stack->clear();
+    task_graph::PluginRegistry::instance().register_task(
+        "multi_port_node",
+        [](const std::string& id, const task_graph::TaskConfig& cfg) {
+            return std::make_shared<MultiPortNode>(id, cfg);
+        });
+
+    // 目标输入口已被占用时，AddEdgeCommand 被拒绝且不得留下幽灵 undo 记录
+    QString a = vm->addTask("multi_port_node");
+    QString b = vm->addTask("multi_port_node");
+    QString c = vm->addTask("multi_port_node");
+
+    stack->push(std::make_unique<AddEdgeCommand>(*vm, a, "out", b, "image"));
+    QCOMPARE(vm->edgeCount(), 1);
+
+    // b.image 已被 a 占用 -> 拒绝，不新增边
+    stack->push(std::make_unique<AddEdgeCommand>(*vm, c, "out", b, "image"));
+    QCOMPARE(vm->edgeCount(), 1);
+
+    // undo 只撤真正生效的那条；被拒绝的命令不得留在栈里
+    QVERIFY(stack->undo());
+    QCOMPARE(vm->edgeCount(), 0);
+    QVERIFY(!stack->canUndo());
+    QVERIFY(stack->redo());
+    QCOMPARE(vm->edgeCount(), 1);
+
+    task_graph::PluginRegistry::instance().unregister_task("multi_port_node");
 }
 
 void TestCommandStack::testRemoveTaskUndoRestoresEdges()

@@ -254,14 +254,42 @@ void DAG::update_task_params(const TaskId& id, const TaskParams& params) {
 
 // ====================== 增量删除 ======================
 void DAG::remove_edge(const TaskId& from, const TaskId& to) {
-    remove_edge_impl(from, to);
-    notify({DAGChangeEvent::Type::EdgeRemoved, {}, {}, from, to});
+    // 收集该 pair 下被移除的全部边端口（在 impl 删除前快照），
+    // 逐条发送带端口的 EdgeRemoved 事件，保证 UI 的端口级 key 能匹配。
+    std::vector<std::pair<std::string, std::string>> removed_ports;
+    auto in_it = incoming_idx_.find(to);
+    if (in_it != incoming_idx_.end()) {
+        for (size_t idx : in_it->second) {
+            const Edge& e = edges_[idx];
+            if (e.from == from) {
+                removed_ports.emplace_back(e.from_port, e.to_port);
+            }
+        }
+    }
+    if (!remove_edge_impl(from, to, nullptr, nullptr)) {
+        return;
+    }
+    for (const auto& [from_port, to_port] : removed_ports) {
+        notify({DAGChangeEvent::Type::EdgeRemoved, {}, {}, from, to, from_port, to_port});
+    }
 }
 
-void DAG::remove_edge_impl(const TaskId& from, const TaskId& to) {
+void DAG::remove_edge(const TaskId& from, const std::string& from_port,
+                      const TaskId& to,   const std::string& to_port) {
+    bool removed = remove_edge_impl(from, to, &from_port, &to_port);
+    if (removed) {
+        notify({DAGChangeEvent::Type::EdgeRemoved, {}, {}, from, to, from_port, to_port});
+    }
+}
+
+// 删除 from->to 中匹配端口过滤条件的边；filter 为 null 时删除该 pair 下全部边。
+// 返回是否至少删除了一条。
+bool DAG::remove_edge_impl(const TaskId& from, const TaskId& to,
+                           const std::string* from_port_filter,
+                           const std::string* to_port_filter) {
     if (!tasks_.contains(from) || !tasks_.contains(to)) {
         TG_LOG_WARN("Cannot remove edge: task '" + from + "' or '" + to + "' does not exist");
-        return;
+        return false;
     }
 
     // 收集需要删除的边在 edges_ 中的下标
@@ -269,14 +297,16 @@ void DAG::remove_edge_impl(const TaskId& from, const TaskId& to) {
     auto in_it = incoming_idx_.find(to);
     if (in_it != incoming_idx_.end()) {
         for (size_t idx : in_it->second) {
-            if (edges_[idx].from == from) {
-                to_remove.push_back(idx);
-            }
+            const Edge& e = edges_[idx];
+            if (e.from != from) continue;
+            if (to_port_filter && e.to_port != *to_port_filter) continue;
+            if (from_port_filter && e.from_port != *from_port_filter) continue;
+            to_remove.push_back(idx);
         }
     }
     if (to_remove.empty()) {
         TG_LOG_DEBUG("Edge '" + from + "' -> '" + to + "' not found, nothing to remove");
-        return;
+        return false;
     }
 
     // 检查移除后是否还有 from->to 的边（端口级可能有多条）
@@ -320,6 +350,7 @@ void DAG::remove_edge_impl(const TaskId& from, const TaskId& to) {
 
     TG_LOG_DEBUG("Removed " + std::to_string(to_remove.size()) +
                  " edge(s) from '" + from + "' to '" + to + "'");
+    return true;
 }
 
 void DAG::remove_task(const TaskId& id) {
@@ -358,6 +389,18 @@ bool DAG::has_edge(const TaskId& from, const TaskId& to) const {
     auto it = adjacency_.find(from);
     if (it == adjacency_.end()) return false;
     return it->second.contains(to);
+}
+
+bool DAG::has_edge(const TaskId& from, const std::string& from_port,
+                   const TaskId& to, const std::string& to_port) const {
+    if (!tasks_.contains(from) || !tasks_.contains(to)) return false;
+    auto it = incoming_idx_.find(to);
+    if (it == incoming_idx_.end()) return false;
+    for (size_t idx : it->second) {
+        const Edge& e = edges_[idx];
+        if (e.from == from && e.from_port == from_port && e.to_port == to_port) return true;
+    }
+    return false;
 }
 
 std::vector<TaskId> DAG::task_ids() const {

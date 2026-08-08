@@ -21,6 +21,20 @@ public:
     }
 };
 
+// 声明双输入端口（image/mask）+ 双输出端口（out/aux），用于多端口边测试
+class MultiPortedNode : public INode {
+public:
+    using INode::INode;
+    const std::string& type() const override { static std::string t = "multi_port_node"; return t; }
+    TaskResult execute(TaskContext&) override { return TaskResult{.status = TaskStatus::COMPLETED}; }
+    std::vector<PortSpec> input_specs() const override {
+        return { PortSpec{"image", "", true}, PortSpec{"mask", "", true} };
+    }
+    std::vector<PortSpec> output_specs() const override {
+        return { PortSpec{"out", "", false}, PortSpec{"aux", "", false} };
+    }
+};
+
 class TestGraphViewModel : public QObject
 {
     Q_OBJECT
@@ -33,6 +47,7 @@ private slots:
     void testRemoveTaskRemovesConnectedEdges();
     void testAddEdge();
     void testAddEdgePortAware();
+    void testAddEdgeMultiPortSamePair();
     void testAddEdgeCycle();
     void testAddEdgeDuplicate();
     void testAddEdgeSelfLoop();
@@ -141,7 +156,10 @@ void TestGraphViewModel::testAddEdgePortAware()
 
     // 便捷重载应自动解析出真实端口（required 输入口 "image"）
     QString c = vm->addTask("ported_node");
-    QVERIFY(vm->addEdge(c, b));
+    QVERIFY(vm->addEdge(c, a));  // c->a.image（a.image 空闲）
+
+    // 同一输入端口只允许一个数据源：c->b.image 已被 a 占用 -> 拒绝
+    QVERIFY(!vm->addEdge(c, b));
 
     // 序列化 round-trip 保留端口名
     auto edges = vm->edges();
@@ -165,6 +183,73 @@ void TestGraphViewModel::testAddEdgePortAware()
         QVERIFY(e.fromPort == "out" && e.toPort == "image");
 
     PluginRegistry::instance().unregister_task("ported_node");
+}
+
+// 同一对节点之间不同端口的边应可并存；可单独删除一条；round-trip 全保留
+void TestGraphViewModel::testAddEdgeMultiPortSamePair()
+{
+    vm->clear();
+    PluginRegistry::instance().register_task(
+        "multi_port_node",
+        [](const std::string& id, const TaskConfig& cfg) {
+            return std::make_shared<MultiPortedNode>(id, cfg);
+        });
+
+    QString src = vm->addTask("multi_port_node");
+    QString dst = vm->addTask("multi_port_node");
+    QVERIFY(!src.isEmpty() && !dst.isEmpty());
+
+    // 两条边：同一对节点，端口不同
+    QVERIFY(vm->addEdge(src, "out", dst, "image"));
+    QVERIFY(vm->addEdge(src, "aux", dst, "mask"));
+    QCOMPARE(vm->edgeCount(), 2);
+
+    auto edges = vm->edges();
+    QCOMPARE(edges.size(), 2);
+    QVERIFY(std::any_of(edges.begin(), edges.end(), [&](const EdgeData& e) {
+        return e.fromId == src && e.toId == dst && e.fromPort == "aux" && e.toPort == "mask";
+    }));
+
+    // 端口级幂等：完全相同的四元组仍算重复
+    QVERIFY(!vm->addEdge(src, "out", dst, "image"));
+    // 编辑器层输入端口保护:mark 已被占用 -> 拒绝（即使 from_port 不同）
+    QVERIFY(!vm->addEdge(src, "out", dst, "mask"));
+
+    // 端口级删除只删一条
+    QVERIFY(vm->removeEdge(src, "out", dst, "image"));
+    QCOMPARE(vm->edgeCount(), 1);
+    edges = vm->edges();
+    QCOMPARE(edges[0].toPort, QStringLiteral("mask"));
+
+    // 重新补回，验证序列化 round-trip 保留两条端口边
+    QVERIFY(vm->addEdge(src, "out", dst, "image"));
+    QCOMPARE(vm->edgeCount(), 2);
+    std::string json = model->to_json_string();
+    QString qjson = QString::fromStdString(json);
+    QVERIFY(qjson.contains("\"to_port\": \"image\""));
+    QVERIFY(qjson.contains("\"to_port\": \"mask\""));
+
+    vm->clear();
+    QVERIFY(model->from_json_string(json));
+    QCOMPARE(vm->edgeCount(), 2);
+    bool sawOut2Image = false, sawAux2Mask = false;
+    for (const auto& e : vm->edges()) {
+        if (e.fromPort == "out" && e.toPort == "image") sawOut2Image = true;
+        if (e.fromPort == "aux" && e.toPort == "mask") sawAux2Mask = true;
+    }
+    QVERIFY(sawOut2Image && sawAux2Mask);
+
+    // pair 语义删除：del pair 下全部边
+    vm->clear();
+    QString a2 = vm->addTask("multi_port_node");
+    QString b2 = vm->addTask("multi_port_node");
+    QVERIFY(vm->addEdge(a2, "out", b2, "image"));
+    QVERIFY(vm->addEdge(a2, "aux", b2, "mask"));
+    QCOMPARE(vm->edgeCount(), 2);
+    QVERIFY(vm->removeEdge(a2, b2));
+    QCOMPARE(vm->edgeCount(), 0);
+
+    PluginRegistry::instance().unregister_task("multi_port_node");
 }
 
 void TestGraphViewModel::testAddEdgeCycle()

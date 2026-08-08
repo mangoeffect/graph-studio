@@ -336,12 +336,17 @@ void GraphViewModel::onDagChanged(const task_graph::DAGChangeEvent& e) {
         emit logMessage(kLogInfo, "Edge added: " + ed.fromId + " -> " + ed.toId);
         break;
     }
-    case Type::EdgeRemoved:
-        emit edgeRemoved(QString::fromStdString(e.from), QString::fromStdString(e.to));
+    case Type::EdgeRemoved: {
+        EdgeData ed;
+        ed.fromId = QString::fromStdString(e.from);
+        ed.toId = QString::fromStdString(e.to);
+        ed.fromPort = QString::fromStdString(e.from_port);
+        ed.toPort = QString::fromStdString(e.to_port);
+        emit edgeRemoved(ed);
         emit edgeCountChanged();
-        emit logMessage(kLogInfo, "Edge removed: " +
-                        QString::fromStdString(e.from) + " -> " + QString::fromStdString(e.to));
+        emit logMessage(kLogInfo, "Edge removed: " + ed.fromId + " -> " + ed.toId);
         break;
+    }
     case Type::GraphReset: {
         emit graphReset();
         const auto& dag = model_.dag();
@@ -428,8 +433,17 @@ bool GraphViewModel::addEdge(const QString& fromId, const QString& fromPort,
         emit logMessage(kLogWarn, "Node not found for edge");
         return false;
     }
-    if (model_.has_edge(fromId.toStdString(), toId.toStdString())) {
-        emit logMessage(kLogWarn, "Edge already exists: " + fromId + " -> " + toId);
+    // 端口级幂等：完全相同的四元组视为已存在（同 pair 不同端口可新增）
+    if (model_.has_edge(fromId.toStdString(), fromPort.toStdString(),
+                        toId.toStdString(), toPort.toStdString())) {
+        emit logMessage(kLogWarn, "Edge already exists: " + fromId + ":" + fromPort +
+                        " -> " + toId + ":" + toPort);
+        return false;
+    }
+    // 输入端口只允许一个数据源：目标 to_port 已被任何上游占用时拒绝。
+    // （core 层仅为 warning/last-write-wins；编辑器层做更严格的保护。）
+    if (model_.input_port_filled(toId.toStdString(), toPort.toStdString())) {
+        emit logMessage(kLogWarn, "Input port already connected: " + toId + ":" + toPort);
         return false;
     }
     if (canReach(toId, fromId)) {
@@ -448,6 +462,16 @@ bool GraphViewModel::removeEdge(const QString& fromId, const QString& toId)
 {
     if (!model_.has_edge(fromId.toStdString(), toId.toStdString())) return false;
     model_.remove_edge(fromId.toStdString(), toId.toStdString());
+    return true;
+}
+
+bool GraphViewModel::removeEdge(const QString& fromId, const QString& fromPort,
+                                const QString& toId, const QString& toPort)
+{
+    if (!model_.has_edge(fromId.toStdString(), fromPort.toStdString(),
+                         toId.toStdString(), toPort.toStdString())) return false;
+    model_.remove_edge(fromId.toStdString(), fromPort.toStdString(),
+                       toId.toStdString(), toPort.toStdString());
     return true;
 }
 
