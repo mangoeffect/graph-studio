@@ -31,7 +31,11 @@
 #include <QKeyEvent>
 #include <QShortcut>
 #include <QDrag>
+#include <QDragEnterEvent>
+#include <QDragMoveEvent>
+#include <QDropEvent>
 #include <QMimeData>
+#include <QUrl>
 #include <QApplication>
 #include <algorithm>
 
@@ -48,12 +52,27 @@ static QString edgeKey(const EdgeData& e)
     return edgeKey(e.fromId, e.fromPort, e.toId, e.toPort);
 }
 
+// 从 mime 数据里取第一个指向本地 .json 文件的路径，无则返回空。
+static QString firstLocalJsonPath(const QMimeData* mime)
+{
+    if (!mime || !mime->hasUrls()) return {};
+    const auto urls = mime->urls();
+    for (const QUrl& url : urls) {
+        if (!url.isLocalFile()) continue;
+        const QString path = url.toLocalFile();
+        if (QFileInfo(path).suffix().compare("json", Qt::CaseInsensitive) == 0)
+            return path;
+    }
+    return {};
+}
+
 MainWindow::MainWindow(GraphViewModel& vm, QWidget* parent)
     : QMainWindow(parent), vm_(vm), commandStack_(this)
 {
     setWindowTitle("Graph Studio");
     resize(1600, 1000);
     setMinimumSize(1200, 700);
+    setAcceptDrops(true);
 
     ApplyDarkTheme();
     InitializeLayout();
@@ -285,6 +304,7 @@ void MainWindow::ConnectSignals()
     connect(graphicsView_, &GraphView::taskDropped, this, [this](const QString& taskType, const QPointF& pos) {
         CreateNodeAt(taskType, pos);
     });
+    connect(graphicsView_, &GraphView::graphFileDropped, this, &MainWindow::OpenGraphFile);
     connect(graphicsView_, &GraphView::zoomChanged, this, [this](qreal factor) {
         if (zoomLabel_)
             zoomLabel_->setText(QString("Zoom: %1%").arg(int(factor * 100)));
@@ -1046,6 +1066,7 @@ void MainWindow::ActionNew()
     vm_.clear();
     commandStack_.clear();
     currentFilePath_.clear();
+    UpdateWindowTitle();
 }
 
 void MainWindow::ActionOpen()
@@ -1062,18 +1083,64 @@ void MainWindow::ActionOpen()
                 if (!f.open(QIODevice::WriteOnly)) return;
                 f.write(content);
             }
-            if (vm_.loadFromFile(tmpPath)) {
+            if (OpenGraphFile(tmpPath)) {
                 currentFilePath_ = fileName;  // 记录用户选择的展示名
+                UpdateWindowTitle();
             }
         });
 #else
     QString path = QFileDialog::getOpenFileName(this, "Open Graph", QString(), "JSON Files (*.json);;All Files (*)");
     if (path.isEmpty())
         return;
-    if (vm_.loadFromFile(path)) {
-        currentFilePath_ = path;
-    }
+    OpenGraphFile(path);
 #endif
+}
+
+bool MainWindow::OpenGraphFile(const QString& path)
+{
+    if (!vm_.loadFromFile(path)) return false;
+    currentFilePath_ = path;
+    UpdateWindowTitle();
+    return true;
+}
+
+void MainWindow::UpdateWindowTitle()
+{
+    if (currentFilePath_.isEmpty()) {
+        setWindowTitle("Graph Studio");
+    } else {
+        setWindowTitle(QStringLiteral("%1 - Graph Studio")
+                           .arg(QFileInfo(currentFilePath_).fileName()));
+    }
+}
+
+void MainWindow::dragEnterEvent(QDragEnterEvent* event)
+{
+    if (!firstLocalJsonPath(event->mimeData()).isEmpty()) {
+        event->acceptProposedAction();
+        return;
+    }
+    QMainWindow::dragEnterEvent(event);
+}
+
+void MainWindow::dragMoveEvent(QDragMoveEvent* event)
+{
+    if (!firstLocalJsonPath(event->mimeData()).isEmpty()) {
+        event->acceptProposedAction();
+        return;
+    }
+    QMainWindow::dragMoveEvent(event);
+}
+
+void MainWindow::dropEvent(QDropEvent* event)
+{
+    const QString path = firstLocalJsonPath(event->mimeData());
+    if (!path.isEmpty()) {
+        OpenGraphFile(path);
+        event->acceptProposedAction();
+        return;
+    }
+    QMainWindow::dropEvent(event);
 }
 
 void MainWindow::ActionSave()

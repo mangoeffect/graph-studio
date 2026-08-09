@@ -7,8 +7,33 @@
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QMimeData>
+#include <QUrl>
+#include <QFileInfo>
 
 using namespace graph_studio;
+
+namespace {
+
+// 从 mime 数据里取第一个指向本地 .json 文件的路径，无则返回空。
+QString firstJsonPath(const QMimeData* mime)
+{
+    if (!mime || !mime->hasUrls()) return {};
+    const auto urls = mime->urls();
+    for (const QUrl& url : urls) {
+        if (!url.isLocalFile()) continue;
+        const QString path = url.toLocalFile();
+        if (QFileInfo(path).suffix().compare("json", Qt::CaseInsensitive) == 0)
+            return path;
+    }
+    return {};
+}
+
+bool hasJsonDrop(const QMimeData* mime)
+{
+    return !firstJsonPath(mime).isEmpty();
+}
+
+} // namespace
 
 GraphView::GraphView(QGraphicsScene* scene, QWidget* parent)
     : QGraphicsView(scene, parent)
@@ -74,6 +99,10 @@ void GraphView::mouseReleaseEvent(QMouseEvent* event)
 
 void GraphView::dragEnterEvent(QDragEnterEvent* event)
 {
+    if (hasJsonDrop(event->mimeData())) {
+        event->acceptProposedAction();
+        return;
+    }
     if (event->mimeData()->hasText()) {
         event->acceptProposedAction();
         return;
@@ -83,6 +112,10 @@ void GraphView::dragEnterEvent(QDragEnterEvent* event)
 
 void GraphView::dragMoveEvent(QDragMoveEvent* event)
 {
+    if (hasJsonDrop(event->mimeData())) {
+        event->acceptProposedAction();
+        return;
+    }
     if (event->mimeData()->hasText()) {
         event->acceptProposedAction();
         return;
@@ -92,6 +125,14 @@ void GraphView::dragMoveEvent(QDragMoveEvent* event)
 
 void GraphView::dropEvent(QDropEvent* event)
 {
+    // 文件拖入优先于文本：Finder/文件管理器拖 .json 时常同时携带 text/plain，
+    // 若先判 hasText() 会把文件路径误当 task 类型建节点。
+    const QString jsonPath = firstJsonPath(event->mimeData());
+    if (!jsonPath.isEmpty()) {
+        emit graphFileDropped(jsonPath);
+        event->acceptProposedAction();
+        return;
+    }
     if (event->mimeData()->hasText()) {
         QString taskType = event->mimeData()->text();
         QPointF scenePos = mapToScene(event->position().toPoint());

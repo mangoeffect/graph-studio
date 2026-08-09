@@ -5,6 +5,12 @@
 #include <QLabel>
 #include <QGraphicsItem>
 #include <QGraphicsSceneMouseEvent>
+#include <QDragEnterEvent>
+#include <QDropEvent>
+#include <QMimeData>
+#include <QUrl>
+#include <QFile>
+#include <QTemporaryDir>
 
 #include "model/GraphModel.h"
 #include "viewmodel/GraphViewModel.h"
@@ -108,6 +114,10 @@ private slots:
     void testDeleteTargetRemovesInboundEdges();
     void testDeleteTargetDualPortInbound();
     void testMultiSelectDeleteConnected();
+    void testFileDropOpensGraph();
+    void testFileDropPriorityOverText();
+    void testNonJsonFileDropIgnored();
+    void testWholeWindowFileDrop();
 
 private:
     GraphModel* model_ = nullptr;
@@ -118,6 +128,9 @@ private:
 
     void mouseDrag(const QPoint& from, const QPoint& to, int steps = 6);
     void dropTask(const QString& taskType, const QPoint& viewportPos);
+    // 模拟从文件管理器拖入 path 指向的本地文件（dragEnter + drop）。
+    void sendFileDrop(QWidget* target, const QString& path);
+    void sendFileDrop(QWidget* target, const QMimeData& mime);
 };
 
 void TestGui::init()
@@ -213,6 +226,26 @@ void TestGui::testNodeCreationViaDrop()
     QCOMPARE(nodes.size(), 1);
     QVERIFY(qAbs(nodes[0].x - sceneCenter.x()) < 1.0);
     QVERIFY(qAbs(nodes[0].y - sceneCenter.y()) < 1.0);
+}
+
+// 模拟从文件管理器拖入本地 .json：GraphView::dropEvent 解析 text/uri-list
+// （hasUrls 优先于 hasText）→ graphFileDropped → MainWindow::OpenGraphFile →
+// 图被加载、currentFilePath_ 更新、窗口标题带上文件名。
+void TestGui::sendFileDrop(QWidget* target, const QString& path)
+{
+    QMimeData mime;
+    mime.setUrls({QUrl::fromLocalFile(path)});
+    sendFileDrop(target, mime);
+}
+
+void TestGui::sendFileDrop(QWidget* target, const QMimeData& mime)
+{
+    QPoint pos = target->rect().center();
+    QDragEnterEvent dragEnter(pos, Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(target, &dragEnter);
+    QDropEvent drop(pos, Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(target, &drop);
+    QTest::qWait(30);
 }
 
 // 点击节点 -> 场景选中 -> VM selectedNodeId 同步
@@ -576,6 +609,90 @@ void TestGui::testMultiSelectDeleteConnected()
     QCOMPARE(vm_->edgeCount(), 0);
     QCOMPARE(countSceneItems(scene_, NodeItem::Type), 0);
     QCOMPARE(countSceneItems(scene_, EdgeItem::Type), 0);
+}
+
+// 把保存过的 .json 拖进画布 -> 图整体加载、标题更新（等价于 File→Open）
+void TestGui::testFileDropOpensGraph()
+{
+    QTemporaryDir tmpDir;
+    QVERIFY(tmpDir.isValid());
+
+    QString fileA = tmpDir.filePath("drop_a.json");
+    QString idA = vm_->addTask("alpha", 0, 0);
+    QString idB = vm_->addTask("beta", 200, 0);
+    QVERIFY(!idA.isEmpty() && !idB.isEmpty());
+    QVERIFY(vm_->addEdge(idA, idB));
+    QVERIFY(vm_->saveToFile(fileA));
+
+    vm_->clear();
+    QCOMPARE(vm_->taskCount(), 0);
+
+    // 画布是 viewport 接收拖放，事件按 QGraphicsView 转发到 dropEvent
+    sendFileDrop(view_, fileA);
+
+    QCOMPARE(vm_->taskCount(), 2);
+    QCOMPARE(vm_->edgeCount(), 1);
+    QVERIFY(window_->windowTitle().contains("drop_a.json"));
+    QVERIFY(window_->windowTitle().contains("Graph Studio"));
+}
+
+// 文件管理器拖 .json 常同时带 text/plain（文件路径或名称）。hasUrls 必须
+// 优先于 hasText，否则会把路径当 task 类型建节点而不是加载图。
+void TestGui::testFileDropPriorityOverText()
+{
+    QTemporaryDir tmpDir;
+    QVERIFY(tmpDir.isValid());
+
+    QString fileA = tmpDir.filePath("prio.json");
+    QString idA = vm_->addTask("alpha", 0, 0);
+    QString idB = vm_->addTask("beta", 200, 0);
+    QVERIFY(vm_->addEdge(idA, idB));
+    QVERIFY(vm_->saveToFile(fileA));
+    vm_->clear();
+
+    QMimeData mime;
+    mime.setUrls({QUrl::fromLocalFile(fileA)});
+    mime.setText(fileA);  // 恶意/真实场景：文件带文本内容
+
+    // 与 sendFileDrop 相同路径（dragEnter + drop），但 mime 同时含 text+urls
+    sendFileDrop(view_, mime);
+
+    // 若 hasText 分支先执行会把 fileA 当成 task 类型 → 建节点而非加载图
+    QCOMPARE(vm_->taskCount(), 2);
+    QCOMPARE(vm_->edgeCount(), 1);
+}
+
+// 拖入非 .json 文件（图片等）→ 不应被当作图加载，画布保持不变
+void TestGui::testNonJsonFileDropIgnored()
+{
+    QString idA = vm_->addTask("graph_only", 0, 0);
+    QVERIFY(!idA.isEmpty());
+    QCOMPARE(vm_->taskCount(), 1);
+
+    QTemporaryDir tmpDir;
+    QVERIFY(tmpDir.isValid());
+    QString imgA = tmpDir.filePath("drop.png");
+    sendFileDrop(view_, imgA);
+
+    QCOMPARE(vm_->taskCount(), 1);         // 不加载、不新建
+    QCOMPARE(vm_->edgeCount(), 0);
+    QCOMPARE(window_->windowTitle(), QStringLiteral("Graph Studio"));
+}
+
+// 拖到画布外的窗口区域（属性面板/日志区等）→ MainWindow::dropEvent 兜底接收
+void TestGui::testWholeWindowFileDrop()
+{
+    QTemporaryDir tmpDir;
+    QVERIFY(tmpDir.isValid());
+    QString fileA = tmpDir.filePath("win_drop.json");
+    QString idA = vm_->addTask("alpha", 0, 0);
+    QVERIFY(!idA.isEmpty());
+    QVERIFY(vm_->saveToFile(fileA));
+
+    vm_->clear();
+    sendFileDrop(window_, fileA);
+    QCOMPARE(vm_->taskCount(), 1);
+    QVERIFY(window_->windowTitle().contains("win_drop"));
 }
 
 // 自定义 main：GUI 测试必须用 QApplication（而非 QCoreApplication）

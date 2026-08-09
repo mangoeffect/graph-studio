@@ -16,6 +16,7 @@ public:
 
 signals:
     void taskDropped(const QString& taskType, const QPointF& scenePos);
+    void graphFileDropped(const QString& filePath);
     void zoomChanged(qreal factor);
 
 protected:

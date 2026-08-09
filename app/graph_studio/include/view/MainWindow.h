@@ -60,6 +60,9 @@ public:
 
 protected:
     void keyPressEvent(QKeyEvent* event) override;
+    void dragEnterEvent(QDragEnterEvent* event) override;
+    void dragMoveEvent(QDragMoveEvent* event) override;
+    void dropEvent(QDropEvent* event) override;
 
 private slots:
     void onTaskAdded(const NodeData& node);
@@ -127,6 +130,10 @@ private:
     void ActionStop();
     void UpdateUndoRedoActions();
     void UpdateRunActions();
+
+    // 加载一个图文件（File→Open 与拖放共用）：成功返回 true 并更新当前文件与标题。
+    bool OpenGraphFile(const QString& path);
+    void UpdateWindowTitle();
 
     // 图像结果面板：根据当前下拉选中显示对应 QImage；填充下拉列表
     void ShowResultImage(const QString& key);
