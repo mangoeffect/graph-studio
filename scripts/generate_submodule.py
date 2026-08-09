@@ -94,25 +94,32 @@ def gen_cmakelists(module_name: str, module_desc: str, use_opencv: bool) -> str:
         f'    src/{module_name}.cpp',
         ')',
         '',
+        '# task_graph 链接统一走 SDK 辅助（cmake/SdkUtil.cmake）：',
+        '#   in-tree (add_subdirectory) 用 task_graph 目标；',
+        '#   独立编译用 find_package(task_graph) 的 task_graph::task_graph；',
+        '#   旧式可 -DTASK_GRAPH_ROOT=<repo>。',
+        f'find_package(task_graph QUIET)',
+        f'use_task_graph_sdk({module_name})',
+        '',
         f'target_include_directories({module_name}',
         '    PRIVATE',
         '        ${PROJECT_SOURCE_DIR}/include',
-        '        ${TASK_GRAPH_ROOT}/include',
     ]
     if use_opencv:
         lines.append('        ${OpenCV_INCLUDE_DIRS}')
     lines += [
         ')',
         '',
-        f'target_link_libraries({module_name}',
-        '    PRIVATE',
-        '        task_graph',
     ]
     if use_opencv:
-        lines.append('        ${OpenCV_LIBS}')
+        lines += [
+            f'target_link_libraries({module_name}',
+            '    PRIVATE',
+            '        ${OpenCV_LIBS}',
+            ')',
+            '',
+        ]
     lines += [
-        ')',
-        '',
         f'target_compile_options({module_name}',
         '    PRIVATE',
         '        -Wall',

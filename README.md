@@ -146,6 +146,31 @@ The generator produces `CMakeLists.txt`, a task header, and a source with dual p
 
 MediaPipe vision requires prebuilt models + demo images downloaded via `scripts/download_mediapipe_models.sh` into `submodules/mediapipe/mediapipe_vision/tests/models/`; tests soft-skip when those assets are absent.
 
+## Standalone build & dynamic plugins (desktop)
+
+On desktop the framework and its plugins can be compiled fully independently of each
+other: the framework builds standalone, and plugins build against an **installed SDK**
+(public headers + `libtask_graph`) and are loaded at **runtime** via `PluginLoader`
+(dlopen + `register_plugin`).
+
+```bash
+# 1. Build the SDK prefix (headers + libtask_graph + CMake package)
+scripts/build_sdk.sh                     # -> build/sdk/
+
+# 2. Build any plugin standalone against the SDK (no main-repo source)
+scripts/build_plugin_standalone.sh examples/plugins/demo
+scripts/build_plugin_standalone.sh submodules/opencv/image_processing/image_filtering --opencv
+
+# 3. Run the dlopen test once the demo plugin exists (it soft-skips otherwise)
+ctest -R test_plugin_abi
+```
+
+- The in-tree dev workflow (`scripts/run_tests.sh`, GraphStudio scanning `build/submodules/`) is unchanged; pass `-DTASK_GRAPH_BUILD_SUBMODULES=OFF` to build the core strictly standalone.
+- Each submodule links the framework through `use_task_graph_sdk()` (`cmake/SdkUtil.cmake`), which prefers the in-tree target, then `find_package(task_graph)` (SDK), then legacy `TASK_GRAPH_ROOT`.
+- Plugins export `register_plugin` / `unregister_plugin` / `get_plugin_info` and may export `TG_DEFINE_PLUGIN_SDK_VERSION`; `PluginLoader` refuses libraries whose SDK version doesn't match the host.
+- `scripts/run_tests.sh --sdk` runs steps 1–3 automatically.
+- WASM / mobile builds remain statically linked (no dlopen).
+
 ## GPU & cross-platform notes
 
 - GPU backends are opt-in and OFF by default; Metal builds need a Mac, Vulkan needs the Vulkan SDK, CUDA needs a CUDA toolkit.

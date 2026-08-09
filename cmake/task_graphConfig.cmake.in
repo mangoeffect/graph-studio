@@ -1,0 +1,13 @@
+# task_graphConfig.cmake — 由 configure_package_config_file 生成的 SDK 包配置。
+# 消费者通过 find_package(task_graph) 导入，得到：
+#   - 导入目标 task_graph::task_graph（含头文件搜索路径与私有/接口链接）
+#   - 函数 use_task_graph_sdk(<target>)（见 SdkUtil.cmake）
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+find_dependency(Threads)
+
+include("${CMAKE_CURRENT_LIST_DIR}/SdkUtil.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/task_graphTargets.cmake")
+
+check_required_components(task_graph)

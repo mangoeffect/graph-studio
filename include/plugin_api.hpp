@@ -29,6 +29,10 @@
 
 namespace task_graph {
 
+// SDK/插件 ABI 版本。插件在构建期捕获 tg_sdk_version()，宿主框架在
+// PluginLoader::load() 时校验一致性，不匹配的插件会被拒绝加载。
+inline constexpr uint32_t TG_SDK_VERSION = 1;
+
 enum class LogLevel {
     TRACE = 0,
     DEBUG = 1,
@@ -42,6 +46,10 @@ extern "C" {
     TG_EXPORT void tg_log(LogLevel level, const char* msg, const char* file = "", int line = 0);
     TG_EXPORT void tg_set_log_level(LogLevel level);
     TG_EXPORT LogLevel tg_get_log_level();
+    // 宿主框架导出的 SDK 版本（见 src/plugin.cpp）。
+    TG_EXPORT uint32_t tg_sdk_version();
+    // 可选：插件实现的通用 ABI 运行时，参见 TG_DEFINE_PLUGIN_SDK_VERSION。
+    TG_EXPORT uint32_t tg_plugin_sdk_version();
 }
 
 inline void tg_log(LogLevel level, const std::string& msg, const char* file = "", int line = 0) {
@@ -284,6 +292,14 @@ extern "C" {
     using RegisterPluginFunc = bool(*)();
     using UnregisterPluginFunc = void(*)();
 }
+
+// 插件作者辅助宏：在插件实现中调用一次，导出 SDK 版本供宿主校验。
+//   TG_DEFINE_PLUGIN_SDK_VERSION;
+// 若插件未导出该符号，PluginLoader 会以警告方式放行（兼容旧插件）。
+#define TG_DEFINE_PLUGIN_SDK_VERSION                                         \
+    extern "C" TG_EXPORT uint32_t tg_plugin_sdk_version() {                  \
+        return ::task_graph::TG_SDK_VERSION;                                  \
+    }
 
 // 自包含：子模块只需 #include <plugin_api.hpp> 即可获得 INode + TaskContext 完整定义
 #include <task_graph/task_context.hpp>

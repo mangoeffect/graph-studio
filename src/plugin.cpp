@@ -28,6 +28,11 @@
 #include <dlfcn.h>
 #endif
 
+// 宿主框架导出的 SDK 版本：插件在加载时通过 tg_plugin_sdk_version() 与它比对。
+extern "C" TG_EXPORT uint32_t tg_sdk_version() {
+    return ::task_graph::TG_SDK_VERSION;
+}
+
 namespace task_graph {
 
 struct PluginLoader::Handle {
@@ -35,6 +40,7 @@ struct PluginLoader::Handle {
     RegisterPluginFunc register_func{nullptr};
     UnregisterPluginFunc unregister_func{nullptr};
     GetPluginInfoFunc info_func{nullptr};
+    uint32_t sdk_version{0};
     std::string path;
 };
 
@@ -81,6 +87,28 @@ bool PluginLoader::load(const std::string& path) {
         return false;
     }
 
+    // 可选的 ABI 校验：插件导出的 SDK 版本必须与宿主框架一致。
+    // 未导出该符号的旧插件以警告方式放行。
+    auto plugin_sdk_fn =
+        reinterpret_cast<uint32_t(*)()>(dlsym(handle, "tg_plugin_sdk_version"));
+    uint32_t plugin_sdk = plugin_sdk_fn ? plugin_sdk_fn() : 0;
+    if (plugin_sdk != 0 && plugin_sdk != TG_SDK_VERSION) {
+        TG_LOG_WARN("Plugin SDK version mismatch (" + std::to_string(plugin_sdk) +
+                    " != " + std::to_string(TG_SDK_VERSION) + "): " + path);
+        dlclose(handle);
+        return false;
+    }
+
+    // 可选的插件元信息（未导出时忽略）
+    GetPluginInfoFunc info_func =
+        reinterpret_cast<GetPluginInfoFunc>(dlsym(handle, "get_plugin_info"));
+    if (info_func) {
+        if (const PluginInfo* info = info_func()) {
+            TG_LOG_DEBUG("Plugin '" + info->name + "' v" + info->version +
+                         ": " + info->description);
+        }
+    }
+
     if (!reg_func()) {
         dlclose(handle);
         return false;
@@ -90,6 +118,8 @@ bool PluginLoader::load(const std::string& path) {
     h.lib_handle = handle;
     h.register_func = reg_func;
     h.unregister_func = unreg_func;
+    h.info_func = info_func;
+    h.sdk_version = plugin_sdk;
     h.path = path;
 
     handles_[path] = std::move(h);

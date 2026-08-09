@@ -12,6 +12,7 @@
 #   scripts/run_tests.sh -R <regex>      # 只运行名字匹配 regex 的测试
 #   scripts/run_tests.sh -l              # 列出所有测试后退出，不运行
 #   scripts/run_tests.sh --opencv        # 打开 TASK_GRAPH_ENABLE_OPENCV
+#   scripts/run_tests.sh --sdk           # 先构建 SDK 前缀 + 独立 demo 插件，再跑含 test_plugin_abi 的全部测试
 #   scripts/run_tests.sh --no-build      # 跳过配置/构建，直接跑现有二进制
 #   scripts/run_tests.sh -v              # ctest 详细输出（--output-on-failure 默认已开）
 #   scripts/run_tests.sh -R port -v      # 组合：只跑 port 相关测试 + 详细输出
@@ -33,6 +34,7 @@ LIST_ONLY=0
 NO_BUILD=0
 VERBOSE=0
 OPENCV=0
+SDK=0
 
 # ---- 颜色（仅在 TTY 下启用）----
 if [[ -t 1 ]]; then
@@ -56,6 +58,7 @@ while [[ $# -gt 0 ]]; do
         -l|--list)      LIST_ONLY=1; shift ;;
         --no-build)     NO_BUILD=1; shift ;;
         --opencv)       OPENCV=1; shift ;;
+        --sdk)          SDK=1; shift ;;
         -v|--verbose)   VERBOSE=1; shift ;;
         -h|--help)      usage 0 ;;
         *) echo "${C_RED}未知参数: $1${C_RESET}" >&2; usage 1 ;;
@@ -97,6 +100,15 @@ else
         echo "${C_RED}构建目录 ${BUILD_DIR} 不存在，且指定了 --no-build${C_RESET}" >&2
         exit 1
     fi
+fi
+
+# ---- 独立插件（--sdk）：构建 SDK 前缀 + 独立 demo 插件，供 test_plugin_abi 加载 ----
+if [[ "${SDK}" -eq 1 ]]; then
+    echo "${C_BOLD}==> 构建 SDK 前缀 (scripts/build_sdk.sh)${C_RESET}"
+    "${SCRIPT_DIR}/build_sdk.sh" -j "${JOBS}"
+
+    echo "${C_BOLD}==> 独立编译 demo 插件 (scripts/build_plugin_standalone.sh)${C_RESET}"
+    "${SCRIPT_DIR}/build_plugin_standalone.sh" "${ROOT_DIR}/examples/plugins/demo" -j "${JOBS}"
 fi
 
 # ---- 列出测试 ----

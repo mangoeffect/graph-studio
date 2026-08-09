@@ -145,6 +145,28 @@ python3 scripts/generate_submodule.py \
 
 MediaPipe 视觉需要先用 `scripts/download_mediapipe_models.sh` 下载预构建模型和图片到 `submodules/mediapipe/mediapipe_vision/tests/models/`；缺失这些资源时相关测试会 soft-skip。
 
+## 独立编译 & 动态插件（桌面）
+
+桌面端插件主框架可以**互不依赖对方源码**编译：主框架独立构建，插件基于**已安装的 SDK**（公共头文件 + `libtask_graph`）独立构建，并在**运行时**由 `PluginLoader`（dlopen + `register_plugin`）动态加载。
+
+```bash
+# 1. 构建 SDK 前缀（头文件 + libtask_graph + CMake 包）
+scripts/build_sdk.sh                     # -> build/sdk/
+
+# 2. 基于 SDK 独立编译插件（不引用主仓库源码）
+scripts/build_plugin_standalone.sh examples/plugins/demo
+scripts/build_plugin_standalone.sh submodules/opencv/image_processing/image_filtering --opencv
+
+# 3. 生成 demo 插件后运行 dlopen 测试（文件缺失时 soft-skip）
+ctest -R test_plugin_abi
+```
+
+- 原有 in-tree 开发流程（`scripts/run_tests.sh`、GraphStudio 扫描 `build/submodules/`）不变；加 `-DTASK_GRAPH_BUILD_SUBMODULES=OFF` 可让核心库严格独立编译。
+- 各子模块通过 `use_task_graph_sdk()`（`cmake/SdkUtil.cmake`）链接框架：优先 in-tree 目标，其次 `find_package(task_graph)`（SDK 导入目标），最后旧式 `TASK_GRAPH_ROOT`。
+- 插件导出 `register_plugin` / `unregister_plugin` / `get_plugin_info`，并可导出 `TG_DEFINE_PLUGIN_SDK_VERSION`；`PluginLoader` 会拒绝 SDK 版本不匹配的动态库。
+- `scripts/run_tests.sh --sdk` 一键完成第 1–3 步。
+- WASM / 移动端仍为静态链接（不支持 dlopen）。
+
 ## GPU 与跨平台注意事项
 
 - GPU 后端均为 opt-in，默认关闭；Metal 需要 Mac，Vulkan 需要 Vulkan SDK，CUDA 需要 CUDA 工具链。

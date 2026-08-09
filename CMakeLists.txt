@@ -58,6 +58,11 @@ endif()
 
 option(TASK_GRAPH_ENABLE_OPENCV "Enable OpenCV support for image conversion" ON)
 
+# 桌面平台默认把 submodules/ 内置插件一起构建进同一棵构建树（供 scripts/run_tests.sh
+# 与 GraphStudio 开发工作流使用）。关闭后主仓库完全独立编译，插件改为运行时 dlopen：
+#   cmake -S . -B build -DTASK_GRAPH_BUILD_SUBMODULES=OFF
+option(TASK_GRAPH_BUILD_SUBMODULES "Build builtin subnodes from submodules/ into this build tree" ON)
+
 if(TASK_GRAPH_ENABLE_OPENCV)
     # WASM 下优先用 emcmake 构建的 OpenCV 静态库
     if(EMSCRIPTEN AND EXISTS "${CMAKE_SOURCE_DIR}/build_wasm/opencv/install/lib/cmake/opencv4")
@@ -182,6 +187,20 @@ add_tg_test(test_logger)
 
 add_tg_test(test_plugin)
 
+# 插件 ABI 动态加载测试（独立编译的 demo 插件由 scripts/build_sdk.sh +
+# scripts/build_plugin_standalone.sh 生成；文件缺失时 soft-SKIP）
+add_tg_test(test_plugin_abi)
+if(WIN32)
+    set(_TASK_GRAPH_DEMO_PLUGIN_EXT dll)
+elseif(APPLE)
+    set(_TASK_GRAPH_DEMO_PLUGIN_EXT dylib)
+else()
+    set(_TASK_GRAPH_DEMO_PLUGIN_EXT so)
+endif()
+target_compile_definitions(test_plugin_abi PRIVATE
+    TASK_GRAPH_DEMO_PLUGIN="${CMAKE_BINARY_DIR}/standalone/plugins/demo/demo_plugin.${_TASK_GRAPH_DEMO_PLUGIN_EXT}"
+)
+
 if(TASK_GRAPH_ENABLE_OPENCV)
     add_executable(test_opencv_convert tests/test_opencv_convert.cpp)
     target_link_libraries(test_opencv_convert PRIVATE task_graph ${OpenCV_LIBS})
@@ -202,13 +221,22 @@ target_link_libraries(example_multi_output PRIVATE task_graph)
 endif() # NOT TASK_GRAPH_MOBILE
 
 # ============================================================
-# 子模块（subnode）：编译期链接的内置插件
+# SDK 辅助函数（find/find_package/legacy 三种模式，见 cmake/SdkUtil.cmake）
 # ============================================================
 include(Subnode)
-parse_subnode_json("${PROJECT_SOURCE_DIR}/subnode.json")
-foreach(submodule ${SUBMODULES})
-    add_subnode_module(${submodule})
-endforeach()
+include(SdkUtil)
+
+# ============================================================
+# 子模块（subnode）：编译期链接的内置插件
+# 默认 ON（保留现有开发工作流）。设为 OFF 时主仓库完全独立编译，
+# 桌面插件改由运行时 dlopen（见 PluginBootstrap / PluginLoader）。
+# ============================================================
+if(TASK_GRAPH_BUILD_SUBMODULES)
+    parse_subnode_json("${PROJECT_SOURCE_DIR}/subnode.json")
+    foreach(submodule ${SUBMODULES})
+        add_subnode_module(${submodule})
+    endforeach()
+endif()
 
 if(NOT TASK_GRAPH_MOBILE)
 
@@ -226,7 +254,56 @@ add_test(NAME test_profiler COMMAND test_profiler)
 add_test(NAME test_type_registry COMMAND test_type_registry)
 add_test(NAME test_logger COMMAND test_logger)
 add_test(NAME test_plugin COMMAND test_plugin)
+add_test(NAME test_plugin_abi COMMAND test_plugin_abi)
 if(TASK_GRAPH_ENABLE_OPENCV)
     add_test(NAME test_opencv_convert COMMAND test_opencv_convert)
 endif()
 endif() # NOT TASK_GRAPH_MOBILE
+
+# ============================================================
+# SDK 安装规则：安装 task_graph 库 + 全部公共头文件 + CMake 包配置。
+# 独立编译插件的子仓库用 find_package(task_graph) 拉取，
+# 参见 cmake/SdkUtil.cmake 与 scripts/build_sdk.sh / build_plugin_standalone.sh。
+# ============================================================
+include(CMakePackageConfigHelpers)
+include(GNUInstallDirs)
+
+set(TASK_GRAPH_INSTALL_CMAKEDIR "${CMAKE_INSTALL_LIBDIR}/cmake/task_graph")
+
+install(TARGETS task_graph
+    EXPORT task_graphTargets
+    ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+    LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+    RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+)
+
+install(DIRECTORY include/
+    DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+    FILES_MATCHING PATTERN "*.hpp" PATTERN "*.h"
+)
+
+# task_graphConfig.cmake：反射安装目标 + 自带 use_task_graph_sdk() 函数
+configure_package_config_file(
+    "${PROJECT_SOURCE_DIR}/cmake/task_graphConfig.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/task_graphConfig.cmake"
+    INSTALL_DESTINATION "${TASK_GRAPH_INSTALL_CMAKEDIR}"
+)
+
+write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/task_graphConfigVersion.cmake"
+    VERSION "${PROJECT_VERSION}"
+    COMPATIBILITY SameMajorVersion
+)
+
+install(EXPORT task_graphTargets
+    FILE task_graphTargets.cmake
+    NAMESPACE task_graph::
+    DESTINATION "${TASK_GRAPH_INSTALL_CMAKEDIR}"
+)
+
+install(FILES
+    cmake/SdkUtil.cmake
+    "${CMAKE_CURRENT_BINARY_DIR}/task_graphConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/task_graphConfigVersion.cmake"
+    DESTINATION "${TASK_GRAPH_INSTALL_CMAKEDIR}"
+)
