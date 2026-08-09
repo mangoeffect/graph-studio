@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     run_graph_studio.ps1 - Build and launch GraphStudio (Qt6 GUI) on Windows.
 
@@ -66,8 +66,14 @@ param(
     [string]$Qt = "",
     [switch]$DisableOpenCv,
     [string]$OpenCvDir = "",
-    [string]$Cmake = ""
+    [string]$Cmake = "",
+    [switch]$Help
 )
+
+if ($Help) {
+    Get-Help $MyInvocation.MyCommand.Path -Detailed
+    exit 0
+}
 
 $ErrorActionPreference = "Stop"
 
@@ -79,10 +85,11 @@ $LibBuild = Join-Path $RootDir "build"
 
 $UseColor = $false
 try { $UseColor = [Console]::IsOutputRedirected -eq $false -and $env:NO_COLOR -ne "1" } catch { }
-$C_Red = if ($UseColor) { "`e[31m" } else { "" }
-$C_Green = if ($UseColor) { "`e[32m" } else { "" }
-$C_Bold = if ($UseColor) { "`e[1m" } else { "" }
-$C_Reset = if ($UseColor) { "`e[0m" } else { "" }
+$Esc = [char]27
+$C_Red = if ($UseColor) { "$Esc[31m" } else { "" }
+$C_Green = if ($UseColor) { "$Esc[32m" } else { "" }
+$C_Bold = if ($UseColor) { "$Esc[1m" } else { "" }
+$C_Reset = if ($UseColor) { "$Esc[0m" } else { "" }
 
 function Write-Step([string]$msg) { Write-Host "${C_Bold}==> $msg${C_Reset}" }
 function Write-Fail([string]$msg) { Write-Host "${C_Red}==> $msg${C_Reset}" }

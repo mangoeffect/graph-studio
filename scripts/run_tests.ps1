@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     run_tests.ps1 - Configure, build and run all task_graph unit tests on Windows.
 
@@ -43,10 +43,18 @@
 .PARAMETER Cmake
     Path to cmake.exe (default: cmake on PATH, else the Visual Studio copy).
 
+.PARAMETER Sdk
+    Before running tests, build the SDK prefix (scripts\build_sdk.ps1) and the
+    standalone demo plugin (scripts\build_plugin_standalone.ps1), then point
+    TASK_GRAPH_DEMO_PLUGIN at the product so test_plugin_abi can load it.
+    Counterpart of run_tests.sh --sdk. SDK/plugin build with their default
+    Release config regardless of -Config.
+
 .EXAMPLE
     scripts\run_tests.ps1
     scripts\run_tests.ps1 -Filter port -Verbose
     scripts\run_tests.ps1 -Clean -DisableOpenCv
+    scripts\run_tests.ps1 -Sdk
 
 .NOTES
     Exit code 0 = all tests passed; non-zero = failure or build error.
@@ -63,8 +71,15 @@ param(
     [string]$Filter = "",
     [switch]$DisableOpenCv,
     [string]$OpenCvDir = "",
-    [string]$Cmake = ""
+    [string]$Cmake = "",
+    [switch]$Sdk,
+    [switch]$Help
 )
+
+if ($Help) {
+    Get-Help $MyInvocation.MyCommand.Path -Detailed
+    exit 0
+}
 
 $ErrorActionPreference = "Stop"
 
@@ -78,10 +93,11 @@ $BuildDir = if ([IO.Path]::IsPathRooted($BuildDir)) { $BuildDir } else { Join-Pa
 # ---- colors (only when attached to a console) ----
 $UseColor = $false
 try { $UseColor = [Console]::IsOutputRedirected -eq $false -and $env:NO_COLOR -ne "1" } catch { }
-$C_Red = if ($UseColor) { "`e[31m" } else { "" }
-$C_Green = if ($UseColor) { "`e[32m" } else { "" }
-$C_Bold = if ($UseColor) { "`e[1m" } else { "" }
-$C_Reset = if ($UseColor) { "`e[0m" } else { "" }
+$Esc = [char]27
+$C_Red = if ($UseColor) { "$Esc[31m" } else { "" }
+$C_Green = if ($UseColor) { "$Esc[32m" } else { "" }
+$C_Bold = if ($UseColor) { "$Esc[1m" } else { "" }
+$C_Reset = if ($UseColor) { "$Esc[0m" } else { "" }
 
 function Write-Step([string]$msg) { Write-Host "${C_Bold}==> $msg${C_Reset}" }
 function Write-Fail([string]$msg) { Write-Host "${C_Red}==> $msg${C_Reset}" }
@@ -180,6 +196,35 @@ else {
     if (-not (Test-Path $BuildDir)) {
         Write-Fail "Build directory $BuildDir does not exist (and --no-build was given)."
         exit 1
+    }
+}
+
+# ---- standalone plugins (-Sdk): build SDK prefix + standalone demo plugin so
+#      test_plugin_abi can dlopen it at runtime. Counterpart of run_tests.sh --sdk.
+#      build_sdk.ps1 / build_plugin_standalone.ps1 default to Release, so the
+#      product lands in build\standalone\plugins\demo\Release\demo_plugin.dll
+#      regardless of this script's -Config. -Sdk is independent of -NoBuild. ----
+if ($Sdk) {
+    $BuildSdk = Join-Path $ScriptDir "build_sdk.ps1"
+    Write-Step "Building SDK prefix ($BuildSdk)"
+    $SdkArgs = @("-Jobs", "$Jobs")
+    if ($DisableOpenCv) { $SdkArgs += "-DisableOpenCv" }
+    elseif ($OpenCvDir) { $SdkArgs += "-OpenCvDir", $OpenCvDir }
+    & $BuildSdk @SdkArgs
+    if ($LASTEXITCODE -ne 0) { Write-Fail "build_sdk.ps1 failed (exit $LASTEXITCODE)"; exit $LASTEXITCODE }
+
+    $BuildPlugin = Join-Path $ScriptDir "build_plugin_standalone.ps1"
+    $DemoSrc = Join-Path $RootDir "examples\plugins\demo"
+    Write-Step "Building standalone demo plugin ($BuildPlugin)"
+    & $BuildPlugin $DemoSrc -Jobs $Jobs
+    if ($LASTEXITCODE -ne 0) { Write-Fail "build_plugin_standalone.ps1 failed (exit $LASTEXITCODE)"; exit $LASTEXITCODE }
+
+    $DemoPlugin = Join-Path $RootDir "build\standalone\plugins\demo\Release\demo_plugin.dll"
+    if (Test-Path $DemoPlugin) {
+        $env:TASK_GRAPH_DEMO_PLUGIN = $DemoPlugin
+        Write-Step "TASK_GRAPH_DEMO_PLUGIN: $DemoPlugin"
+    } else {
+        Write-Host "Warning: demo plugin not found at $DemoPlugin (test_plugin_abi will soft-skip)." -ForegroundColor Yellow
     }
 }
 

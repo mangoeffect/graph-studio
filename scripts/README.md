@@ -1,10 +1,22 @@
 ﻿# task_graph 脚本
 
-本目录包含三个脚本：
+本目录的脚本分两类：`*.sh` 假设 macOS/Linux（Homebrew Qt 路径、`.dylib`、`uname`），`*.ps1` 是它们的 Windows 等价物（用 VS 多配置生成器，构建时传 `--config` 而非 `-DCMAKE_BUILD_TYPE`）。两个平台一一对应：
 
-- `run_tests.sh` — 配置、构建并运行全部单元测试
-- `run_graph_studio.sh` — 构建并启动 GraphStudio (Qt6 GUI)
-- `generate_submodule.py` — 插件子模块脚手架生成器
+| 用途 | macOS / Linux | Windows |
+|---|---|---|
+| 构建并运行全部单元测试 | `run_tests.sh` | `run_tests.ps1` |
+| 构建并启动 GraphStudio (Qt6 GUI) | `run_graph_studio.sh` | `run_graph_studio.ps1` |
+| 把 task_graph 装成可分发 SDK 前缀 | `build_sdk.sh` | `build_sdk.ps1` |
+| 用 SDK 前缀独立编译一个插件 | `build_plugin_standalone.sh` | `build_plugin_standalone.ps1` |
+
+> `*.sh` 在 Windows 原生环境无法运行；Windows 上请用对应的 `*.ps1`，或直接调用 cmake（VS 生成器，`cmake -S . -B build` 然后 `cmake --build build --config Debug`）。
+
+此外还有跨平台的 Python 脚本：
+
+- `generate_submodule.py` — 插件子模块脚手架生成器（纯 Python，无平台依赖）
+- `wasm_dev_server.py` — WASM 多线程开发服务器（标准库 `http.server`，跨平台）
+
+其余 `*.sh`（`run_ui_tests.sh`、`release_graph_studio.sh`、`build_android/ios/wasm/opencv_*/mediapipe_macos.sh`、`fetch_sentry.sh`、`upload_sentry_symbols.sh`、`download_mediapipe_models.sh`）目前只有 macOS/Linux 版本，详见各脚本头部注释。
 
 ---
 
@@ -83,6 +95,122 @@ scripts/run_tests.sh --opencv
 | `--help` | `-h` | 显示帮助 |
 
 > 失败时自动打印失败用例的完整输出（`ctest --output-on-failure`）。
+
+---
+
+## Windows 脚本（`*.ps1`）
+
+Windows 上的 PowerShell 脚本与上面的 `*.sh` 一一对应，用 Visual Studio 多配置生成器构建（构建和安装步骤都带 `--config`）。脚本会自动探测本机的 cmake（PATH 上找不到时回退到 VS 2022 自带的 cmake）、OpenCV（`C:\opencv\build\x64\vc16` 或环境变量 `OPENCV_DIR`）和 Qt（`run_graph_studio.ps1` 探测 `C:\Qt\<版本>\msvc2022_64`）。所有 `.ps1` 都支持 `-Cmake <path>` 手动指定 cmake.exe，也都支持 `-Help` 打印用法（等价于 `*.sh` 的 `-h|--help`，底层走 PowerShell comment-based help）。
+
+```powershell
+# 构建 + 运行全部测试（默认 Debug）
+scripts\run_tests.ps1
+scripts\run_tests.ps1 -Filter port -Verbose
+scripts\run_tests.ps1 -Clean -DisableOpenCv
+scripts\run_tests.ps1 -Sdk                       # 先 build_sdk.ps1 + 独立 demo 插件，再跑含 test_plugin_abi 的全部测试
+
+# 构建 + 启动 GraphStudio（自动设好 PATH / TASK_GRAPH_PLUGINS_PATH）
+scripts\run_graph_studio.ps1
+scripts\run_graph_studio.ps1 -Clean -BuildOnly
+scripts\run_graph_studio.ps1 -Test            # headless ctest（QT_QPA_PLATFORM=offscreen）
+
+# 构建 SDK 前缀 + 独立编译 demo 插件（见下节）
+scripts\build_sdk.ps1
+scripts\build_plugin_standalone.ps1 examples\plugins\demo
+```
+
+> 与 `*.sh` 的差异：Windows 上不能传 `-DCMAKE_BUILD_TYPE`，改用 `--config`；VS 多配置生成器把产物放在 `<build>\<Config>\` 子目录（如 `build\Debug\`），`run_graph_studio.ps1` 会自动把 `build\Debug\task_graph.lib` 拷到 `build\` 以匹配 app 的 `link_directories(../build)`。
+
+---
+
+## SDK 构建与独立插件编译
+
+`build_sdk.*` 把 task_graph 框架（头文件 + 动态库 + CMake 包配置）安装到一个可分发的前缀，`build_plugin_standalone.*` 仅依赖该前缀独立编译一个插件为运行时动态库，完全不引用主仓库源码。典型流程是先装 SDK 再编插件：
+
+```bash
+# macOS / Linux
+scripts/build_sdk.sh                              # 默认前缀 build/sdk，Release
+scripts/build_plugin_standalone.sh examples/plugins/demo
+scripts/build_plugin_standalone.sh submodules/opencv/image_processing/image_filtering --opencv
+```
+
+```powershell
+# Windows
+scripts\build_sdk.ps1                             # 默认前缀 build\sdk，Release
+scripts\build_plugin_standalone.ps1 examples\plugins\demo
+scripts\build_plugin_standalone.ps1 submodules\opencv\image_processing\image_filtering -EnableOpenCv
+```
+
+### build_sdk.ps1 / build_sdk.sh
+
+| 参数 (.ps1) | 参数 (.sh) | 说明 |
+|---|---|---|
+| `-Prefix` | `--prefix` | SDK 安装前缀（默认 `<root>/build/sdk`） |
+| `-BuildDir` | `--build-dir` | CMake 构建目录（默认 `<root>/build/sdk-build`） |
+| `-Config` | `--build-type` | 构建类型（默认 `Release`） |
+| `-Jobs` | `-j` / `--jobs` | 并行编译线程数（默认 CPU 核数） |
+| `-Clean` | — | 先清空构建目录（仅 .ps1，见下方"SDK 构建目录被污染"排查） |
+| `-DisableOpenCv` | `--no-opencv` | 关闭 OpenCV（默认跟随主项目 ON） |
+| `-OpenCvDir` | — | OpenCV 前缀（仅 .ps1，默认自动探测；.sh 走系统 find_package） |
+| `-Cmake` | — | cmake.exe 路径（仅 .ps1） |
+
+以 `TASK_GRAPH_BUILD_SUBMODULES=OFF` 独立构建，主仓库不编译任何内置子模块源码。产物：
+
+```
+<prefix>/include/{plugin_api.hpp, task_graph/**}
+<prefix>/lib/{libtask_graph.dylib | libtask_graph.so | task_graph.lib + task_graph.dll}
+<prefix>/lib/cmake/task_graph/{task_graphConfig.cmake, task_graphTargets.cmake, SdkUtil.cmake}
+```
+
+### build_plugin_standalone.ps1 / build_plugin_standalone.sh
+
+| 参数 (.ps1) | 参数 (.sh) | 说明 |
+|---|---|---|
+| `SourceDir`（位置参数） | 第一个位置参数 | 插件源目录（须含 CMakeLists.txt） |
+| `-SdkDir` | `--sdk` | SDK 前缀（默认 `<root>/build/sdk`） |
+| `-OutRoot` | `--out-root` | 输出根目录（默认 `<root>/build/standalone/plugins`） |
+| `-Config` | — | 构建类型（默认 `Release`；.sh 把 Release 写死、不解析构建类型，仅 .ps1 可调） |
+| `-Jobs` | `-j` / `--jobs` | 并行编译线程数（默认 CPU 核数） |
+| `-EnableOpenCv` | `--opencv` | 打开 OpenCV 依赖（默认 OFF） |
+| `-Clean` | — | 先清空插件的构建目录（仅 .ps1） |
+| `-Cmake` | — | cmake.exe 路径（仅 .ps1） |
+
+产物是运行时可 dlopen / LoadLibrary 的动态库：`<OutRoot>/<name>/<name>.{dylib,so,dll}`。Windows 上 VS 多配置生成器会把它放在 `<OutRoot>/<name>/<Config>/<name>.dll`，脚本结尾会打印实际路径。
+
+### 排查：SDK 配置报 "include could not find requested file: SdkUtil.cmake"
+
+这是 SDK 构建目录被**之前的完整构建**（如 `run_tests.ps1`）污染导致的。完整构建把 `TASK_GRAPH_BUILD_SUBMODULES=ON` 写进了 `CMakeCache.txt`；CMake 的布尔缓存语义下，后续命令行的 `-DTASK_GRAPH_BUILD_SUBMODULES=OFF` **会被静默忽略**（只有 `ON` 或同名新变量才会覆盖）。结果子模块仍被加载，其 `find_package(task_graph)` 找到构建目录里残缺的 `task_graphConfig.cmake`（它引用的 `SdkUtil.cmake` / `task_graphTargets.cmake` 只在 `cmake --install` 后才生成）→ 报错。
+
+两种修法（任选其一）：
+
+```powershell
+# 方法 1：用 -Clean 清掉污染的缓存（build_sdk.ps1 会自动检测并提示）
+scripts\build_sdk.ps1 -Clean
+
+# 方法 2：用独立的构建目录（默认就是 build\sdk-build，别复用 build\）
+scripts\build_sdk.ps1 -BuildDir build\sdk-build
+```
+
+`build_sdk.ps1` 会检测到 `CMakeCache.txt` 里的 `TASK_GRAPH_BUILD_SUBMODULES=ON` 并直接报错提示用 `-Clean`，避免踩这个坑。
+
+### 让 test_plugin_abi 用上独立编译的 demo 插件
+
+`tests/test_plugin_abi.cpp` 默认查找 `<build>/standalone/plugins/demo/demo_plugin.{dylib,so,dll}`，找不到就 soft-skip（不算失败）。
+
+一键做法（推荐）：`run_tests.ps1 -Sdk`（对应 `run_tests.sh --sdk`）会自动跑 `build_sdk.ps1` + `build_plugin_standalone.ps1`，并把 `TASK_GRAPH_DEMO_PLUGIN` 指向 `build\standalone\plugins\demo\Release\demo_plugin.dll`：
+
+```powershell
+scripts\run_tests.ps1 -Sdk
+```
+
+手动做法（或只想单独跑 `test_plugin_abi` 时）：Windows 上由于产物在 `<Config>` 子目录，需要显式指向它：
+
+```powershell
+$env:TASK_GRAPH_DEMO_PLUGIN = "<root>\build\standalone\plugins\demo\Release\demo_plugin.dll"
+scripts\run_tests.ps1 -Filter plugin_abi
+```
+
+macOS / Linux 上若用了非默认 `--out-root`，同理设 `TASK_GRAPH_DEMO_PLUGIN` 环境变量即可。
 
 ---
 
