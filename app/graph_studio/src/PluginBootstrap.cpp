@@ -20,13 +20,23 @@ task_graph::PluginLoader& sharedLoader() {
     return loader;
 }
 
-// 收集目录下所有插件扩展名文件（.dylib / .so / .dll）
-QStringList collectPluginFiles(const QDir& dir) {
+// 收集目录下的插件文件（*.dylib / *.so / *.dll）。
+// 多配置生成器（MSVC 的 Debug/Release）会把产物放到 <plugin>/<Config>/ 子目录，
+// 因此顶层为空时再扫一级子目录，兼容 macOS/Linux 的顶层直出布局。
+static QStringList collectPluginFiles(const QDir& dir) {
     QStringList files;
     if (!dir.exists()) return files;
     const QStringList filters{"*.dylib", "*.so", "*.dll"};
     for (const auto& info : dir.entryInfoList(filters, QDir::Files)) {
         files.append(info.absoluteFilePath());
+    }
+    if (files.isEmpty()) {
+        for (const auto& sub : dir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot)) {
+            QDir cfg(sub.absoluteFilePath());
+            for (const auto& f : cfg.entryInfoList(filters, QDir::Files)) {
+                files.append(f.absoluteFilePath());
+            }
+        }
     }
     return files;
 }

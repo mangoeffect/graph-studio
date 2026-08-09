@@ -52,7 +52,6 @@ endif()
 option(TASK_GRAPH_ENABLE_VULKAN "Enable Vulkan support for GPU image operations" OFF)
 if(TASK_GRAPH_ENABLE_VULKAN)
     find_package(Vulkan REQUIRED)
-    include_directories(${Vulkan_INCLUDE_DIRS})
     add_definitions(-DTASK_GRAPH_ENABLE_VULKAN)
 endif()
 
@@ -145,6 +144,10 @@ target_link_libraries(task_graph
     PUBLIC
         $<$<NOT:$<BOOL:${EMSCRIPTEN}>>:Threads::Threads>
 )
+
+if(TASK_GRAPH_ENABLE_VULKAN AND NOT EMSCRIPTEN)
+    target_link_libraries(task_graph PRIVATE Vulkan::Vulkan)
+endif()
 
 if(TASK_GRAPH_ENABLE_OPENCV)
     target_link_libraries(task_graph PRIVATE ${OpenCV_LIBS})

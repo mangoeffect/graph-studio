@@ -91,6 +91,7 @@ set(GRAPH_STUDIO_HAS_SENTRY OFF)
 if(NOT EMSCRIPTEN AND EXISTS "${GRAPH_STUDIO_SENTRY_ROOT}/CMakeLists.txt")
     set(GRAPH_STUDIO_HAS_SENTRY ON)
     list(APPEND PROJECT_SOURCES src/CrashReporter.cpp)
+    add_compile_definitions(GRAPH_STUDIO_HAS_SENTRY)
 endif()
 
 if(EMSCRIPTEN)

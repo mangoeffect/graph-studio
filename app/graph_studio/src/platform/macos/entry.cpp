@@ -9,18 +9,23 @@
 #include "view/MainWindow.h"
 #include "PluginBootstrap.h"
 #include "GpuBootstrap.h"
+#ifdef GRAPH_STUDIO_HAS_SENTRY
 #include "CrashReporter.h"
+#endif
 
 #include <cstring>
+#include <cstdlib>
 
 using namespace graph_studio;
 
 int main(int argc, char* argv[])
 {
 #ifndef __EMSCRIPTEN__
+#ifdef GRAPH_STUDIO_HAS_SENTRY
     // 启动崩溃上报（Sentry + crashpad）。在最早期调用以覆盖启动期间崩溃；
     // SENTRY_DSN 未设置时为 no-op，不影响运行。
     InitCrashReporting();
+#endif
 
     // --test-crash：人为触发 SIGSEGV，验证 crashpad minidump 能上报。
     // 用法：SENTRY_DSN=... graph_studio --test-crash
@@ -44,7 +49,11 @@ int main(int argc, char* argv[])
 
 #ifndef __EMSCRIPTEN__
     if (test_crash)
+#ifdef GRAPH_STUDIO_HAS_SENTRY
         TriggerTestCrash();
+#else
+        std::abort();
+#endif
 #endif
 
     QIcon appIcon;
@@ -77,7 +86,9 @@ int main(int argc, char* argv[])
 
     ShutdownGpuBackend();
 #ifndef __EMSCRIPTEN__
+#ifdef GRAPH_STUDIO_HAS_SENTRY
     ShutdownCrashReporting();
+#endif
 #endif
     return ret;
 }
