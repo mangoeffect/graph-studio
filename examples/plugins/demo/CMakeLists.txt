@@ -24,7 +24,11 @@ if(NOT TARGET task_graph
 endif()
 use_task_graph_sdk(demo_plugin)
 
-target_compile_options(demo_plugin PRIVATE -Wall -Wextra -Wpedantic -O2)
+if(MSVC)
+    target_compile_options(demo_plugin PRIVATE /W3)
+else()
+    target_compile_options(demo_plugin PRIVATE -Wall -Wextra -Wpedantic -O2)
+endif()
 
 # 桌面 SHARED 插件命名规范：无 lib 前缀 + 平台后缀（与内置子模块一致）
 set_target_properties(demo_plugin PROPERTIES PREFIX "" SUFFIX ".so")

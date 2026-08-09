@@ -301,5 +301,27 @@ extern "C" {
         return ::task_graph::TG_SDK_VERSION;                                  \
     }
 
+// 插件自动注册的跨平台宏（每个插件翻译单元内、anonymous namespace 中调用一次）：
+//   TG_PLUGIN_AUTOREG(do_register, do_unregister);
+//  - GCC/Clang（含 iOS/Android/WASM 静态链接）：__attribute__((constructor/destructor))，
+//    库加载/静态链接时自动注册，卸载/退出时自动注销；
+//  - MSVC (cl.exe)：不识别 GNU attributes，改用文件作用域静态对象的构造/析构函数，
+//    在 DLL 加载/卸载（或 EXE 启动/退出）时执行，语义等价。
+#if defined(_MSC_VER) && !defined(__clang__)
+#define TG_PLUGIN_AUTOREG(init_fn, cleanup_fn)                               \
+    static struct TgPluginAutoReg {                                          \
+        TgPluginAutoReg() { init_fn(); }                                     \
+        ~TgPluginAutoReg() { cleanup_fn(); }                                 \
+    } g_tg_plugin_auto_reg;
+#else
+#define TG_PLUGIN_AUTOREG(init_fn, cleanup_fn)                               \
+    __attribute__((constructor)) static void tg_plugin_constructor() {       \
+        init_fn();                                                           \
+    }                                                                        \
+    __attribute__((destructor)) static void tg_plugin_destructor() {         \
+        cleanup_fn();                                                        \
+    }
+#endif
+
 // 自包含：子模块只需 #include <plugin_api.hpp> 即可获得 INode + TaskContext 完整定义
 #include <task_graph/task_context.hpp>

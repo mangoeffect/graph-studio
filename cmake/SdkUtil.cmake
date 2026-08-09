@@ -37,4 +37,16 @@ function(use_task_graph_sdk target)
             "    -Dtask_graph_DIR=<sdk>/lib/cmake/task_graph   (SDK 前缀，见 scripts/build_sdk.sh)\n"
             "  或旧式：-DTASK_GRAPH_ROOT=/path/to/task_graph   （仓库根 + 预构建 libtask_graph）")
     endif()
+
+    # MSVC（cl.exe）桌面 SHARED 插件需要显式导出：
+    #  - 插件用 TG_EXPORT 声明 register_plugin 等入口；未定义 TASK_GRAPH_BUILD 时
+    #    TG_EXPORT 是 dllimport，会导致 C2491（不能定义 dllimport 函数），这里置为 dllexport。
+    #  - 其余无 TG_EXPORT 注解的符号（含匿名 namespace 静态对象等）由
+    #    WINDOWS_EXPORT_ALL_SYMBOLS 自动导出，否则 PluginLoader 的 GetProcAddress 找不到。
+    # 核心 task_graph 库自身通过根 CMakeLists 的 WINDOWS_EXPORT_ALL_SYMBOLS 处理，
+    # 与这里互不影响。
+    if(MSVC AND NOT EMSCRIPTEN AND NOT TASK_GRAPH_MOBILE)
+        target_compile_definitions(${target} PRIVATE TASK_GRAPH_BUILD)
+        set_target_properties(${target} PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
+    endif()
 endfunction()

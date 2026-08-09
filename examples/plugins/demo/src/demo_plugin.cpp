@@ -56,15 +56,7 @@ void do_unregister() {
     task_graph::PluginRegistry::instance().unregister_task(kDemoAddType);
 }
 
-__attribute__((constructor))
-static void plugin_constructor() {
-    do_register();
-}
-
-__attribute__((destructor))
-static void plugin_destructor() {
-    do_unregister();
-}
+TG_PLUGIN_AUTOREG(do_register, do_unregister);
 
 }  // namespace
 

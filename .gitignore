@@ -1,5 +1,7 @@
 build/
+build_win
 build_wasm/
+build_coretest
 submodules/*
 /AGENTS.md
 /.trae

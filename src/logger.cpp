@@ -11,6 +11,8 @@
 #ifdef _WIN32
 #include <windows.h>
 #include <processthreadsapi.h>
+// windows.h 会定义宏 ERROR(0)，会破坏下面 LogLevel::ERROR 枚举项
+#undef ERROR
 #else
 #include <pthread.h>
 #if defined(__ANDROID__)
@@ -51,14 +53,20 @@ namespace {
 
     std::string get_thread_name() {
 #ifdef _WIN32
-        char buffer[256];
-        DWORD result = GetThreadDescription(GetCurrentThread());
-        if (result != NULL) {
-            wcscpy_s(buffer, 256, result);
-            LocalFree(result);
-            return std::string(buffer);
+        // GetThreadDescription(HANDLE, PWSTR*) 仅在 Win10 1607+ 可用；
+        // 失败或空描述符时返回空串。
+        PWSTR desc = nullptr;
+        if (FAILED(GetThreadDescription(GetCurrentThread(), &desc)) || !desc) {
+            return "";
         }
-        return "";
+        std::string name;
+        int len = WideCharToMultiByte(CP_UTF8, 0, desc, -1, nullptr, 0, nullptr, nullptr);
+        if (len > 1) {
+            name.resize(static_cast<size_t>(len - 1));
+            WideCharToMultiByte(CP_UTF8, 0, desc, -1, name.data(), len, nullptr, nullptr);
+        }
+        LocalFree(desc);
+        return name;
 #elif defined(__ANDROID__)
         // Android bionic 不提供 pthread_getname_np
         return "";

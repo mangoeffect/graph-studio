@@ -103,6 +103,14 @@ add_library(task_graph ${TASK_GRAPH_LIB_TYPE}
     src/profiler.cpp
 )
 
+# 核心类（INode/DAG/DAGExecutor 等）没有显式 __declspec(dllexport)。
+# macOS/Linux 默认 -fvisibility 就能导出，MSVC 必须显式导出；这里让
+# CMake 自动生成 .def 导出 DLL 的全部符号（含这些 C++ 类的方法）。
+# 内部对象（TypeRegistry 等）由此也可被测试程序正常导入。
+if(WIN32 AND TASK_GRAPH_LIB_TYPE STREQUAL "SHARED")
+    set_target_properties(task_graph PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
+endif()
+
 # Add GPU backend sources
 if(TASK_GRAPH_ENABLE_METAL AND APPLE)
     target_sources(task_graph PRIVATE
@@ -154,13 +162,12 @@ target_compile_definitions(task_graph
         TASK_GRAPH_BUILD
 )
 
-target_compile_options(task_graph
-    PRIVATE
-        -Wall
-        -Wextra
-        -Wpedantic
-        -O2
-)
+if(MSVC)
+    # MSVC 各配置自带优化档（Debug /Od + /RTC1，Release /O2 /DNDEBUG），无需重复指定
+    target_compile_options(task_graph PRIVATE /W3)
+else()
+    target_compile_options(task_graph PRIVATE -Wall -Wextra -Wpedantic -O2)
+endif()
 
 # ============================================================
 # 库测试目标（合并精简后）— 移动端跳过

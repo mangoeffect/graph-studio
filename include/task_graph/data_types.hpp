@@ -253,6 +253,20 @@ private:
 // 用 __LINE__ 保证同 TU 内多次调用产生的变量名唯一。
 #define TG_TYPE_REG_PASTE2(a, b) a##b
 #define TG_TYPE_REG_PASTE(a, b) TG_TYPE_REG_PASTE2(a, b)
+
+// __attribute__((used)) 是 GCC/Clang 的强制发射（防链接器裁剪，尤其 WASM）；
+// MSVC 无此语法（clang-cl 除外），且 /OPT:REF 不会裁剪带副作用初始化的
+// 匿名 namespace 静态对象（它们由 CRT 初始化表锚定），去掉属性即可。
+#if defined(_MSC_VER) && !defined(__clang__)
+#define TG_REGISTER_TYPE(T, name)                                              \
+    namespace {                                                                \
+    inline const bool TG_TYPE_REG_PASTE(_tg_type_reg_, __LINE__) = [] {        \
+        ::task_graph::detail::TypeRegistry::instance().register_type(          \
+            std::type_index(typeid(T)), std::string(name));                    \
+        return true;                                                           \
+    }();                                                                       \
+    }
+#else
 #define TG_REGISTER_TYPE(T, name)                                              \
     namespace {                                                                \
     __attribute__((used))                                                      \
@@ -262,6 +276,7 @@ private:
         return true;                                                           \
     }();                                                                       \
     }
+#endif
 
 template <typename T>
 inline std::string type_name() {

@@ -52,7 +52,7 @@ TEST_CASE(standalone_plugin_load_and_run) {
     EXPECT_TRUE(loaded);
     if (!loaded) return;
 
-    auto& registry = PluginRegistry::instance();
+auto& registry = PluginRegistry::instance();
     EXPECT_TRUE(registry.has_task("demo_add"));
     if (!registry.has_task("demo_add")) {
         loader.unload_all();
@@ -84,6 +84,10 @@ TEST_CASE(standalone_plugin_load_and_run) {
             EXPECT_EQ(std::any_cast<int>(it->second.value), 5);
         }
     }
+
+    // 先释放持有的插件任务实例（dag 内 add_node），再卸载 DLL：
+    // 否则 FreeLibrary 后析构插件类（虚表/析构函数位于已卸载的库内）会访问违例。
+    dag = DAG{};
 
     loader.unload_all();
     EXPECT_FALSE(registry.has_task("demo_add"));
