@@ -105,6 +105,9 @@ private slots:
     void testEdgeCreationViaPortDrag();
     void testPortAwareEdgeDragAndSerialize();
     void testDualPortEdgesSeparateItems();
+    void testDeleteTargetRemovesInboundEdges();
+    void testDeleteTargetDualPortInbound();
+    void testMultiSelectDeleteConnected();
 
 private:
     GraphModel* model_ = nullptr;
@@ -465,6 +468,114 @@ void TestGui::testDualPortEdgesSeparateItems()
     QCOMPARE(countSceneItems(scene_, EdgeItem::Type), 1);
 
     task_graph::PluginRegistry::instance().unregister_task("dual_port_node");
+}
+
+// 回归(崩溃)：删除仅作为“目标”的节点时，指向它的入边必须一并清理。
+// 旧实现按 edgeKey 的 "-><id>:" 后缀匹配（键形如 "A:out->B:in"，末尾还带
+// toPort），入边永远匹配不上 → EdgeItem 保留到已析构 NodeItem 的指针，
+// 之后再删出边源节点时 unregisterEdge 触发 use-after-free（QSet::remove 0x...008）。
+void TestGui::testDeleteTargetRemovesInboundEdges()
+{
+    QString a = vm_->addTask("alpha", -100, 0);
+    QString b = vm_->addTask("beta", 100, 0);
+    QVERIFY(vm_->addEdge(a, "out", b, "in"));
+    QCOMPARE(vm_->edgeCount(), 1);
+    QCOMPARE(countSceneItems(scene_, EdgeItem::Type), 1);
+
+    // 只选中目标节点 b 并 Delete：入边应随节点一起消失
+    auto* nodeB = scene_->findNodeItem(b);
+    QVERIFY(nodeB != nullptr);
+    scene_->clearSelection();
+    nodeB->setSelected(true);
+    QTest::qWait(30);
+    QAction* delAct = findAction(window_, "Delete");
+    QVERIFY(delAct != nullptr);
+    delAct->trigger();
+    QTest::qWait(30);
+
+    QCOMPARE(vm_->taskCount(), 1);
+    QCOMPARE(vm_->edgeCount(), 0);
+    QCOMPARE(countSceneItems(scene_, NodeItem::Type), 1);
+    QCOMPARE(countSceneItems(scene_, EdgeItem::Type), 0);
+
+    // 再删源节点 a：修复前这里会崩（残留 EdgeItem.targetNode() == 已释放 b）
+    auto* nodeA = scene_->findNodeItem(a);
+    QVERIFY(nodeA != nullptr);
+    scene_->clearSelection();
+    nodeA->setSelected(true);
+    QTest::qWait(30);
+    delAct->trigger();
+    QTest::qWait(30);
+
+    QCOMPARE(vm_->taskCount(), 0);
+    QCOMPARE(countSceneItems(scene_, EdgeItem::Type), 0);
+}
+
+// 多端口同对双边的回归：删除“目标”节点，两条入边一起清理，无悬空 EdgeItem
+void TestGui::testDeleteTargetDualPortInbound()
+{
+    task_graph::PluginRegistry::instance().register_task(
+        "dual_port_node",
+        [](const std::string& id, const task_graph::TaskConfig& cfg) {
+            return std::make_shared<DualPortNode>(id, cfg);
+        });
+
+    QString a = vm_->addTask("dual_port_node", -200, 0);
+    QString b = vm_->addTask("dual_port_node", 200, 0);
+    QVERIFY(vm_->addEdge(a, "out", b, "image"));
+    QVERIFY(vm_->addEdge(a, "aux", b, "mask"));
+    QCOMPARE(vm_->edgeCount(), 2);
+    QCOMPARE(countSceneItems(scene_, EdgeItem::Type), 2);
+
+    auto* nodeB = scene_->findNodeItem(b);
+    QVERIFY(nodeB != nullptr);
+    scene_->clearSelection();
+    nodeB->setSelected(true);
+    QTest::qWait(30);
+    QAction* delAct = findAction(window_, "Delete");
+    QVERIFY(delAct != nullptr);
+    delAct->trigger();
+    QTest::qWait(30);
+
+    QCOMPARE(vm_->taskCount(), 1);
+    QCOMPARE(vm_->edgeCount(), 0);
+    QCOMPARE(countSceneItems(scene_, EdgeItem::Type), 0);
+
+    auto* nodeA = scene_->findNodeItem(a);
+    QVERIFY(nodeA != nullptr);
+    scene_->clearSelection();
+    nodeA->setSelected(true);
+    QTest::qWait(30);
+    delAct->trigger();
+    QTest::qWait(30);
+
+    QCOMPARE(vm_->taskCount(), 0);
+    QCOMPARE(countSceneItems(scene_, EdgeItem::Type), 0);
+
+    task_graph::PluginRegistry::instance().unregister_task("dual_port_node");
+}
+
+// 同时选中互相连接的源+目标节点一键删除：顺序无关，任何顺序都不应触碰已释放节点
+void TestGui::testMultiSelectDeleteConnected()
+{
+    QString a = vm_->addTask("alpha", -100, 0);
+    QString b = vm_->addTask("beta", 100, 0);
+    QVERIFY(vm_->addEdge(a, "out", b, "in"));
+    QCOMPARE(vm_->edgeCount(), 1);
+
+    scene_->clearSelection();
+    scene_->findNodeItem(a)->setSelected(true);
+    scene_->findNodeItem(b)->setSelected(true);
+    QTest::qWait(30);
+    QAction* delAct = findAction(window_, "Delete");
+    QVERIFY(delAct != nullptr);
+    delAct->trigger();
+    QTest::qWait(30);
+
+    QCOMPARE(vm_->taskCount(), 0);
+    QCOMPARE(vm_->edgeCount(), 0);
+    QCOMPARE(countSceneItems(scene_, NodeItem::Type), 0);
+    QCOMPARE(countSceneItems(scene_, EdgeItem::Type), 0);
 }
 
 // 自定义 main：GUI 测试必须用 QApplication（而非 QCoreApplication）

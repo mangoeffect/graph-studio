@@ -33,6 +33,7 @@
 #include <QDrag>
 #include <QMimeData>
 #include <QApplication>
+#include <algorithm>
 
 using namespace graph_studio;
 
@@ -659,30 +660,30 @@ void MainWindow::onTaskAdded(const NodeData& node)
 void MainWindow::onTaskRemoved(const QString& taskId)
 {
     // 先删除关联的 edge（完整删除对象 + 从两端 node 的 edges_ 注销）。
-    // 键格式："from:fromPort->to:toPort"，按 "from:" / "->to:" 前缀匹配。
-    QString prefix = taskId + ":";
-    QString suffix = "->" + taskId + ":";
-    for (auto edgeIt = edgeItems_.begin(); edgeIt != edgeItems_.end();) {
-        const QString& key = edgeIt.key();
-        if (key.startsWith(prefix) || key.endsWith(suffix)) {
-            auto* edge = edgeIt.value();
-            if (edge) {
-                if (auto* s = edge->sourceNode()) s->unregisterEdge(edge);
-                if (auto* t = edge->targetNode()) t->unregisterEdge(edge);
-                scene_->removeItem(edge);
-                delete edge;
-            }
-            edgeIt = edgeItems_.erase(edgeIt);
-        } else {
-            ++edgeIt;
+    // 直接从被删节点的 edges_（NodeItem 反向登记）遍历，而不是去字符串匹配
+    // "from:fromPort->to:toPort" 键——后者对"指向本节点"的入边后缀 "->id:"
+    // 永远匹配不上（键在被删 id 后还带 toPort），会漏删并把 EdgeItem 的
+    // targetNode() 指针留在已析构的 NodeItem 上，后续 unregisterEdge 触发
+    // use-after-free（QSet::remove 读 0x...008）。按节点集遍历对出/入边对称安全。
+    if (auto nodeIt = nodeItems_.find(taskId); nodeIt != nodeItems_.end()) {
+        NodeItem* node = nodeIt.value();
+        const QSet<EdgeItem*> attachedEdges = node->edges();  // 快照：删除会改 node 自身集合
+        for (EdgeItem* edgeItem : attachedEdges) {
+            // 仅处理 edgeItems_ 登记过的持久边。拖拽中的临时边归 GraphScene 所有
+            // （它已从各 node edges_ 注销），不在此删除，避免双重释放。
+            auto mapIt = std::find_if(edgeItems_.begin(), edgeItems_.end(),
+                                      [edgeItem](const EdgeItem* e) { return e == edgeItem; });
+            if (mapIt == edgeItems_.end())
+                continue;
+            if (auto* s = edgeItem->sourceNode()) s->unregisterEdge(edgeItem);
+            if (auto* t = edgeItem->targetNode()) t->unregisterEdge(edgeItem);
+            scene_->removeItem(edgeItem);
+            edgeItems_.erase(mapIt);
+            delete edgeItem;
         }
-    }
-    // 再删除 node 本身
-    auto it = nodeItems_.find(taskId);
-    if (it != nodeItems_.end()) {
-        scene_->removeItem(it.value());
-        delete it.value();
-        nodeItems_.erase(it);
+        scene_->removeItem(node);
+        delete node;
+        nodeItems_.erase(nodeIt);
     }
     ClearPropertyPanel();
 }

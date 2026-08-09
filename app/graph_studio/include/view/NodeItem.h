@@ -49,6 +49,7 @@ public:
     // Edge registration for movement tracking
     void registerEdge(EdgeItem* edge);
     void unregisterEdge(EdgeItem* edge);
+    QSet<EdgeItem*> edges() const { return edges_; }  // 快照语义：返回拷贝，遍历时删除自身集合安全
 
     QRectF boundingRect() const override;
     QPainterPath shape() const override;
