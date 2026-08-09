@@ -62,6 +62,7 @@ set(PROJECT_HEADERS
     include/view/ProfilePanel.h
     include/view/GpuImageViewer.h
     include/GpuBootstrap.h
+    include/CrashReporter.h
 )
 
 set(PROJECT_SOURCES
@@ -81,22 +82,16 @@ set(PROJECT_SOURCES
     src/view/GpuImageViewer.cpp
 )
 
-set(PROJECT_SOURCES
-    src/platform/macos/entry.cpp
-    src/PluginBootstrap.cpp
-    src/GpuBootstrap.cpp
-    src/model/GraphModel.cpp
-    src/viewmodel/GraphViewModel.cpp
-    src/command/CommandStack.cpp
-    src/view/MainWindow.cpp
-    src/view/NodeItem.cpp
-    src/view/EdgeItem.cpp
-    src/view/GraphScene.cpp
-    src/view/GraphView.cpp
-    src/view/GanttChart.cpp
-    src/view/ProfilePanel.cpp
-    src/view/GpuImageViewer.cpp
-)
+# ---- 崩溃上报模块（Sentry + Crashpad，仅桌面端）----
+# sentry-native 及其递归子模块 crashpad 由 scripts/fetch_sentry.sh 拉取到
+# third_party/sentry-native（固定版本，gitignored）。未拉取时构建照常进行，
+# 仅无崩溃上报能力（与 OpenCV WASM 缺失时跳过依赖子模块同理）。
+set(GRAPH_STUDIO_SENTRY_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/third_party/sentry-native")
+set(GRAPH_STUDIO_HAS_SENTRY OFF)
+if(NOT EMSCRIPTEN AND EXISTS "${GRAPH_STUDIO_SENTRY_ROOT}/CMakeLists.txt")
+    set(GRAPH_STUDIO_HAS_SENTRY ON)
+    list(APPEND PROJECT_SOURCES src/CrashReporter.cpp)
+endif()
 
 if(EMSCRIPTEN)
     # WASM：用 qt_add_executable 才能自动生成 .html + qtloader.js。
@@ -128,6 +123,77 @@ target_link_libraries(graph_studio PRIVATE
 # 桌面端显式链接 OpenCV（WASM 在末尾 EMSCRIPTEN 块条件链接）
 if(NOT EMSCRIPTEN)
     target_link_libraries(graph_studio PRIVATE ${OpenCV_LIBS})
+endif()
+
+# ============================================================
+# Sentry 崩溃上报（crashpad backend，仅桌面端）
+# 依赖 scripts/fetch_sentry.sh 拉取；未拉取则跳过（无崩溃上报能力）。
+# ============================================================
+if(GRAPH_STUDIO_HAS_SENTRY)
+    # 崩溃元信息源：版本 + git 短哈希 + 环境（用于 Sentry release 分组）
+    set(GRAPH_STUDIO_SENTRY_VERSION "0.1.0")
+    set(GRAPH_STUDIO_GIT_HASH "unknown")
+    set(_GS_PROJECT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../..")
+    execute_process(COMMAND git -C "${_GS_PROJECT_ROOT}" rev-parse --short HEAD
+        OUTPUT_VARIABLE _GS_GIT_SHORT_HASH
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        RESULT_VARIABLE _GS_GIT_RC)
+    if(_GS_GIT_RC EQUAL 0 AND _GS_GIT_SHORT_HASH)
+        set(GRAPH_STUDIO_GIT_HASH "${_GS_GIT_SHORT_HASH}")
+    endif()
+    string(TOLOWER "${CMAKE_BUILD_TYPE}" GRAPH_STUDIO_BUILD_TYPE_LOWER)
+    if(GRAPH_STUDIO_BUILD_TYPE_LOWER STREQUAL "release"
+       OR GRAPH_STUDIO_BUILD_TYPE_LOWER STREQUAL "relwithdebinfo"
+       OR GRAPH_STUDIO_BUILD_TYPE_LOWER STREQUAL "minsizerel")
+        set(GRAPH_STUDIO_SENTRY_ENVIRONMENT "production")
+    else()
+        set(GRAPH_STUDIO_SENTRY_ENVIRONMENT "development")
+    endif()
+
+    set(SENTRY_BACKEND "crashpad" CACHE STRING "sentry crash backend" FORCE)
+    set(SENTRY_TRANSPORT "none" CACHE STRING "sentry transport" FORCE)
+    set(SENTRY_BUILD_SHARED_LIBS OFF CACHE BOOL "static sentry" FORCE)
+    set(SENTRY_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(SENTRY_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(SENTRY_BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
+    set(SENTRY_INTEGRATION_QT OFF CACHE BOOL "" FORCE)
+    # 可选：编译期嵌入 DSN（发布包免设 SENTRY_DSN 环境变量）。
+    # DSN 是公开 client key 可嵌入；运行期 SENTRY_DSN 环境变量优先级更高。
+    set(GRAPH_STUDIO_SENTRY_DSN "" CACHE STRING
+        "Embedded Sentry DSN for release builds (optional)")
+    add_subdirectory("${GRAPH_STUDIO_SENTRY_ROOT}" "${CMAKE_BINARY_DIR}/sentry")
+
+    target_link_libraries(graph_studio PRIVATE sentry)
+    set(GS_CRASH_COMPILE_DEFS
+        GRAPH_STUDIO_SENTRY_VERSION="${GRAPH_STUDIO_SENTRY_VERSION}"
+        GRAPH_STUDIO_SENTRY_BUILD_HASH="${GRAPH_STUDIO_GIT_HASH}"
+        GRAPH_STUDIO_SENTRY_ENVIRONMENT="${GRAPH_STUDIO_SENTRY_ENVIRONMENT}"
+    )
+    if(NOT GRAPH_STUDIO_SENTRY_DSN STREQUAL "")
+        list(APPEND GS_CRASH_COMPILE_DEFS
+            GRAPH_STUDIO_SENTRY_DSN="${GRAPH_STUDIO_SENTRY_DSN}")
+    endif()
+    target_compile_definitions(graph_studio PRIVATE ${GS_CRASH_COMPILE_DEFS})
+
+    # crashpad handler 需与可执行文件同目录（crashpad 按可执行文件相对路径查找）。
+    if(TARGET crashpad_handler)
+        if(APPLE)
+            # macOS .app bundle → Contents/MacOS/（与 graph_studio 可执行文件同目录）
+            add_custom_command(TARGET graph_studio POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "$<TARGET_FILE:crashpad_handler>"
+                    "$<TARGET_BUNDLE_DIR:graph_studio>/Contents/MacOS/crashpad_handler"
+                COMMENT "Copying crashpad_handler into app bundle"
+            )
+        elseif(WIN32)
+            add_custom_command(TARGET graph_studio POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "$<TARGET_FILE:crashpad_handler>"
+                    "$<TARGET_FILE_DIR:graph_studio>/crashpad_handler.exe"
+                COMMENT "Copying crashpad_handler.exe next to executable"
+            )
+        endif()
+    endif()
 endif()
 
 # macOS 部署配置（非 WASM）

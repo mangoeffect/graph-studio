@@ -45,6 +45,15 @@ The old `test_js_engine`/`test_js_mat` binaries were replaced by the JSON-graph-
 - Submodule CMakeLists use `TASK_GRAPH_ROOT` so they work both via `add_subdirectory` and standalone.
 - Commit messages use conventional commits (e.g. `fix(studio): ...`, `feat(mediapipe): ...`).
 
+## GraphStudio crash reporting (Sentry + Crashpad, desktop only)
+
+- **Stack**: `sentry-native` 0.16.2 with the `crashpad` backend. Depends on `app/graph_studio/third_party/sentry-native` (recursive git submodules incl. Chromium crashpad) cloned by **`scripts/fetch_sentry.sh`** (pinned tag, `third_party/` is gitignored). If the checkout is absent, CMake configures and builds **without** crash reporting (same "skip when dependency missing" convention as OpenCV-WASM). Not built for WASM/mobile.
+- **Lifecycle**: `InitCrashReporting()` is called at the very start of `main()` in `app/graph_studio/src/platform/macos/entry.cpp` (before `QApplication`), `ShutdownCrashReporting()` before exit; both guarded by make for WASM. DSN comes from the `SENTRY_DSN` env var — no DSN ⇒ clean no-op (safe to run locally). Headers/impl: `app/graph_studio/include/CrashReporter.h` + `src/CrashReporter.cpp` (`sentry_options_new/..._set_dsn/_set_release/_set_environment/_set_handler_path/_set_database_path`, `sentry_init`, `sentry_close`).
+- **Handler placement**: CMake copies the `crashpad_handler` binary next to the executable (`Contents/MacOS/` in the .app bundle on macOS; next to `graph_studio.exe` on Windows) at POST_BUILD, because crashpad launches it there. In-process settings include release `task_graph@0.1.0#<git-short>` + environment (production for Release/RelWithDebInfo builds, else development) baked by CMake compile definitions.
+- **Manual verification**: `SENTRY_DSN=<dsn> graph_studio(.app/.../graph_studio) --test-crash` triggers a SIGSEGV; expect a crash issue in Sentry with symbolicated stack (upload symbols first, below). Without a DSN the flag still crashes but nothing is uploaded.
+- **Symbols**: `scripts/upload_sentry_symbols.sh` (needs `sentry-cli` + `SENTRY_AUTH_TOKEN`) uploads `.dSYM`/PDB for manual symbolication. On macOS it auto-generates missing dSYMs via `dsymutil` from the `-g` Debug binaries (`app/graph_studio/build` + root `build/` — the latter covers `libtask_graph.dylib` and subnode plugins so crashes in the shared lib/plugins symbolicate too). Run it after each build that needs crash symbolification; for production releases keep DEBUG_INFO on and archive the dSYMs/PDBs.
+- **Known limits**: macOS sandboxed/App Store distribution can't spawn a crashpad child handler (per doc, then use `native`/`inproc` backend); Windows main-thread stack overflow may not be captured without a thread stack-guarantee workaround.
+
 ## MediaPipe subnode (mediapipe_vision)
 
 - `scripts/build_mediapipe_macos.sh` builds `libvision.dylib` (full MediaPipe framework, C API only exported) into `build/mediapipe/install/`. Requires `brew install bazelisk`; Docker on macOS only produces Linux binaries and cannot link into the macOS build.

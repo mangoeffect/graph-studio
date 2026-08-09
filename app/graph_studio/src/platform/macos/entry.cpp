@@ -9,13 +9,30 @@
 #include "view/MainWindow.h"
 #include "PluginBootstrap.h"
 #include "GpuBootstrap.h"
+#include "CrashReporter.h"
+
+#include <cstring>
 
 using namespace graph_studio;
 
 int main(int argc, char* argv[])
 {
+#ifndef __EMSCRIPTEN__
+    // 启动崩溃上报（Sentry + crashpad）。在最早期调用以覆盖启动期间崩溃；
+    // SENTRY_DSN 未设置时为 no-op，不影响运行。
+    InitCrashReporting();
+
+    // --test-crash：人为触发 SIGSEGV，验证 crashpad minidump 能上报。
+    // 用法：SENTRY_DSN=... graph_studio --test-crash
+    bool test_crash = false;
+    for (int i = 1; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--test-crash") == 0)
+            test_crash = true;
+    }
+
     // Request a 3.3 Core profile context for QOpenGLWidget (required on macOS).
     // WASM uses OpenGL ES natively and does not need this.
+#endif
 #ifndef __EMSCRIPTEN__
     QSurfaceFormat fmt;
     fmt.setVersion(3, 3);
@@ -24,6 +41,11 @@ int main(int argc, char* argv[])
 #endif
 
     QApplication app(argc, argv);
+
+#ifndef __EMSCRIPTEN__
+    if (test_crash)
+        TriggerTestCrash();
+#endif
 
     QIcon appIcon;
     appIcon.addFile(":/icons/app_icon_16.png", QSize(16, 16));
@@ -54,5 +76,8 @@ int main(int argc, char* argv[])
     int ret = app.exec();
 
     ShutdownGpuBackend();
+#ifndef __EMSCRIPTEN__
+    ShutdownCrashReporting();
+#endif
     return ret;
 }
