@@ -1,1 +1,16 @@
-﻿
+﻿[submodule "submodules/opencv"]
+	path = submodules/opencv
+	url = https://github.com/mangoeffect/plugin-opencv.git
+	branch = main
+[submodule "submodules/gpu"]
+	path = submodules/gpu
+	url = https://github.com/mangoeffect/plugin-gpu.git
+	branch = main
+[submodule "submodules/mediapipe"]
+	path = submodules/mediapipe
+	url = https://github.com/mangoeffect/plugin-mediapipe.git
+	branch = main
+[submodule "submodules/scripting"]
+	path = submodules/scripting
+	url = https://github.com/mangoeffect/plugin-scripting.git
+	branch = main
