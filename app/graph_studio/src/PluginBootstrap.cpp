@@ -6,7 +6,6 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QProcessEnvironment>
-#include <QRegularExpression>
 #include <QSet>
 #include <unordered_map>
 
@@ -32,6 +31,10 @@ static QStringList collectPluginFiles(const QDir& dir) {
     }
     if (files.isEmpty()) {
         for (const auto& sub : dir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot)) {
+            // 跳过备份/历史目录（如切换 Config 后遗留的 RelWithDebInfo.bak）：
+            // 其中是另一 CRT 配置（release）的产物，误装入 debug 进程会跨 CRT
+            // 传递堆对象 → 堆损坏崩溃。仅扫正式的 <Config> 子目录。
+            if (sub.fileName().endsWith(".bak")) continue;
             QDir cfg(sub.absoluteFilePath());
             for (const auto& f : cfg.entryInfoList(filters, QDir::Files)) {
                 files.append(f.absoluteFilePath());
@@ -97,8 +100,9 @@ PluginLoadResult LoadBuiltinPlugins()
     const QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
     const QString envPaths = env.value("TASK_GRAPH_PLUGINS_PATH");
     if (!envPaths.isEmpty()) {
-        // macOS/Linux ':' 或 Windows ';'，按都可能存在来兼容
-        for (const auto& p : envPaths.split(QRegularExpression("[:;]"))) {
+        // 平台相关分隔符：Windows ';' / macOS/Linux ':'。用 QDir::listSeparator()
+        // 避免误伤 Windows 盘符后的冒号（"F:\..." 被 "[:;]" 切成 "F" + "\..."）。
+        for (const auto& p : envPaths.split(QDir::listSeparator())) {
             addCandidate(p.trimmed());
         }
     }
