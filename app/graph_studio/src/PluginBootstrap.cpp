@@ -115,9 +115,13 @@ PluginLoadResult LoadBuiltinPlugins()
         }
     }
 
-    // 3) macOS .app bundle 内 PlugIns/
-    {
-        QDir pluginsDir(QCoreApplication::applicationDirPath() + "/../PlugIns");
+    // 3) 打包布局内的插件目录：
+    //    macOS .app bundle → <bundle>/Contents/PlugIns（exe 相对 ../PlugIns）
+    //    Windows MSIX     → <package root>/PlugIns（exe 同目录）
+    //    两种相对路径都探测（不存在的目录由 collectPluginFiles 直接跳过），
+    //    便于同一套安装程序模板跨平台复用。
+    for (const auto& rel : {"../PlugIns", "PlugIns"}) {
+        QDir pluginsDir(QCoreApplication::applicationDirPath() + "/" + rel);
         for (const auto& f : collectPluginFiles(pluginsDir)) addCandidate(f);
     }
 

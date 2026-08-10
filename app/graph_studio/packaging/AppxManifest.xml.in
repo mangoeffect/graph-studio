@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap rescap">
+
+  <!--
+    AppxManifest for the Windows Store MSIX (Desktop Bridge) package.
+    Placeholders are substituted by scripts\build_msix.ps1:
+      @GS_APPX_IDENTITY@               Store-reserved app name (case-sensitive).
+      @GS_APPX_PUBLISHER@              "CN=<Publisher ID>"  — for Store uploads
+                                       this must equal the Publisher ID shown in
+                                       Partner Center (View app identity details);
+                                       for self-signed test packages it must equal
+                                       the signing certificate subject.
+      @GS_APPX_VERSION@                Four-part version, last part MUST stay 0.
+                                       Increase for every Store submission.
+      @GS_APPX_DISPLAY_NAME@ / @GS_APPX_PUBLISHER_DISPLAY_NAME@ / @GS_APPX_DESCRIPTION@
+  -->
+
+  <Identity
+    Name="@GS_APPX_IDENTITY@"
+    Publisher="@GS_APPX_PUBLISHER@"
+    Version="@GS_APPX_VERSION@"
+    ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>@GS_APPX_DISPLAY_NAME@</DisplayName>
+    <PublisherDisplayName>@GS_APPX_PUBLISHER_DISPLAY_NAME@</PublisherDisplayName>
+    <Description>@GS_APPX_DESCRIPTION@</Description>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+
+  <Resources>
+    <Resource Language="en-us" />
+  </Resources>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.22621.0" />
+  </Dependencies>
+
+  <!-- Classic Win32 (Desktop Bridge): runFullTrust is the only valid capability. -->
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+
+  <Applications>
+    <Application Id="GraphStudio" Executable="graph_studio.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="@GS_APPX_DISPLAY_NAME@"
+        Description="@GS_APPX_DESCRIPTION@"
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png" />
+    </Application>
+  </Applications>
+</Package>

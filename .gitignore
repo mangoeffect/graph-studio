@@ -1,9 +1,11 @@
 build/
+dist/
 build_win
 build_wasm/
 build_coretest
 submodules/*
 /AGENTS.md
+/.zcode
 /.trae
 .DS_Store
 app/graph_studio/build/
