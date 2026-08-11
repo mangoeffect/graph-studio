@@ -456,22 +456,15 @@ void MainWindow::PopulateTaskLibrary()
 {
     if (!taskList_) return;
 
-    // 从 PluginRegistry 动态获取已注册的 task 类型，按名称前缀分组显示
+    // 从 PluginRegistry 动态获取已注册的 task 类型，按 GraphViewModel::classifyTask 分组
     QStringList allTypes = vm_.availableTaskTypes();
     allTypes.sort();
-
-    auto classify = [](const QString& type) -> QString {
-        if (type.startsWith("opencv_"))   return "OpenCV Filter";
-        if (type.contains("input") || type.contains("load"))  return "Input";
-        if (type.contains("output") || type.contains("save") || type.contains("display")) return "Output";
-        return "Process";
-    };
 
     // 分组（保留首次出现顺序）
     QStringList sections;
     QHash<QString, QStringList> bySection;
     for (const auto& t : allTypes) {
-        const QString s = classify(t);
+        const QString s = GraphViewModel::classifyTask(t);
         if (!bySection.contains(s)) sections.append(s);
         bySection[s].append(t);
     }

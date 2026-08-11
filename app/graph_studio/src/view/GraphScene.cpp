@@ -1,6 +1,7 @@
 ﻿#include "view/GraphScene.h"
 #include "view/NodeItem.h"
 #include "view/EdgeItem.h"
+#include "viewmodel/GraphViewModel.h"
 
 #include <QPainter>
 #include <QGraphicsItem>
@@ -237,10 +238,7 @@ void GraphScene::contextMenuEvent(QGraphicsSceneContextMenuEvent* event)
         return;
     }
     auto classify = [](const QString& type) -> QString {
-        if (type.startsWith("opencv_"))   return "OpenCV Filter";
-        if (type.contains("input") || type.contains("load"))  return "Input";
-        if (type.contains("output") || type.contains("save") || type.contains("display")) return "Output";
-        return "Process";
+        return graph_studio::GraphViewModel::classifyTask(type);
     };
     QStringList sections;
     QHash<QString, QStringList> bySection;

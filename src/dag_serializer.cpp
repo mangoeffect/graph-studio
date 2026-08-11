@@ -5,6 +5,8 @@
 #include <variant>
 #include <type_traits>
 #include <typeinfo>
+#include <cctype>
+#include <algorithm>
 #include <set>
 
 namespace task_graph {
@@ -59,6 +61,21 @@ TaskParams parse_params_with_specs(const nlohmann::json& params_json,
                     case ParamType::Enum:
                         if (value.is_number())
                             params.set_int(key, static_cast<int>(value.get<double>()));
+                        // Enum 额外支持字符串 label —— 与 param_specs() 声明的
+                        // enum_values 匹配（大小写不敏感）。匹配不到则忽略，
+                        // 由 task 内部回退默认值。
+                        else if (value.is_string() && spec->type == ParamType::Enum) {
+                            const std::string label = value.get<std::string>();
+                            for (const auto& [lbl, v] : spec->enum_values) {
+                                std::string a = lbl, b = label;
+                                std::transform(a.begin(), a.end(), a.begin(), ::tolower);
+                                std::transform(b.begin(), b.end(), b.begin(), ::tolower);
+                                if (a == b) {
+                                    params.set_int(key, v);
+                                    break;
+                                }
+                            }
+                        }
                         break;
                     case ParamType::Float:
                         if (value.is_number())

@@ -82,6 +82,10 @@ public:
     Q_INVOKABLE QStringList availableTaskTypes() const;
     Q_INVOKABLE bool hasTaskType(const QString& type) const;
 
+    // 按 task type 字符串启发式归类（Input/Output/OpenCV 子域/GPU/MediaPipe/…）。
+    // 单一来源：MainWindow 侧边栏、GraphScene 右键菜单、NodeItem 着色共用。
+    static QString classifyTask(const QString& type);
+
     // 端口查询：按 task 类型返回其 input_specs()/output_specs() 的端口名。
     // 无声明时返回空（UI 退化为默认 in/out 锚点）。
     Q_INVOKABLE QStringList inputPorts(const QString& taskType) const;

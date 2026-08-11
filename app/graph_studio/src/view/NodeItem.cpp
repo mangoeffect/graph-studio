@@ -1,5 +1,6 @@
 ﻿#include "view/NodeItem.h"
 #include "view/EdgeItem.h"
+#include "viewmodel/GraphViewModel.h"
 
 #include <QPainter>
 #include <QStyleOptionGraphicsItem>
@@ -215,14 +216,25 @@ void NodeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, 
 
     QColor bodyColor;
     QColor accentColor;
-    if (nodeType_.contains("input", Qt::CaseInsensitive)) {
+    const QString category = graph_studio::GraphViewModel::classifyTask(nodeType_);
+    if (category == QStringLiteral("Input")) {
         bodyColor = QColor(40, 60, 80);
         accentColor = QColor(76, 175, 80);
-    } else if (nodeType_.contains("output", Qt::CaseInsensitive) ||
-               nodeType_.contains("display", Qt::CaseInsensitive) ||
-               nodeType_.contains("save", Qt::CaseInsensitive)) {
+    } else if (category == QStringLiteral("Output")) {
         bodyColor = QColor(80, 40, 40);
         accentColor = QColor(244, 67, 54);
+    } else if (category.startsWith(QStringLiteral("OpenCV"))) {
+        bodyColor = QColor(50, 55, 70);
+        accentColor = QColor(92, 107, 192);
+    } else if (category == QStringLiteral("GPU")) {
+        bodyColor = QColor(40, 60, 60);
+        accentColor = QColor(0, 188, 212);
+    } else if (category == QStringLiteral("MediaPipe")) {
+        bodyColor = QColor(60, 40, 60);
+        accentColor = QColor(186, 104, 200);
+    } else if (category == QStringLiteral("Scripting")) {
+        bodyColor = QColor(60, 55, 40);
+        accentColor = QColor(255, 193, 7);
     } else {
         bodyColor = QColor(60, 55, 40);
         accentColor = QColor(255, 193, 7);

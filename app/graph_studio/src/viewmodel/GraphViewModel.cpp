@@ -602,6 +602,51 @@ bool GraphViewModel::hasTaskType(const QString& type) const
     return task_graph::PluginRegistry::instance().has_task(type.toStdString());
 }
 
+QString GraphViewModel::classifyTask(const QString& type)
+{
+    // 优先级从上到下，首个命中即返回。
+    // 读写类：按前缀语义先判定，避免 opencv_image_read/write 被 opencv_* 兜底吞掉
+    if (type.endsWith("_read") || type.contains("video_capture") || type.contains("video_reader"))
+        return QStringLiteral("Input");
+    if (type.endsWith("_write") || type.contains("video_writer") ||
+        type.contains("display") || type.contains("save"))
+        return QStringLiteral("Output");
+
+    // OpenCV 子域（按 task type 前缀细分，替代原先单一的 "OpenCV Filter" 分组）
+    if (type.startsWith("opencv_resize") || type.startsWith("opencv_flip") ||
+        type.startsWith("opencv_rotate") || type.startsWith("opencv_warp") ||
+        type.startsWith("opencv_transpose") || type.startsWith("opencv_pyr_"))
+        return QStringLiteral("OpenCV Geometry");
+    if (type.startsWith("opencv_cvt_color") || type.startsWith("opencv_threshold") ||
+        type.startsWith("opencv_apply_color_map"))
+        return QStringLiteral("OpenCV Color");
+    if (type.startsWith("opencv_canny") || type.startsWith("opencv_hough") ||
+        type.contains("contour"))
+        return QStringLiteral("OpenCV Edges");
+    if (type.startsWith("opencv_blur") || type.startsWith("opencv_gaussian") ||
+        type.startsWith("opencv_median") || type.startsWith("opencv_bilateral") ||
+        type.startsWith("opencv_box") || type.startsWith("opencv_sobel") ||
+        type.startsWith("opencv_scharr") || type.startsWith("opencv_laplacian") ||
+        type.startsWith("opencv_filter_2d") || type.startsWith("opencv_sep_filter") ||
+        type.startsWith("opencv_sqr_box") || type.startsWith("opencv_gabor") ||
+        type.startsWith("opencv_dilate") || type.startsWith("opencv_erode") ||
+        type.startsWith("opencv_morphology"))
+        return QStringLiteral("OpenCV Filter");
+    if (type.startsWith("opencv_"))
+        return QStringLiteral("OpenCV");
+
+    // 其他内置子模块
+    if (type.startsWith("gpu_"))   return QStringLiteral("GPU");
+    if (type.startsWith("mp_"))    return QStringLiteral("MediaPipe");
+    if (type == QStringLiteral("js_script")) return QStringLiteral("Scripting");
+
+    // 宽松启发式兜底
+    if (type.contains("input") || type.contains("load"))  return QStringLiteral("Input");
+    if (type.contains("output") || type.contains("save") || type.contains("display"))
+        return QStringLiteral("Output");
+    return QStringLiteral("Process");
+}
+
 QStringList GraphViewModel::inputPorts(const QString& taskType) const
 {
     return toQStringList(queryPortNames(taskType.toStdString(), true));

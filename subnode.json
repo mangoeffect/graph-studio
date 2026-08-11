@@ -23,7 +23,50 @@
         "opencv_box_filter",
         "opencv_sobel_filter",
         "opencv_scharr_filter",
-        "opencv_laplacian_filter"
+        "opencv_laplacian_filter",
+        "opencv_filter_2d",
+        "opencv_sep_filter_2d",
+        "opencv_sqr_box_filter",
+        "opencv_gabor_filter",
+        "opencv_dilate",
+        "opencv_erode",
+        "opencv_morphology_ex",
+        "opencv_pyr_down",
+        "opencv_pyr_up"
+      ]
+    },
+    {
+      "name": "image_writer",
+      "url": "./submodules/opencv/image_io/image_writer",
+      "ref": "main",
+      "type": "local",
+      "tasks": [
+        "opencv_image_write"
+      ]
+    },
+    {
+      "name": "image_geometry",
+      "url": "./submodules/opencv/image_processing/image_geometry",
+      "ref": "main",
+      "type": "local",
+      "tasks": [
+        "opencv_resize",
+        "opencv_flip",
+        "opencv_rotate",
+        "opencv_warp_affine",
+        "opencv_transpose"
+      ]
+    },
+    {
+      "name": "image_color",
+      "url": "./submodules/opencv/image_processing/image_color",
+      "ref": "main",
+      "type": "local",
+      "tasks": [
+        "opencv_cvt_color",
+        "opencv_threshold",
+        "opencv_adaptive_threshold",
+        "opencv_apply_color_map"
       ]
     },
     {
