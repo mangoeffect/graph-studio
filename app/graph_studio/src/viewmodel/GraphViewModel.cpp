@@ -636,6 +636,7 @@ QString GraphViewModel::classifyTask(const QString& type)
         return QStringLiteral("OpenCV");
 
     // 其他内置子模块
+    if (type.startsWith("color_grade_")) return QStringLiteral("Color Grading");
     if (type.startsWith("gpu_"))   return QStringLiteral("GPU");
     if (type.startsWith("mp_"))    return QStringLiteral("MediaPipe");
     if (type == QStringLiteral("js_script")) return QStringLiteral("Scripting");

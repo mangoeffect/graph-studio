@@ -235,6 +235,9 @@ void NodeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, 
     } else if (category == QStringLiteral("Scripting")) {
         bodyColor = QColor(60, 55, 40);
         accentColor = QColor(255, 193, 7);
+    } else if (category == QStringLiteral("Color Grading")) {
+        bodyColor = QColor(55, 40, 60);
+        accentColor = QColor(255, 152, 0);
     } else {
         bodyColor = QColor(60, 55, 40);
         accentColor = QColor(255, 193, 7);

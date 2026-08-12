@@ -70,6 +70,20 @@
       ]
     },
     {
+      "name": "image_color_grading",
+      "url": "./submodules/opencv/image_processing/image_color_grading",
+      "ref": "main",
+      "type": "local",
+      "tasks": [
+        "color_grade_wheels",
+        "color_grade_curves",
+        "color_grade_lut",
+        "color_grade_bcs",
+        "color_grade_mixer",
+        "color_grade_hsl"
+      ]
+    },
+    {
       "name": "gpu_image_processing",
       "url": "./submodules/gpu/image_processing",
       "ref": "main",
