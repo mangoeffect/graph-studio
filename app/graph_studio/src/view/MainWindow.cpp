@@ -16,6 +16,7 @@
 #include <QLineEdit>
 #include <QSpinBox>
 #include <QDoubleSpinBox>
+#include <QSlider>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QPushButton>
@@ -38,6 +39,7 @@
 #include <QUrl>
 #include <QApplication>
 #include <algorithm>
+#include <cmath>
 
 using namespace graph_studio;
 
@@ -936,17 +938,101 @@ void MainWindow::RebuildParamWidgets(const QString& nodeId)
             if (s.contains("min")) sb->setMinimum(int(s.value("min").toDouble()));
             if (s.contains("max")) sb->setMaximum(int(s.value("max").toDouble()));
             if (s.contains("step")) sb->setSingleStep(int(s.value("step").toDouble()));
-            sb->setValue(current.value(name, s.value("default")).toInt());
+            int cur = current.value(name, s.value("default")).toInt();
+            sb->setValue(cur);
+            // 有界 int 且分辨率合理 → 滑杆 + 数值框联动。
+            // 值权威为数值框（存入 paramWidgets_），OnParamWidgetChanged 的
+            // qobject_cast<QSpinBox*> 读回不变；滑杆仅同步驱动数值框。
+            const int lo = sb->minimum(), hi = sb->maximum();
+            const bool useSlider = s.contains("min") && s.contains("max") &&
+                                   (hi - lo) > 1 && (hi - lo) <= 2000000;
+            if (useSlider) {
+                auto* slider = new QSlider(Qt::Horizontal);
+                slider->setRange(lo, hi);
+                slider->setValue(cur);
+                connect(slider, &QSlider::valueChanged, this,
+                        [this, name, sb](int v){
+                            const bool was = sb->blockSignals(true);
+                            sb->setValue(v);
+                            sb->blockSignals(was);
+                            OnParamWidgetChanged(name);
+                        });
+                connect(sb, qOverload<int>(&QSpinBox::valueChanged), this,
+                        [this, name, slider](int v){
+                            const bool was = slider->blockSignals(true);
+                            slider->setValue(v);
+                            slider->blockSignals(was);
+                            OnParamWidgetChanged(name);
+                        });
+                auto* container = new QWidget();
+                auto* h = new QHBoxLayout(container);
+                h->setContentsMargins(0, 0, 0, 0);
+                h->setSpacing(6);
+                h->addWidget(slider, 1);
+                h->addWidget(sb, 0);
+                paramsLayout_->addRow(name + ":", container);
+                paramWidgets_[name] = sb;   // 存数值框而非容器
+                continue;
+            }
             connect(sb, qOverload<int>(&QSpinBox::valueChanged), this,
                     [this, name](int){ OnParamWidgetChanged(name); });
             w = sb;
         } else if (type == "float") {
             auto* sb = new QDoubleSpinBox();
-            sb->setDecimals(3);
+            // 小数位优先按 step 推导（默认 3）；scale = 10^decimals 把 float 映射成滑杆整型刻度
+            int decimals = 3;
+            if (s.contains("step")) {
+                const double st = s.value("step").toDouble();
+                if (st > 0.0 && st < 1.0) {
+                    int d = int(std::ceil(-std::log10(st)));
+                    if (d < 1) d = 1;
+                    if (d > 6) d = 6;
+                    decimals = d;
+                }
+            }
+            sb->setDecimals(decimals);
             if (s.contains("min")) sb->setMinimum(s.value("min").toDouble());
             if (s.contains("max")) sb->setMaximum(s.value("max").toDouble());
             if (s.contains("step")) sb->setSingleStep(s.value("step").toDouble());
-            sb->setValue(current.value(name, s.value("default")).toDouble());
+            double cur = current.value(name, s.value("default")).toDouble();
+            sb->setValue(cur);
+            // 有界 float 且缩放后分辨率合理 → 滑杆 + 数值框联动（同 int 模式）
+            const bool hasRange = s.contains("min") && s.contains("max");
+            qint64 scale = 1;
+            for (int i = 0; i < decimals; ++i) scale *= 10;
+            const double spanScaled = hasRange ? (sb->maximum() - sb->minimum()) * double(scale) : 0.0;
+            const bool useSlider = hasRange && spanScaled > 1.0 && spanScaled <= 2000000.0;
+            if (useSlider) {
+                const int lo = int(std::round(sb->minimum() * double(scale)));
+                const int hi = int(std::round(sb->maximum() * double(scale)));
+                auto* slider = new QSlider(Qt::Horizontal);
+                slider->setRange(lo, hi);
+                slider->setValue(int(std::round(cur * double(scale))));
+                connect(slider, &QSlider::valueChanged, this,
+                        [this, name, sb, scale](int v){
+                            const double dv = double(v) / double(scale);
+                            const bool was = sb->blockSignals(true);
+                            sb->setValue(dv);
+                            sb->blockSignals(was);
+                            OnParamWidgetChanged(name);
+                        });
+                connect(sb, qOverload<double>(&QDoubleSpinBox::valueChanged), this,
+                        [this, name, slider, scale](double v){
+                            const bool was = slider->blockSignals(true);
+                            slider->setValue(int(std::round(v * double(scale))));
+                            slider->blockSignals(was);
+                            OnParamWidgetChanged(name);
+                        });
+                auto* container = new QWidget();
+                auto* h = new QHBoxLayout(container);
+                h->setContentsMargins(0, 0, 0, 0);
+                h->setSpacing(6);
+                h->addWidget(slider, 1);
+                h->addWidget(sb, 0);
+                paramsLayout_->addRow(name + ":", container);
+                paramWidgets_[name] = sb;   // 存数值框而非容器
+                continue;
+            }
             connect(sb, qOverload<double>(&QDoubleSpinBox::valueChanged), this,
                     [this, name](double){ OnParamWidgetChanged(name); });
             w = sb;
