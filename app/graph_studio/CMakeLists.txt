@@ -83,7 +83,7 @@ set(PROJECT_SOURCES
 )
 
 # ---- 崩溃上报模块（Sentry + Crashpad，仅桌面端）----
-# sentry-native 及其递归子模块 crashpad 由 scripts/fetch_sentry.sh 拉取到
+# sentry-native 及其递归子模块 crashpad 由 scripts/fetch_sentry.py 拉取到
 # third_party/sentry-native（固定版本，gitignored）。未拉取时构建照常进行，
 # 仅无崩溃上报能力（与 OpenCV WASM 缺失时跳过依赖子模块同理）。
 set(GRAPH_STUDIO_SENTRY_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/third_party/sentry-native")
@@ -128,7 +128,7 @@ endif()
 
 # ============================================================
 # Sentry 崩溃上报（crashpad backend，仅桌面端）
-# 依赖 scripts/fetch_sentry.sh 拉取；未拉取则跳过（无崩溃上报能力）。
+# 依赖 scripts/fetch_sentry.py 拉取；未拉取则跳过（无崩溃上报能力）。
 # ============================================================
 if(GRAPH_STUDIO_HAS_SENTRY)
     # 崩溃元信息源：版本 + git 短哈希 + 环境（用于 Sentry release 分组）
@@ -303,7 +303,7 @@ if(EMSCRIPTEN)
     include(${TG_ROOT}/cmake/Subnode.cmake)
     parse_subnode_json("${TG_ROOT}/subnode.json")
 
-    # OpenCV WASM 静态库若已用 scripts/build_opencv_wasm.sh 构建到
+    # OpenCV WASM 静态库若已用 scripts/build_opencv_wasm.py 构建到
     # build_wasm/opencv/install/，则依赖 OpenCV 的 submodule 自动启用；否则跳过。
     set(_OPENCV_WASM_INSTALL "${TG_ROOT}/build_wasm/opencv/install")
     set(_OPENCV_WASM_AVAILABLE OFF)
@@ -315,7 +315,7 @@ if(EMSCRIPTEN)
         find_package(OpenCV REQUIRED COMPONENTS core imgproc)
         message(STATUS "WASM: OpenCV found at ${_OPENCV_WASM_INSTALL}")
     else()
-        message(STATUS "WASM: OpenCV not built (run scripts/build_opencv_wasm.sh); OpenCV submodules skipped")
+        message(STATUS "WASM: OpenCV not built (run scripts/build_opencv_wasm.py); OpenCV submodules skipped")
     endif()
 
     # 逐个处理 subnode.json 声明的 submodule。URL 相对 TG_ROOT 解析。

@@ -45,10 +45,12 @@ class CMake:
         return code
 
     def build(self, build: Path, config: Optional[str] = None, jobs: Optional[int] = None,
-              target: Optional[str] = None, what: str = "构建") -> int:
+              target=None, what: str = "构建") -> int:
         args: List[Arg] = [self.cmake, "--build", str(build)]
         if target:
-            args += ["--target", target]
+            targets = [target] if isinstance(target, str) else list(target)
+            args.append("--target")
+            args += targets
         args += self._config_flags(config)
         if jobs:
             args += ["-j", jobs]

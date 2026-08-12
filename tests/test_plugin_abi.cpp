@@ -1,7 +1,7 @@
 // 插件 ABI + 运行时动态加载测试。
 //
-// 覆盖：宿主框架导出的 SDK 版本、加载独立编译的插件动态库（scripts/build_sdk.sh
-// + scripts/build_plugin_standalone.sh 产物）、register_plugin 注册到 PluginRegistry、
+// 覆盖：宿主框架导出的 SDK 版本、加载独立编译的插件动态库（scripts/build_sdk.py
+// + scripts/build_plugin_standalone.py 产物）、register_plugin 注册到 PluginRegistry、
 // DAGExecutor 真实运行插件任务。
 //
 // 插件路径优先取环境变量 TASK_GRAPH_DEMO_PLUGIN，否则用编译期默认
@@ -42,8 +42,8 @@ TEST_CASE(standalone_plugin_load_and_run) {
     if (!file_exists(path.c_str())) {
         std::cout << "         (soft-skip) 未找到独立插件: \""
                   << path << "\"\n"
-                  << "         运行: scripts/build_sdk.sh\n"
-                  << "         && scripts/build_plugin_standalone.sh examples/plugins/demo\n";
+                  << "         运行: scripts/build_sdk.py\n"
+                  << "         && scripts/build_plugin_standalone.py examples/plugins/demo\n";
         return;
     }
 

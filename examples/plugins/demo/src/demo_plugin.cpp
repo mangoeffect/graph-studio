@@ -1,7 +1,7 @@
 // demo_plugin：task_graph SDK 独立编译演示插件。
 //
 // 与主仓库完全解耦：仅依赖已安装的 SDK 头文件与 libtask_graph 动态库，
-// 不引用主仓库任何源码。构建方式见 scripts/build_plugin_standalone.sh，
+// 不引用主仓库任何源码。构建方式见 scripts/build_plugin_standalone.py，
 // 运行时由 PluginLoader::load() dlopen，注册的任务类型为 "demo_add"。
 //
 // 遵循与内置子模块一致的插件最佳实践：const char* const 类型名常量、

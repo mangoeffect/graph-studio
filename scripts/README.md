@@ -40,28 +40,28 @@ python scripts/build_plugin_standalone.py examples/plugins/demo
 
 ---
 
-## run_graph_studio.sh — GraphStudio 运行器
+## run_graph_studio.py — GraphStudio 运行器
 
-一键构建根库 `task_graph`（GUI 运行时依赖 `build/libtask_graph.dylib`），再构建 `app/graph_studio` 并启动。macOS 启动 `.app` bundle，其它平台启动可执行文件。
+一键构建根库 `task_graph`（GUI 运行时依赖 `build/libtask_graph`），再构建 `app/graph_studio` 并启动。macOS 启动 `.app` bundle，Windows/Linux 启动可执行文件。三平台通用。
 
 ```bash
 # 构建并启动
-scripts/run_graph_studio.sh
+python scripts/run_graph_studio.py
 
 # 清空构建目录后全新构建再启动
-scripts/run_graph_studio.sh -c
+python scripts/run_graph_studio.py -c
 
 # 只构建不启动
-scripts/run_graph_studio.sh --build-only
+python scripts/run_graph_studio.py --build-only
 
 # 跳过构建，直接启动现有产物
-scripts/run_graph_studio.sh --no-build
+python scripts/run_graph_studio.py --no-build
 
 # 运行 GraphStudio 单元测试
-scripts/run_graph_studio.sh -t
+python scripts/run_graph_studio.py -t
 
 # 手动指定 Qt6 前缀（含 lib/cmake/Qt6）
-scripts/run_graph_studio.sh --qt /opt/homebrew/Cellar/qtbase/6.11.1
+python scripts/run_graph_studio.py --qt /opt/homebrew/Cellar/qtbase/6.11.1
 ```
 
 | 参数 | 缩写 | 说明 |
@@ -78,28 +78,28 @@ scripts/run_graph_studio.sh --qt /opt/homebrew/Cellar/qtbase/6.11.1
 
 ---
 
-## run_tests.sh — 单元测试运行器
+## run_tests.py — 单元测试运行器
 
-一键在 `build/` 目录用 CMake 配置 + 构建，再用 `ctest` 运行全部单元测试。退出码 `0` 表示全部通过。
+一键在 `build/` 目录用 CMake 配置 + 构建，再用 `ctest` 运行全部单元测试。退出码 `0` 表示全部通过。三平台通用（Windows 自动用 VS 多配置生成器 + `--config`）。
 
 ```bash
 # 构建并运行全部测试
-scripts/run_tests.sh
+python scripts/run_tests.py
 
 # 先清空 build 目录再全新构建
-scripts/run_tests.sh -c
+python scripts/run_tests.py -c
 
 # 只跑名字匹配 regex 的测试（如 port / serializer）
-scripts/run_tests.sh -R ports
+python scripts/run_tests.py -R ports
 
 # 列出所有测试后退出，不运行
-scripts/run_tests.sh -l
+python scripts/run_tests.py -l
 
 # 跳过构建，直接跑现有二进制
-scripts/run_tests.sh --no-build
+python scripts/run_tests.py --no-build
 
-# 打开 OpenCV 相关测试
-scripts/run_tests.sh --opencv
+# 关闭 OpenCV 相关测试（默认开启，与主项目一致）
+python scripts/run_tests.py --disable-opencv
 ```
 
 | 参数 | 缩写 | 说明 |
@@ -110,7 +110,9 @@ scripts/run_tests.sh --opencv
 | `--clean` | `-c` | 先清空构建目录再全新构建 |
 | `--list` | `-l` | 列出所有测试后退出 |
 | `--no-build` | | 跳过配置/构建，直接运行 |
-| `--opencv` | | 打开 `TASK_GRAPH_ENABLE_OPENCV` |
+| `--config` | | 构建配置（默认 `Debug`） |
+| `--enable-opencv` / `--disable-opencv` | | 打开/关闭 `TASK_GRAPH_ENABLE_OPENCV`（默认开） |
+| `--sdk` | | 先构建 SDK + 独立 demo 插件，再跑含 `test_plugin_abi` 的全部测试 |
 | `--verbose` | `-v` | ctest 详细输出 |
 | `--help` | `-h` | 显示帮助 |
 
@@ -118,9 +120,11 @@ scripts/run_tests.sh --opencv
 
 ---
 
-## Windows 脚本（`*.ps1`）
+## Windows 脚本（`*.ps1`，已退化为 thin shim）
 
-Windows 上的 PowerShell 脚本与上面的 `*.sh` 一一对应，用 Visual Studio 多配置生成器构建（构建和安装步骤都带 `--config`）。脚本会自动探测本机的 cmake（PATH 上找不到时回退到 VS 2022 自带的 cmake）、OpenCV（`C:\opencv\build\x64\vc16` 或环境变量 `OPENCV_DIR`）和 Qt（`run_graph_studio.ps1` 探测 `C:\Qt\<版本>\msvc2022_64`）。所有 `.ps1` 都支持 `-Cmake <path>` 手动指定 cmake.exe，也都支持 `-Help` 打印用法（等价于 `*.sh` 的 `-h|--help`，底层走 PowerShell comment-based help）。
+> **注意**：自跨平台 Python 脚本上线后，`*.ps1` 与 `*.sh` 都已退化为 thin shim，仅转发到同名 `.py`（下个版本删除）。Windows 上**推荐直接用 Python**：`python scripts\run_tests.py`、`python scripts\run_graph_studio.py` 等。下方历史用法仍可工作（shim 会自动转发），但参数风格为旧 PowerShell 形式。
+
+Windows 上的 PowerShell 脚本与 `*.sh` 一一对应，用 Visual Studio 多配置生成器构建（构建和安装步骤都带 `--config`）。脚本会自动探测本机的 cmake（PATH 上找不到时回退到 VS 2022 自带的 cmake）、OpenCV（`C:\opencv\build\x64\vc16` 或环境变量 `OPENCV_DIR`）和 Qt（`run_graph_studio.ps1` 探测 `C:\Qt\<版本>\msvc2022_64`）。所有 `.ps1` 都支持 `-Cmake <path>` 手动指定 cmake.exe，也都支持 `-Help` 打印用法（等价于 `*.sh` 的 `-h|--help`，底层走 PowerShell comment-based help）。
 
 ```powershell
 # 构建 + 运行全部测试（默认 Debug）

@@ -38,16 +38,16 @@ Requirements: CMake >= 3.16, a C++20 compiler.
 
 ```bash
 # configure + build + run all tests
-scripts/run_tests.sh
+python scripts/run_tests.py
 
 # clean rebuild
-scripts/run_tests.sh -c
+python scripts/run_tests.py -c
 
 # run a subset (regex)
-scripts/run_tests.sh -R ports
+python scripts/run_tests.py -R ports
 
 # list tests without running
-scripts/run_tests.sh -l
+python scripts/run_tests.py -l
 ```
 
 Useful CMake options (`cmake -S . -B build ...`):
@@ -144,7 +144,7 @@ The generator produces `CMakeLists.txt`, a task header, and a source with dual p
 | `js_task` | `js_script` |
 | `mediapipe_vision` | `mp_face_landmarker`, `mp_hand_landmarker`, `mp_pose_landmarker`, `mp_object_detector` (+ `mp_face_detector`, `mp_gesture_recognizer`, `mp_holistic_landmarker`, `mp_image_classifier`, `mp_image_embedder`, `mp_image_segmenter`) |
 
-MediaPipe vision requires prebuilt models + demo images downloaded via `scripts/download_mediapipe_models.sh` into `submodules/mediapipe/mediapipe_vision/tests/models/`; tests soft-skip when those assets are absent.
+MediaPipe vision requires prebuilt models + demo images downloaded via `scripts/download_mediapipe_models.py` into `submodules/mediapipe/mediapipe_vision/tests/models/`; tests soft-skip when those assets are absent.
 
 ## Standalone build & dynamic plugins (desktop)
 
@@ -155,20 +155,20 @@ other: the framework builds standalone, and plugins build against an **installed
 
 ```bash
 # 1. Build the SDK prefix (headers + libtask_graph + CMake package)
-scripts/build_sdk.sh                     # -> build/sdk/
+python scripts/build_sdk.py                     # -> build/sdk/
 
 # 2. Build any plugin standalone against the SDK (no main-repo source)
-scripts/build_plugin_standalone.sh examples/plugins/demo
-scripts/build_plugin_standalone.sh submodules/opencv/image_processing/image_filtering --opencv
+python scripts/build_plugin_standalone.py examples/plugins/demo
+python scripts/build_plugin_standalone.py submodules/opencv/image_processing/image_filtering --enable-opencv
 
 # 3. Run the dlopen test once the demo plugin exists (it soft-skips otherwise)
 ctest -R test_plugin_abi
 ```
 
-- The in-tree dev workflow (`scripts/run_tests.sh`, GraphStudio scanning `build/submodules/`) is unchanged; pass `-DTASK_GRAPH_BUILD_SUBMODULES=OFF` to build the core strictly standalone.
+- The in-tree dev workflow (`scripts/run_tests.py`, GraphStudio scanning `build/submodules/`) is unchanged; pass `-DTASK_GRAPH_BUILD_SUBMODULES=OFF` to build the core strictly standalone.
 - Each submodule links the framework through `use_task_graph_sdk()` (`cmake/SdkUtil.cmake`), which prefers the in-tree target, then `find_package(task_graph)` (SDK), then legacy `TASK_GRAPH_ROOT`.
 - Plugins export `register_plugin` / `unregister_plugin` / `get_plugin_info` and may export `TG_DEFINE_PLUGIN_SDK_VERSION`; `PluginLoader` refuses libraries whose SDK version doesn't match the host.
-- `scripts/run_tests.sh --sdk` runs steps 1–3 automatically.
+- `python scripts/run_tests.py --sdk` runs steps 1–3 automatically.
 - WASM / mobile builds remain statically linked (no dlopen).
 
 ## GPU & cross-platform notes
@@ -180,14 +180,14 @@ ctest -R test_plugin_abi
 ## GraphStudio (Qt6 desktop editor)
 
 ```bash
-scripts/run_graph_studio.sh            # build + launch
-scripts/run_graph_studio.sh --qt /path/to/qtbase   # if Qt6 isn't auto-detected
-scripts/run_graph_studio.sh -t         # run the editor's own ctest suite
+python scripts/run_graph_studio.py            # build + launch
+python scripts/run_graph_studio.py --qt /path/to/qtbase   # if Qt6 isn't auto-detected
+python scripts/run_graph_studio.py -t         # run the editor's own ctest suite
 ```
 
-Headless UI tests: `scripts/run_ui_tests.sh`.
+Headless UI tests: `python scripts/run_ui_tests.py`.
 
-Crash reporting (optional) uses sentry-native + Crashpad; build requires `scripts/fetch_sentry.sh`, and a `SENTRY_DSN`
+Crash reporting (optional) uses sentry-native + Crashpad; build requires `python scripts/fetch_sentry.py`, and a `SENTRY_DSN`
 environment variable at runtime. No DSN ⇒ clean no-op when running locally.
 
 ## Tests

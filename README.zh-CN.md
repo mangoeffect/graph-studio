@@ -38,16 +38,16 @@ task_graph 让您把一个流水线描述为由带类型的、端口相连的任
 
 ```bash
 # 配置 + 构建 + 运行全部测试
-scripts/run_tests.sh
+python scripts/run_tests.py
 
 # 清空构建目录后全新构建
-scripts/run_tests.sh -c
+python scripts/run_tests.py -c
 
 # 只运行名字匹配 regex 的测试
-scripts/run_tests.sh -R ports
+python scripts/run_tests.py -R ports
 
 # 只列出所有测试，不运行
-scripts/run_tests.sh -l
+python scripts/run_tests.py -l
 ```
 
 常用 CMake 选项（`cmake -S . -B build ...`）：
@@ -143,7 +143,7 @@ python3 scripts/generate_submodule.py \
 | `js_task` | `js_script` |
 | `mediapipe_vision` | `mp_face_landmarker`、`mp_hand_landmarker`、`mp_pose_landmarker`、`mp_object_detector`（另有 `mp_face_detector`、`mp_gesture_recognizer`、`mp_holistic_landmarker`、`mp_image_classifier`、`mp_image_embedder`、`mp_image_segmenter`） |
 
-MediaPipe 视觉需要先用 `scripts/download_mediapipe_models.sh` 下载预构建模型和图片到 `submodules/mediapipe/mediapipe_vision/tests/models/`；缺失这些资源时相关测试会 soft-skip。
+MediaPipe 视觉需要先用 `scripts/download_mediapipe_models.py` 下载预构建模型和图片到 `submodules/mediapipe/mediapipe_vision/tests/models/`；缺失这些资源时相关测试会 soft-skip。
 
 ## 独立编译 & 动态插件（桌面）
 
@@ -151,20 +151,20 @@ MediaPipe 视觉需要先用 `scripts/download_mediapipe_models.sh` 下载预构
 
 ```bash
 # 1. 构建 SDK 前缀（头文件 + libtask_graph + CMake 包）
-scripts/build_sdk.sh                     # -> build/sdk/
+python scripts/build_sdk.py                     # -> build/sdk/
 
 # 2. 基于 SDK 独立编译插件（不引用主仓库源码）
-scripts/build_plugin_standalone.sh examples/plugins/demo
-scripts/build_plugin_standalone.sh submodules/opencv/image_processing/image_filtering --opencv
+python scripts/build_plugin_standalone.py examples/plugins/demo
+python scripts/build_plugin_standalone.py submodules/opencv/image_processing/image_filtering --enable-opencv
 
 # 3. 生成 demo 插件后运行 dlopen 测试（文件缺失时 soft-skip）
 ctest -R test_plugin_abi
 ```
 
-- 原有 in-tree 开发流程（`scripts/run_tests.sh`、GraphStudio 扫描 `build/submodules/`）不变；加 `-DTASK_GRAPH_BUILD_SUBMODULES=OFF` 可让核心库严格独立编译。
+- 原有 in-tree 开发流程（`scripts/run_tests.py`、GraphStudio 扫描 `build/submodules/`）不变；加 `-DTASK_GRAPH_BUILD_SUBMODULES=OFF` 可让核心库严格独立编译。
 - 各子模块通过 `use_task_graph_sdk()`（`cmake/SdkUtil.cmake`）链接框架：优先 in-tree 目标，其次 `find_package(task_graph)`（SDK 导入目标），最后旧式 `TASK_GRAPH_ROOT`。
 - 插件导出 `register_plugin` / `unregister_plugin` / `get_plugin_info`，并可导出 `TG_DEFINE_PLUGIN_SDK_VERSION`；`PluginLoader` 会拒绝 SDK 版本不匹配的动态库。
-- `scripts/run_tests.sh --sdk` 一键完成第 1–3 步。
+- `python scripts/run_tests.py --sdk` 一键完成第 1–3 步。
 - WASM / 移动端仍为静态链接（不支持 dlopen）。
 
 ## GPU 与跨平台注意事项
@@ -176,14 +176,14 @@ ctest -R test_plugin_abi
 ## GraphStudio（Qt6 桌面编辑器）
 
 ```bash
-scripts/run_graph_studio.sh            # 构建并启动
-scripts/run_graph_studio.sh --qt /path/to/qtbase   # CMake 找不到 Qt6 时指定前缀
-scripts/run_graph_studio.sh -t         # 运行编辑器自带的 ctest 测试
+python scripts/run_graph_studio.py            # 构建并启动
+python scripts/run_graph_studio.py --qt /path/to/qtbase   # CMake 找不到 Qt6 时指定前缀
+python scripts/run_graph_studio.py -t         # 运行编辑器自带的 ctest 测试
 ```
 
-无头 UI 测试：`scripts/run_ui_tests.sh`。
+无头 UI 测试：`python scripts/run_ui_tests.py`。
 
-崩溃上报（可选）使用 sentry-native + Crashpad；构建需先运行 `scripts/fetch_sentry.sh`，运行时读取 `SENTRY_DSN` 环境变量。没有 DSN 时是干净的 no-op，可安全在本地运行。
+崩溃上报（可选）使用 sentry-native + Crashpad；构建需先运行 `python scripts/fetch_sentry.py`，运行时读取 `SENTRY_DSN` 环境变量。没有 DSN 时是干净的 no-op，可安全在本地运行。
 
 ## 测试
 

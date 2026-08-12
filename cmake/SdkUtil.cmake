@@ -34,7 +34,7 @@ function(use_task_graph_sdk target)
         message(FATAL_ERROR
             "use_task_graph_sdk(${target}): 找不到 task_graph。\n"
             "  独立编译插件时请指定：\n"
-            "    -Dtask_graph_DIR=<sdk>/lib/cmake/task_graph   (SDK 前缀，见 scripts/build_sdk.sh)\n"
+            "    -Dtask_graph_DIR=<sdk>/lib/cmake/task_graph   (SDK 前缀，见 scripts/build_sdk.py)\n"
             "  或旧式：-DTASK_GRAPH_ROOT=/path/to/task_graph   （仓库根 + 预构建 libtask_graph）")
     endif()
 
