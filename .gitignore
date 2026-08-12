@@ -11,3 +11,7 @@ submodules/*
 app/graph_studio/build/
 app/graph_studio/build_wasm/profiler_trace.json
 app/graph_studio/third_party/
+
+# Python (cross-platform scripts under scripts/)
+__pycache__/
+*.pyc

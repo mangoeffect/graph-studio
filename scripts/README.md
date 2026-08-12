@@ -1,15 +1,23 @@
 ﻿# task_graph 脚本
 
-本目录的脚本分两类：`*.sh` 假设 macOS/Linux（Homebrew Qt 路径、`.dylib`、`uname`），`*.ps1` 是它们的 Windows 等价物（用 VS 多配置生成器，构建时传 `--config` 而非 `-DCMAKE_BUILD_TYPE`）。两个平台一一对应：
+本目录的核心构建/测试脚本已统一为**跨平台 Python**（Python 3.9+，纯标准库），同一份脚本在 macOS / Linux / Windows 通用，无需各平台单独实现：
 
-| 用途 | macOS / Linux | Windows |
-|---|---|---|
-| 构建并运行全部单元测试 | `run_tests.sh` | `run_tests.ps1` |
-| 构建并启动 GraphStudio (Qt6 GUI) | `run_graph_studio.sh` | `run_graph_studio.ps1` |
-| 把 task_graph 装成可分发 SDK 前缀 | `build_sdk.sh` | `build_sdk.ps1` |
-| 用 SDK 前缀独立编译一个插件 | `build_plugin_standalone.sh` | `build_plugin_standalone.ps1` |
+| 用途 | Python 脚本（推荐，三平台通用） |
+|---|---|
+| 构建并运行全部单元测试 | `scripts/run_tests.py` |
+| 构建并启动 GraphStudio (Qt6 GUI) | `scripts/run_graph_studio.py` |
+| 把 task_graph 装成可分发 SDK 前缀 | `scripts/build_sdk.py` |
+| 用 SDK 前缀独立编译一个插件 | `scripts/build_plugin_standalone.py` |
 
-> `*.sh` 在 Windows 原生环境无法运行；Windows 上请用对应的 `*.ps1`，或直接调用 cmake（VS 生成器，`cmake -S . -B build` 然后 `cmake --build build --config Debug`）。
+```bash
+# 任意平台
+python scripts/run_tests.py
+python scripts/run_graph_studio.py -t
+python scripts/build_sdk.py
+python scripts/build_plugin_standalone.py examples/plugins/demo
+```
+
+> 历史的 `*.sh` / `*.ps1` 同名文件已退化为 **thin shim**：只做 `exec python3 <name>.py "$@"` / `& python <name>.py @args` 转发，下个版本删除。在没装 Python 的极少数环境下，仍可直接调用 cmake（macOS/Linux：`cmake -S . -B build && cmake --build build`；Windows VS 生成器：`cmake -S . -B build` 然后 `cmake --build build --config Debug`）。
 
 此外还有跨平台的 Python 脚本：
 
@@ -17,6 +25,18 @@
 - `wasm_dev_server.py` — WASM 多线程开发服务器（标准库 `http.server`，跨平台）
 
 其余 `*.sh`（`run_ui_tests.sh`、`release_graph_studio.sh`、`build_android/ios/wasm/opencv_*/mediapipe_macos.sh`、`fetch_sentry.sh`、`upload_sentry_symbols.sh`、`download_mediapipe_models.sh`）目前只有 macOS/Linux 版本，详见各脚本头部注释。
+
+## 共享工具包 `gs/`
+
+四个核心 Python 脚本共享一套纯标准库的工具包 `scripts/gs/`：
+
+- `console.py` — 着色输出（step/ok/fail/warn，遵循 `NO_COLOR`，输出前 flush 保证顺序）
+- `runner.py` — `subprocess` 包装（等价 PowerShell 的 `Invoke-Native`，透传输出并返回退出码）
+- `platform.py` — OS 判断 / `os.cpu_count()` / 动态库后缀 / 运行时搜索路径注入（Windows `PATH`、macOS `DYLD_LIBRARY_PATH`、Linux `LD_LIBRARY_PATH`）/ 桌面 GPU 后端特性宏（macOS Metal / Windows Vulkan）
+- `toolchain.py` — cmake/ctest 发现（`shutil.which` → VS2022 自带 cmake → `CMakeCache.txt` 兜底）+ Windows SDK 工具发现
+- `deps.py` — Qt6 / OpenCV 跨平台探测（`C:\Qt\<ver>\msvc2022_64`、Homebrew `opt/qt`、`C:\opencv\build\x64\vc16`、`$OPENCV_DIR`）
+- `cmake.py` — `CMake` 类：单配置生成器（Unix，`-DCMAKE_BUILD_TYPE`）与多配置生成器（Windows VS，`--config` / `-C`）的统一抽象
+- `sdk.py` — `build_sdk` / `build_plugin_standalone` 的共享实现（含 stale-cache 守卫、`task_graph.lib` 镜像、`TASK_GRAPH_PLUGINS_PATH` 收集）
 
 ---
 
