@@ -4,6 +4,7 @@
 #include <task_graph/thread_pool.hpp>
 #include <task_graph/profiler.hpp>
 #include <unordered_map>
+#include <unordered_set>
 #include <atomic>
 #include <future>
 #include <vector>
@@ -70,6 +71,17 @@ public:
 private:
     void run(const DAG& dag);
     void process_task(const DAG& dag, const ExecutionPlan& plan, const TaskId& task_id);
+
+    // 流式模式（视频等时序源）：检测 IStreamSource 并在 run() 入口提前派发。
+    // 返回 true 表示已处理（stream 模式），run() 直接返回；false 表示无源，
+    // 回退到原 one-shot 路径。v1 仅支持单个源 + cone 内含汇才进入 stream。
+    bool try_run_stream(const DAG& dag);
+    void run_stream(const DAG& dag, NodePtr src, IStreamSource* stream_src,
+                    const std::vector<std::pair<NodePtr, IStreamSink*>>& sinks,
+                    const std::unordered_set<TaskId>& cone);
+    // 同步执行单个 task（stream 模式用，按拓扑序逐个调用）：
+    // 从 results_ 取上游、check_input、execute、存回 results_、emit 事件。
+    TaskResult execute_one(const DAG& dag, const TaskId& tid);
 
     // 触发统一执行事件（同时喂给 ProfileCollector 和用户 callback）
     void emit_event(const ExecutionEvent& e);

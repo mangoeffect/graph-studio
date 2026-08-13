@@ -91,7 +91,10 @@ enum class TaskStatus {
     RUNNING,
     COMPLETED,
     FAILED,
-    SKIPPED
+    SKIPPED,
+    // 流式源流尽信号：IStreamSource::next_frame() 返回此状态表示再无更多帧。
+    // 仅在 stream 模式下由 executor 识别，不计入 is_success()/is_failed()。
+    STREAM_END
 };
 
 enum class TaskPriority {
@@ -240,6 +243,31 @@ using NodePtr = std::shared_ptr<INode>;
 // 向后兼容别名
 using IPluginTask = INode;
 using PluginTaskPtr = NodePtr;
+
+// 逐帧流式源/汇接口（视频等时序数据）。
+// task 同时继承 INode + IStreamSource/IStreamSink 即可让 DAGExecutor 进入
+// stream 模式：executor 检测到 IStreamSource 后循环调用 next_frame()，每帧
+// 驱动其下游 cone（按拓扑序）重跑一次，帧以常规端口值（如 cv::Mat）流动，
+// 因此中间 task 无需任何改动即可逐帧复用（例：image_filtering 作用于视频帧）。
+// 判定方式为 dynamic_cast，未实现这些接口的图完全走原有 one-shot 路径。
+class IStreamSource {
+public:
+    virtual ~IStreamSource() = default;
+    // 图开始前调一次：打开资源、游标归零。实现从 config().params 读路径参数。
+    // 失败应记录内部状态，next_frame() 随即返回 STREAM_END/FAILED。
+    virtual void reset_stream() = 0;
+    // 取下一帧。有帧返回 COMPLETED + value（端口 "out"）；流尽返回 STREAM_END；
+    // 出错返回 FAILED。不得抛异常（-fno-exceptions 安全）。
+    virtual TaskResult next_frame(TaskContext& ctx) = 0;
+};
+
+// 流式汇：跨帧累积（如视频写文件）。每帧照常被 execute() 调用写一帧，
+// 全部帧处理完后 executor 调 on_stream_end() 收尾（关闭文件/写 trailer）。
+class IStreamSink {
+public:
+    virtual ~IStreamSink() = default;
+    virtual void on_stream_end() = 0;
+};
 
 class IPluginRegistry {
 public:

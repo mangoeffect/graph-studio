@@ -198,6 +198,9 @@ add_tg_test(test_logger)
 
 add_tg_test(test_plugin)
 
+# 流式执行器（IStreamSource/IStreamSink 逐帧循环）单元测试：纯 mock 源/汇，不依赖 OpenCV。
+add_tg_test(test_stream_executor)
+
 # 插件 ABI 动态加载测试（独立编译的 demo 插件由 scripts/build_sdk.py +
 # scripts/build_plugin_standalone.py 生成；文件缺失时 soft-SKIP）
 add_tg_test(test_plugin_abi)
@@ -266,6 +269,7 @@ add_test(NAME test_profiler COMMAND test_profiler)
 add_test(NAME test_type_registry COMMAND test_type_registry)
 add_test(NAME test_logger COMMAND test_logger)
 add_test(NAME test_plugin COMMAND test_plugin)
+add_test(NAME test_stream_executor COMMAND test_stream_executor)
 add_test(NAME test_plugin_abi COMMAND test_plugin_abi)
 if(TASK_GRAPH_ENABLE_OPENCV)
     add_test(NAME test_opencv_convert COMMAND test_opencv_convert)

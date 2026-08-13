@@ -45,6 +45,16 @@
       ]
     },
     {
+      "name": "video_io",
+      "url": "./submodules/opencv/video_io",
+      "ref": "main",
+      "type": "local",
+      "tasks": [
+        "video_reader",
+        "video_writer"
+      ]
+    },
+    {
       "name": "image_geometry",
       "url": "./submodules/opencv/image_processing/image_geometry",
       "ref": "main",
