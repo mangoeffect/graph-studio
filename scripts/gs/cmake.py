@@ -64,8 +64,8 @@ class CMake:
         return runner.check(args, what=what)
 
     def ctest(self, ctest: Path, build: Path, config: Optional[str] = None,
-              filter: Optional[str] = None, verbose: bool = False,
-              list_only: bool = False) -> int:
+              filter: Optional[str] = None, exclude: Optional[str] = None,
+              verbose: bool = False, list_only: bool = False) -> int:
         args: List[Arg] = [ctest]
         if self.multi_config and config:
             args.append("-C")
@@ -76,6 +76,8 @@ class CMake:
             args.append("--output-on-failure")
             if filter:
                 args += ["-R", filter]
+            if exclude:
+                args += ["-E", exclude]
             if verbose:
                 args.append("-V")
         label = "列出测试" if list_only else "运行测试"

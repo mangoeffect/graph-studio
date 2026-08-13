@@ -4,6 +4,7 @@
 
 | 用途 | Python 脚本（推荐，三平台通用） |
 |---|---|
+| **一键跑全部测试（框架 + 子模块 + UI）** | **`scripts/run_all_test.py`** |
 | 构建并运行全部单元测试 | `scripts/run_tests.py` |
 | 构建并启动 GraphStudio (Qt6 GUI) | `scripts/run_graph_studio.py` |
 | 把 task_graph 装成可分发 SDK 前缀 | `scripts/build_sdk.py` |
@@ -37,6 +38,67 @@ python scripts/build_plugin_standalone.py examples/plugins/demo
 - `deps.py` — Qt6 / OpenCV 跨平台探测（`C:\Qt\<ver>\msvc2022_64`、Homebrew `opt/qt`、`C:\opencv\build\x64\vc16`、`$OPENCV_DIR`）
 - `cmake.py` — `CMake` 类：单配置生成器（Unix，`-DCMAKE_BUILD_TYPE`）与多配置生成器（Windows VS，`--config` / `-C`）的统一抽象
 - `sdk.py` — `build_sdk` / `build_plugin_standalone` 的共享实现（含 stale-cache 守卫、`task_graph.lib` 镜像、`TASK_GRAPH_PLUGINS_PATH` 收集）
+
+---
+
+## run_all_test.py — 一键全量测试（框架 + 子模块 + UI）
+
+`run_all_test.py` 在三个独立脚本（`run_tests.py` / `run_all_submodules_test.py` / `run_ui_tests.py`）之上做一次「单根构建 + 多阶段 ctest」编排，**一次根构建共享给框架与子模块阶段**，避免重复配置/构建根库，并在末尾汇总各阶段通过情况。三平台通用。
+
+阶段划分（`TASK_GRAPH_BUILD_SUBMODULES` 默认 ON，故框架与子模块测试二进制都在同一棵根 `build/` 里，仅是 ctest 过滤视角不同）：
+
+| 阶段 | 构建树 | ctest 过滤 |
+|---|---|---|
+| 框架测试 `framework` | 根 `build/` | `ctest -E <子模块正则>`（排除子模块） |
+| 子模块测试 `submodules` | 根 `build/` | `ctest -R <子模块正则>`（子模块子集，沿用 `run_all_submodules_test.py` 的正则表） |
+| UI 测试 `ui` | `app/graph_studio/build/` | `ctest`（4 个 Qt 测试，`QT_QPA_PLATFORM=offscreen` 无头） |
+
+```bash
+# 构建 + 跑全部三阶段
+python scripts/run_all_test.py
+
+# 清空两棵构建树后全新构建
+python scripts/run_all_test.py -c
+
+# 复用现有产物，只跑测试（不构建）
+python scripts/run_all_test.py --no-build
+
+# 跳过 UI 阶段（无需 Qt，只跑框架 + 子模块）
+python scripts/run_all_test.py --skip-ui
+
+# 显式指定阶段（逗号分隔）
+python scripts/run_all_test.py --phases framework,submodules
+
+# 首失败即停（默认跑完全部，末尾汇总所有失败）
+python scripts/run_all_test.py --fail-fast
+
+# 额外构建 SDK + demo 插件，激活 test_plugin_abi
+python scripts/run_all_test.py --sdk
+
+# 先下载 MediaPipe 模型再跑（mediapipe 测试需要）
+python scripts/run_all_test.py --download-models
+```
+
+| 参数 | 缩写 | 说明 |
+|---|---|---|
+| `--jobs` | `-j` | 并行编译线程数（默认 CPU 核数） |
+| `--clean` | `-c` | 清空根 `build/` 与 `app/graph_studio/build/` 后全新构建 |
+| `--no-build` | | 跳过构建，复用现有产物只跑测试 |
+| `--config` | | 构建配置（默认 `Debug`） |
+| `--verbose` | `-v` | ctest 详细输出 |
+| `--cmake` | | 手动指定 cmake 可执行文件 |
+| `--qt` | | 手动指定 Qt6 前缀（UI 阶段） |
+| `--opencv-dir` | | OpenCV 前缀（默认自动探测） |
+| `--skip-framework` / `--skip-submodules` / `--skip-ui` | | 跳过对应阶段 |
+| `--phases` | | 显式指定要运行的阶段（逗号分隔：`framework,submodules,ui`） |
+| `--fail-fast` | | 某阶段失败立即停止（默认跑完全部） |
+| `--sdk` | | 额外构建 SDK + demo 插件，激活 `test_plugin_abi` |
+| `--download-models` | | 运行前先下载 MediaPipe 模型 |
+| `--help` | `-h` | 显示帮助 |
+
+> - 退出码：`0` 表示全部通过（或全部被跳过/门控）；非 `0` 表示任一非跳过阶段失败或构建出错。
+> - Windows 上 UI 阶段会自动镜像 `build/<Config>/task_graph.lib` 到 `build/`，以匹配 `app/graph_studio` 的 `link_directories(../build)`（沿用 `run_graph_studio.py` 的做法）。
+> - 子模块阶段的「子模块名 → 测试名正则」表直接复用自 `run_all_submodules_test.py`，新增子模块只需在那里登记。
 
 ---
 
