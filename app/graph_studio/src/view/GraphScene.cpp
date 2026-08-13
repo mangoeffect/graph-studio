@@ -214,16 +214,9 @@ void GraphScene::contextMenuEvent(QGraphicsSceneContextMenuEvent* event)
     QMenu menu;
     QPointF pos = event->scenePos();
 
-    auto addSection = [&menu](const QString& title) {
-        auto* a = menu.addAction(title);
-        a->setEnabled(false);
-        QFont f = a->font();
-        f.setBold(true);
-        a->setFont(f);
-    };
-
-    auto addTask = [this, &menu, pos](const QString& name) {
-        menu.addAction(name, this, [this, name, pos]() {
+    // task 动作添加到指定的（分类）子菜单中
+    auto addTask = [this, pos](QMenu* sub, const QString& name) {
+        sub->addAction(name, this, [this, name, pos]() {
             emit nodeCreateRequested(name, pos);
         });
     };
@@ -247,10 +240,9 @@ void GraphScene::contextMenuEvent(QGraphicsSceneContextMenuEvent* event)
         if (!bySection.contains(s)) sections.append(s);
         bySection[s].append(t);
     }
-    for (int i = 0; i < sections.size(); ++i) {
-        if (i > 0) menu.addSeparator();
-        addSection(sections[i]);
-        for (const auto& t : bySection[sections[i]]) addTask(t);
+    for (const auto& s : sections) {
+        QMenu* sub = menu.addMenu(s);
+        for (const auto& t : bySection[s]) addTask(sub, t);
     }
 
     menu.exec(event->screenPos());
