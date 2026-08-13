@@ -9,6 +9,10 @@ PoseLandmarker / ObjectDetector 的 C API。
   - macOS 上 Docker 只能产出 Linux 二进制，无法链接进 macOS 的 task_graph。
     因此 macOS 桌面默认走本机 bazelisk（brew install bazelisk）。
   - --docker 用于产出 Linux 版预编译库（Linux 桌面 / CI / Windows+WSL）。
+  - Windows 原生：MediaPipe 官方 Bazel 不支持 Win32 原生构建，本脚本不提供
+    该路径。若要在 Windows 桌面跑 mediapipe 测试，需自行产出并按约定布局放进
+    build/mediapipe/install/（bin/vision.dll + lib/vision.lib + include/），
+    例如通过交叉编译或第三方产物；CMakeLists 的 WIN32 分支会据此注册测试。
 
 用法:
   python scripts/build_mediapipe.py                         # 默认本机 bazelisk 构建
