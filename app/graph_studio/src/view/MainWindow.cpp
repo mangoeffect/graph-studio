@@ -132,15 +132,15 @@ void MainWindow::ApplyDarkTheme()
             padding: 0 5px;
         }
 
-        QListWidget {
+        QTreeWidget {
             background-color: #252526;
             border: 1px solid #3c3c3c;
             border-radius: 4px;
             outline: none;
         }
-        QListWidget::item { padding: 6px 10px; border-bottom: 1px solid #2d2d30; }
-        QListWidget::item:selected { background-color: #094771; color: #ffffff; }
-        QListWidget::item:hover { background-color: #2a2d2e; }
+        QTreeWidget::item { padding: 4px 6px; }
+        QTreeWidget::item:selected { background-color: #094771; color: #ffffff; }
+        QTreeWidget::item:hover { background-color: #2a2d2e; }
 
         QPlainTextEdit {
             background-color: #1e1e1e;
@@ -313,12 +313,13 @@ void MainWindow::ConnectSignals()
             zoomLabel_->setText(QString("Zoom: %1%").arg(int(factor * 100)));
     });
 
-    // Task list double-click → add at view center
-    connect(taskList_, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem* item) {
-        if (!item || !(item->flags() & Qt::ItemIsEnabled))
+    // Task list double-click → add at view center (only for task leaves, not category headers)
+    connect(taskList_, &QTreeWidget::itemDoubleClicked, this, [this](QTreeWidgetItem* item, int) {
+        // 忽略分类标题（无父节点）和非启用项
+        if (!item || !item->parent() || !(item->flags() & Qt::ItemIsEnabled))
             return;
         QPointF center = graphicsView_->mapToScene(graphicsView_->viewport()->rect().center());
-        CreateNodeAt(item->text(), center);
+        CreateNodeAt(item->text(0), center);
     });
 
     // Command stack
@@ -447,6 +448,9 @@ QWidget* MainWindow::CreateTaskPanel()
     taskList_->setDragEnabled(true);
     taskList_->setDragDropMode(QAbstractItemView::DragOnly);
     taskList_->setDefaultDropAction(Qt::CopyAction);
+    taskList_->setRootIsDecorated(true);        // 显示分类行的 +/- 展开箭头
+    taskList_->setExpandsOnDoubleClick(false);  // 双击分类标题不触发展开（双击仅用于添加任务）
+    taskList_->setHeaderHidden(true);           // 保持扁平外观，隐藏列头
     taskList_->setToolTip("Drag to canvas or double-click to add");
     layout->addWidget(taskList_);
 
@@ -473,29 +477,36 @@ void MainWindow::PopulateTaskLibrary()
     }
 
     auto addSection = [this](const QString& title) {
-        auto* item = new QListWidgetItem("-- " + title + " --");
-        item->setFlags(item->flags() & ~Qt::ItemIsEnabled & ~Qt::ItemIsSelectable & ~Qt::ItemIsDragEnabled);
-        item->setForeground(QColor("#888888"));
-        taskList_->addItem(item);
+        // 分类作为顶层父节点：可展开/折叠，默认折叠；不可选中、不可拖拽。
+        auto* parent = new QTreeWidgetItem(taskList_);
+        parent->setText(0, title);
+        QFont sectionFont = parent->font(0);
+        sectionFont.setBold(true);
+        parent->setFont(0, sectionFont);
+        parent->setForeground(0, QColor("#888888"));
+        parent->setFlags(Qt::ItemIsEnabled);
+        return parent;
     };
 
-    auto addTaskItem = [this](const QString& name) {
-        auto* item = new QListWidgetItem(name);
-        item->setFlags(item->flags() | Qt::ItemIsDragEnabled);
-        taskList_->addItem(item);
+    auto addTaskItem = [](QTreeWidgetItem* parent, const QString& name) {
+        // task 类型作为分类的子节点；可拖拽到画布。
+        auto* item = new QTreeWidgetItem(parent);
+        item->setText(0, name);
+        item->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsDragEnabled);
     };
 
     for (const auto& s : sections) {
-        addSection(s);
-        for (const auto& t : bySection[s]) addTaskItem(t);
+        QTreeWidgetItem* parent = addSection(s);
+        for (const auto& t : bySection[s]) addTaskItem(parent, t);
+        // QTreeWidgetItem 默认即为折叠状态，无需显式收起。
     }
 
     // 若注册表为空，给出提示
     if (allTypes.isEmpty()) {
-        auto* item = new QListWidgetItem("(no tasks registered)");
-        item->setFlags(item->flags() & ~Qt::ItemIsEnabled & ~Qt::ItemIsSelectable & ~Qt::ItemIsDragEnabled);
-        item->setForeground(QColor("#888888"));
-        taskList_->addItem(item);
+        auto* item = new QTreeWidgetItem(taskList_);
+        item->setText(0, QStringLiteral("(no tasks registered)"));
+        item->setFlags(Qt::ItemIsEnabled);
+        item->setForeground(0, QColor("#888888"));
     }
 }
 

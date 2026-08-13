@@ -5,7 +5,7 @@
 #include <QSplitter>
 #include <QToolBar>
 #include <QStatusBar>
-#include <QListWidget>
+#include <QTreeWidget>
 #include <QPlainTextEdit>
 #include <QLabel>
 #include <QFormLayout>
@@ -29,21 +29,23 @@ class EdgeItem;
 class ProfilePanel;
 class GpuImageViewer;
 
-// QListWidget subclass that emits plain-text mime data on drag, so the canvas
-// GraphView (which checks hasText()) can accept the drop.
-class TaskListWidget : public QListWidget
+// QTreeWidget subclass that emits plain-text mime data on drag, so the canvas
+// GraphView (which checks hasText()) can accept the drop. Categories are
+// top-level (collapsed-by-default) parents; task types are their children.
+class TaskListWidget : public QTreeWidget
 {
 public:
-    using QListWidget::QListWidget;
+    using QTreeWidget::QTreeWidget;
 
 protected:
-    QMimeData* mimeData(const QList<QListWidgetItem*>& items) const override
+    QMimeData* mimeData(const QList<QTreeWidgetItem*>& items) const override
     {
-        // Only emit text for the first draggable item (single selection drag)
+        // Only emit text for the first draggable item (single selection drag);
+        // category parents are not drag-enabled and thus skipped.
         for (auto* item : items) {
             if (item->flags() & Qt::ItemIsDragEnabled) {
                 QMimeData* mimeData = new QMimeData;
-                mimeData->setText(item->text());
+                mimeData->setText(item->text(0));
                 return mimeData;
             }
         }
