@@ -28,6 +28,7 @@
 #include <QPixmap>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QDir>
 #include <QMessageBox>
 #include <QKeyEvent>
 #include <QShortcut>
@@ -1113,12 +1114,16 @@ void MainWindow::OnParamWidgetChanged(const QString& key)
 
 // 文件路径参数的浏览按钮：桌面拿真实路径，WASM 走异步上传 -> MEMFS 临时文件。
 // 回填 QLineEdit 后手动触发 OnParamWidgetChanged 写回 model。
+// 桌面端策略：默认目录 = 当前 graph.json 所在目录；若用户选中的文件位于
+// graph 目录内（或其子目录），自动转成相对路径再回填，这样 graph 整体
+// 挪动后相对资产仍可解析；位于 graph 目录外则保留绝对路径。
 void MainWindow::OnBrowseFile(const QString& key, QLineEdit* le, const QString& filter)
 {
     if (!le) return;
 #ifdef __EMSCRIPTEN__
     // WASM：同步模态对话框不可用，getOpenFileContent 异步返回文件字节，
     // 写入 MEMFS 后把该路径作为参数值（下游 task 用该路径 imread）。
+    // 注意：WASM 下不存在 graph 目录概念，相对路径特性不生效。
     QString capturedKey = key;
     QFileDialog::getOpenFileContent(filter,
         [this, capturedKey, le](const QString& fileName, const QByteArray& content) {
@@ -1133,9 +1138,23 @@ void MainWindow::OnBrowseFile(const QString& key, QLineEdit* le, const QString& 
             OnParamWidgetChanged(capturedKey);
         });
 #else
-    QString path = QFileDialog::getOpenFileName(this, "Select File", QString(), filter);
+    // 默认目录：graph.json 所在目录，让用户首先看到 graph 同级的资产。
+    const QString graphDir = currentFilePath_.isEmpty()
+        ? QString()
+        : QFileInfo(currentFilePath_).absolutePath();
+    const QString path = QFileDialog::getOpenFileName(this, "Select File", graphDir, filter);
     if (path.isEmpty()) return;
-    le->setText(path);
+
+    // 选中文件位于 graph 目录内（含子目录）时，转成相对路径回填；
+    // 否则保留绝对路径。QDir::relativeFilePath 自动处理 ../ 序列。
+    QString stored = path;
+    if (!graphDir.isEmpty()) {
+        const QString rel = QDir(graphDir).relativeFilePath(path);
+        if (!rel.startsWith("..") && !QDir::isAbsolutePath(rel)) {
+            stored = rel;
+        }
+    }
+    le->setText(stored);
     OnParamWidgetChanged(key);
 #endif
 }

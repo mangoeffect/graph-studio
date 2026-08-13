@@ -1,5 +1,6 @@
 ﻿#include <task_graph/dag_serializer.hpp>
 #include <task_graph/plugin.hpp>
+#include <task_graph/path_utils.hpp>
 #include <stdexcept>
 #include <any>
 #include <variant>
@@ -126,6 +127,14 @@ nlohmann::json serialize_specs(const std::vector<PortSpec>& specs) {
     return arr;
 }
 
+// 框架注入到 params 里的保留 key，序列化时必须跳过：
+//   - 这些是运行时上下文（_source_dir = graph.json 所在目录），不属于用户数据；
+//   - 写回 graph.json 会泄露作者本机路径，且文件移动后立刻失效。
+// 命名约定：所有保留 key 以 '_' 开头，业务参数请勿使用此命名。
+bool is_framework_reserved_param(const std::string& key) {
+    return !key.empty() && key[0] == '_';
+}
+
 }  // namespace
 
 // ====================== v2.0 序列化 ======================
@@ -159,6 +168,8 @@ nlohmann::json DAGSerializer::serialize(const DAG& dag) {
 
         nlohmann::json params_json = nlohmann::json::object();
         for (const auto& [key, value] : config.params.params()) {
+            // 跳过框架保留参数（_source_dir 等）：不写入 graph.json
+            if (is_framework_reserved_param(key)) continue;
             std::visit([&](auto&& v) {
                 using T = std::decay_t<decltype(v)>;
                 if constexpr (std::is_same_v<T, int>) {
@@ -197,7 +208,7 @@ nlohmann::json DAGSerializer::serialize(const DAG& dag) {
 }
 
 // ====================== 反序列化：自动识别 v1.0 / v2.0 ======================
-DAG DAGSerializer::deserialize(const nlohmann::json& j) {
+DAG DAGSerializer::deserialize(const nlohmann::json& j, const std::string& base_dir) {
     if (!j.contains("version")) {
         throw std::runtime_error("Missing version in DAG JSON");
     }
@@ -232,6 +243,11 @@ DAG DAGSerializer::deserialize(const nlohmann::json& j) {
             }
             config.params = parse_params_with_specs(task_json["params"], specs);
         }
+
+        // 框架参数注入：graph.json 所在目录，供节点 resolve 相对路径使用。
+        // base_dir 为空时仍然写入空串占位（保持 params 形态一致；节点侧
+        // resolve_path 会在 base_dir 空时直接返回原值，零回归）。
+        config.params.set_string(kSourceDirParam, base_dir);
 
         bool is_plugin_task = PluginRegistry::instance().has_task(type);
         if (is_plugin_task) {
@@ -281,8 +297,8 @@ std::string DAGSerializer::to_string(const DAG& dag, int indent) {
     return serialize(dag).dump(indent);
 }
 
-DAG DAGSerializer::from_string(const std::string& s) {
-    return deserialize(nlohmann::json::parse(s));
+DAG DAGSerializer::from_string(const std::string& s, const std::string& base_dir) {
+    return deserialize(nlohmann::json::parse(s), base_dir);
 }
 
 // ====================== 带元数据的序列化 ======================
@@ -298,9 +314,10 @@ std::string DAGSerializer::to_string(const DAG& dag, const nlohmann::json& metad
     return serialize(dag, metadata).dump(indent);
 }
 
-DAGSerializer::DeserializeResult DAGSerializer::deserialize_with_metadata(const nlohmann::json& j) {
+DAGSerializer::DeserializeResult DAGSerializer::deserialize_with_metadata(
+        const nlohmann::json& j, const std::string& base_dir) {
     DeserializeResult result;
-    result.dag = deserialize(j);
+    result.dag = deserialize(j, base_dir);
 
     // 优先读 "metadata" 键
     if (j.contains("metadata") && j["metadata"].is_object()) {
@@ -317,8 +334,9 @@ DAGSerializer::DeserializeResult DAGSerializer::deserialize_with_metadata(const 
     return result;
 }
 
-DAGSerializer::DeserializeResult DAGSerializer::from_string_with_metadata(const std::string& s) {
-    return deserialize_with_metadata(nlohmann::json::parse(s));
+DAGSerializer::DeserializeResult DAGSerializer::from_string_with_metadata(
+        const std::string& s, const std::string& base_dir) {
+    return deserialize_with_metadata(nlohmann::json::parse(s), base_dir);
 }
 
 }

@@ -58,8 +58,12 @@ public:
     // Serialization helpers (via DAGSerializer)
     std::string to_json_string() const;
     std::string to_json_string(const std::string& metadata_json) const;
-    bool from_json_string(const std::string& json);
-    std::string from_json_string_with_metadata(const std::string& json);
+    // base_dir = graph.json 所在目录的绝对路径，会被注入到每个 task 的
+    // _source_dir 参数（详见 <task_graph/path_utils.hpp>），用于运行时把
+    // 相对路径解析为绝对路径。默认空串=不启用相对路径解析（保持旧行为）。
+    bool from_json_string(const std::string& json, const std::string& base_dir = "");
+    std::string from_json_string_with_metadata(const std::string& json,
+                                               const std::string& base_dir = "");
 
     const task_graph::DAG& dag() const { return *dag_; }
 

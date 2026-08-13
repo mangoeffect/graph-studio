@@ -1,6 +1,7 @@
 ﻿#include "viewmodel/GraphViewModel.h"
 
 #include <QFile>
+#include <QFileInfo>
 #include <QTextStream>
 #include <QSet>
 #include <QQueue>
@@ -714,7 +715,12 @@ bool GraphViewModel::loadFromFile(const QString& filePath)
     positions_.clear();
     selectedNodeId_.clear();
 
-    std::string metadata_str = model_.from_json_string_with_metadata(json.toStdString());
+    // graph.json 所在目录作为相对路径基准，注入到每个 task 的 _source_dir。
+    // 这样 graph 内引用的图片/模型/脚本可以用相对路径，整个 graph 目录
+    // 挪到别处仍可执行。
+    const QString graphDir = QFileInfo(filePath).absolutePath();
+    std::string metadata_str = model_.from_json_string_with_metadata(
+        json.toStdString(), graphDir.toStdString());
     if (metadata_str.empty() && !model_.task_count()) {
         emit logMessage(kLogError, "Failed to parse DAG JSON");
         return false;

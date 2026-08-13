@@ -1,4 +1,4 @@
-#include "model/GraphModel.h"
+﻿#include "model/GraphModel.h"
 #include <task_graph/dag.hpp>
 #include <task_graph/dag_serializer.hpp>
 #include <task_graph/task.hpp>
@@ -186,10 +186,10 @@ std::string GraphModel::to_json_string(const std::string& metadata_json) const
     }
 }
 
-bool GraphModel::from_json_string(const std::string& json)
+bool GraphModel::from_json_string(const std::string& json, const std::string& base_dir)
 {
     try {
-        auto new_dag = task_graph::DAGSerializer::from_string(json);
+        auto new_dag = task_graph::DAGSerializer::from_string(json, base_dir);
         dag_->reset_from(std::move(new_dag));
         return true;
     } catch (const std::exception&) {
@@ -197,10 +197,11 @@ bool GraphModel::from_json_string(const std::string& json)
     }
 }
 
-std::string GraphModel::from_json_string_with_metadata(const std::string& json)
+std::string GraphModel::from_json_string_with_metadata(const std::string& json,
+                                                       const std::string& base_dir)
 {
     try {
-        auto result = task_graph::DAGSerializer::from_string_with_metadata(json);
+        auto result = task_graph::DAGSerializer::from_string_with_metadata(json, base_dir);
         std::string meta = result.metadata.dump();
         dag_->reset_from(std::move(result.dag));
         return meta;

@@ -1,9 +1,10 @@
 ﻿// DAG 序列化测试。合并自 test_serializer.cpp 与 test_serializer_v2.cpp。
 // 覆盖：v2.0 序列化输出、v1.0 反序列化迁移、roundtrip、TaskConfig 持久化、
-//       端口/specs 持久化、v1.0 多输入迁移、缺省端口字段。
+//       端口/specs 持久化、v1.0 多输入迁移、缺省端口字段、_source_dir 注入/跳过。
 #include <task_graph/task_graph.hpp>
 #include <task_graph/dag_serializer.hpp>
 #include <task_graph/data_types.hpp>
+#include <task_graph/path_utils.hpp>
 #include <task_graph/plugin.hpp>
 #include <string>
 #include "test_util.hpp"
@@ -160,6 +161,70 @@ TEST_CASE(v2_missing_port_fields_default) {
     EXPECT_EQ(edges.size(), size_t(1));
     EXPECT_TRUE(edges[0].from_port == "out");
     EXPECT_TRUE(edges[0].to_port == "in");
+}
+
+// ---- _source_dir 框架参数注入与序列化跳过 ----
+
+TEST_CASE(deserialize_without_base_dir_injects_empty_source_dir) {
+    // base_dir 默认空串：仍然注入 _source_dir 占位（值是空串）
+    std::string json = R"({
+        "version": "2.0",
+        "tasks": [{"id": "A"}]
+    })";
+    DAG dag = DAGSerializer::from_string(json);  // 不传 base_dir
+    auto t = dag.get_task("A");
+    EXPECT_TRUE(t->config().params.get_string(kSourceDirParam).has_value());
+    EXPECT_EQ(t->config().params.get_string(kSourceDirParam).value_or("x"), std::string{});
+}
+
+TEST_CASE(deserialize_with_base_dir_injects_source_dir) {
+    std::string json = R"({
+        "version": "2.0",
+        "tasks": [{"id": "A"}, {"id": "B"}]
+    })";
+    const std::string base = "/home/u/graphs";
+    DAG dag = DAGSerializer::from_string(json, base);
+    EXPECT_EQ(dag.get_task("A")->config().params.get_string(kSourceDirParam).value_or(""),
+              base);
+    EXPECT_EQ(dag.get_task("B")->config().params.get_string(kSourceDirParam).value_or(""),
+              base);
+}
+
+TEST_CASE(serialize_skips_framework_reserved_param) {
+    // _source_dir 不能写回 graph.json（避免泄露本机路径 / 文件移动后失效）
+    std::string json = R"({
+        "version": "2.0",
+        "tasks": [{"id": "A"}]
+    })";
+    DAG dag = DAGSerializer::from_string(json, "/home/u/graphs");
+    std::string out = DAGSerializer::to_string(dag);
+    EXPECT_FALSE(out.find("_source_dir") != std::string::npos);
+    // 普通业务参数仍然要保留：构造一个含业务参数的 DAG roundtrip 一下
+    TaskConfig cfg;
+    cfg.params.set_string("file_path", "assets/x.png");
+    cfg.params.set_string(kSourceDirParam, "/home/u/graphs");
+    DAG src;
+    src.add_task(noop("A", cfg));
+    std::string out2 = DAGSerializer::to_string(src);
+    EXPECT_CONTAINS(out2, "file_path");
+    EXPECT_FALSE(out2.find("_source_dir") != std::string::npos);
+}
+
+TEST_CASE(source_dir_round_trip_via_base_dir) {
+    // 模拟实际工作流：保存 graph.json -> 不含 _source_dir；重新加载时
+    // 通过 base_dir 入参重新注入。
+    TaskConfig cfg;
+    cfg.params.set_string("file_path", "assets/x.png");
+    DAG src;
+    src.add_task(noop("A", cfg));
+    std::string json = DAGSerializer::to_string(src);
+    EXPECT_FALSE(json.find("_source_dir") != std::string::npos);
+
+    DAG restored = DAGSerializer::from_string(json, "/home/u/graphs");
+    EXPECT_EQ(restored.get_task("A")->config().params.get_string("file_path").value_or(""),
+              "assets/x.png");
+    EXPECT_EQ(restored.get_task("A")->config().params.get_string(kSourceDirParam).value_or(""),
+              "/home/u/graphs");
 }
 
 TEST_MAIN("Serializer Tests")
