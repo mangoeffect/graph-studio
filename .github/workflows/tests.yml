@@ -23,6 +23,8 @@ concurrency:
 
 env:
   QT_QPA_PLATFORM: 'offscreen'
+  # Windows runner 默认 cp1252，脚本输出的中文会导致 UnicodeEncodeError
+  PYTHONUTF8: '1'
 
 jobs:
   test:

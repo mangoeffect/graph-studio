@@ -23,6 +23,8 @@ concurrency:
 env:
   # headless Qt + 不在编译验证阶段下载 mediapipe 模型（其测试会 soft-SKIP）
   QT_QPA_PLATFORM: 'offscreen'
+  # Windows runner 默认 cp1252，脚本输出的中文会导致 UnicodeEncodeError
+  PYTHONUTF8: '1'
 
 jobs:
   build:

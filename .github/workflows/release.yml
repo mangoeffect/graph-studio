@@ -31,6 +31,10 @@ on:
 permissions:
   contents: write
 
+env:
+  # Windows runner 默认 cp1252，打包脚本输出的中文会导致 UnicodeEncodeError
+  PYTHONUTF8: '1'
+
 jobs:
   # ------------------------------------------------------------------ 打包矩阵
   package:
