@@ -5,6 +5,7 @@
 #include <vector>
 #include <unordered_map>
 #include <variant>
+#include <memory>
 #include <sstream>
 #include <algorithm>
 #include <cctype>
@@ -30,11 +31,37 @@ public:
 
 private:
     value_t m_type = value_t::null;
-    std::variant<std::nullptr_t, bool, int64_t, double, std::string, object_t, array_t> m_value;
+    // object/array 经 shared_ptr 间接持有：libstdc++（gcc11/ubuntu-22.04）的
+    // unordered_map 不接受不完整 mapped type，而本类成员 variant 在类定义内
+    // 实例化时 json 尚不完整；指针不受此限（libc++ 容忍，故 macOS 一直可编）。
+    // 拷贝构造/赋值做了深拷贝以保持原先的值语义。
+    using object_ptr = std::shared_ptr<object_t>;
+    using array_ptr = std::shared_ptr<array_t>;
+    std::variant<std::nullptr_t, bool, int64_t, double, std::string, object_ptr, array_ptr> m_value;
 
 public:
     json() = default;
     json(std::nullptr_t) {}
+
+    json(const json& other) : m_type(other.m_type) {
+        if (m_type == value_t::object) {
+            m_value = std::make_shared<object_t>(*std::get<object_ptr>(other.m_value));
+        } else if (m_type == value_t::array) {
+            m_value = std::make_shared<array_t>(*std::get<array_ptr>(other.m_value));
+        } else {
+            m_value = other.m_value;
+        }
+    }
+    json(json&&) = default;
+    json& operator=(const json& other) {
+        if (this != &other) {
+            json tmp(other);
+            m_type = tmp.m_type;
+            m_value = std::move(tmp.m_value);
+        }
+        return *this;
+    }
+    json& operator=(json&&) = default;
 
     json(bool value) : m_type(value_t::boolean), m_value(value) {}
 
@@ -48,21 +75,21 @@ public:
     json(std::string&& value) : m_type(value_t::string), m_value(std::move(value)) {}
     json(const char* value) : m_type(value_t::string), m_value(std::string(value)) {}
 
-    json(std::initializer_list<std::pair<const std::string, json>> init) 
-        : m_type(value_t::object), m_value(object_t()) {
+    json(std::initializer_list<std::pair<const std::string, json>> init)
+        : m_type(value_t::object), m_value(std::make_shared<object_t>()) {
         for (const auto& p : init) {
             (*this)[p.first] = p.second;
         }
     }
 
-    json(std::initializer_list<json> init) 
-        : m_type(value_t::array), m_value(array_t(init.begin(), init.end())) {}
+    json(std::initializer_list<json> init)
+        : m_type(value_t::array), m_value(std::make_shared<array_t>(init.begin(), init.end())) {}
 
-    json(const object_t& value) : m_type(value_t::object), m_value(value) {}
-    json(object_t&& value) : m_type(value_t::object), m_value(std::move(value)) {}
+    json(const object_t& value) : m_type(value_t::object), m_value(std::make_shared<object_t>(value)) {}
+    json(object_t&& value) : m_type(value_t::object), m_value(std::make_shared<object_t>(std::move(value))) {}
 
-    json(const array_t& value) : m_type(value_t::array), m_value(value) {}
-    json(array_t&& value) : m_type(value_t::array), m_value(std::move(value)) {}
+    json(const array_t& value) : m_type(value_t::array), m_value(std::make_shared<array_t>(value)) {}
+    json(array_t&& value) : m_type(value_t::array), m_value(std::make_shared<array_t>(std::move(value))) {}
 
     json& operator=(std::nullptr_t) { m_type = value_t::null; m_value = nullptr; return *this; }
     json& operator=(bool value) { m_type = value_t::boolean; m_value = value; return *this; }
@@ -77,37 +104,37 @@ public:
     json& operator[](const std::string& key) {
         if (m_type != value_t::object) {
             m_type = value_t::object;
-            m_value = object_t();
+            m_value = std::make_shared<object_t>();
         }
-        return std::get<object_t>(m_value)[key];
+        return (*std::get<object_ptr>(m_value))[key];
     }
 
     const json& operator[](const std::string& key) const {
         if (m_type != value_t::object) throw std::out_of_range("key not found");
-        auto it = std::get<object_t>(m_value).find(key);
-        if (it == std::get<object_t>(m_value).end()) throw std::out_of_range("key not found");
+        auto it = std::get<object_ptr>(m_value)->find(key);
+        if (it == std::get<object_ptr>(m_value)->end()) throw std::out_of_range("key not found");
         return it->second;
     }
 
     json& operator[](size_t index) {
         if (m_type != value_t::array) {
             m_type = value_t::array;
-            m_value = array_t();
+            m_value = std::make_shared<array_t>();
         }
-        auto& arr = std::get<array_t>(m_value);
+        auto& arr = *std::get<array_ptr>(m_value);
         if (index >= arr.size()) arr.resize(index + 1);
         return arr[index];
     }
 
     json& push_back(const json& value) {
-        if (m_type != value_t::array) { m_type = value_t::array; m_value = array_t(); }
-        std::get<array_t>(m_value).push_back(value);
+        if (m_type != value_t::array) { m_type = value_t::array; m_value = std::make_shared<array_t>(); }
+        std::get<array_ptr>(m_value)->push_back(value);
         return *this;
     }
 
     json& push_back(json&& value) {
-        if (m_type != value_t::array) { m_type = value_t::array; m_value = array_t(); }
-        std::get<array_t>(m_value).push_back(std::move(value));
+        if (m_type != value_t::array) { m_type = value_t::array; m_value = std::make_shared<array_t>(); }
+        std::get<array_ptr>(m_value)->push_back(std::move(value));
         return *this;
     }
 
@@ -121,40 +148,40 @@ public:
     bool is_number() const { return is_number_integer() || is_number_float(); }
 
     size_t size() const {
-        if (m_type == value_t::object) return std::get<object_t>(m_value).size();
-        if (m_type == value_t::array) return std::get<array_t>(m_value).size();
+        if (m_type == value_t::object) return std::get<object_ptr>(m_value)->size();
+        if (m_type == value_t::array) return std::get<array_ptr>(m_value)->size();
         return 0;
     }
 
     bool empty() const {
-        if (m_type == value_t::object) return std::get<object_t>(m_value).empty();
-        if (m_type == value_t::array) return std::get<array_t>(m_value).empty();
+        if (m_type == value_t::object) return std::get<object_ptr>(m_value)->empty();
+        if (m_type == value_t::array) return std::get<array_ptr>(m_value)->empty();
         return true;
     }
 
     bool contains(const std::string& key) const {
         if (m_type != value_t::object) return false;
-        return std::get<object_t>(m_value).contains(key);
+        return std::get<object_ptr>(m_value)->contains(key);
     }
 
     iterator begin() {
-        if (m_type != value_t::array) { m_type = value_t::array; m_value = array_t(); }
-        return std::get<array_t>(m_value).begin();
+        if (m_type != value_t::array) { m_type = value_t::array; m_value = std::make_shared<array_t>(); }
+        return std::get<array_ptr>(m_value)->begin();
     }
 
     iterator end() {
-        if (m_type != value_t::array) { m_type = value_t::array; m_value = array_t(); }
-        return std::get<array_t>(m_value).end();
+        if (m_type != value_t::array) { m_type = value_t::array; m_value = std::make_shared<array_t>(); }
+        return std::get<array_ptr>(m_value)->end();
     }
 
     const_iterator begin() const {
         if (m_type != value_t::array) throw std::runtime_error("not an array");
-        return std::get<array_t>(m_value).begin();
+        return std::get<array_ptr>(m_value)->begin();
     }
 
     const_iterator end() const {
         if (m_type != value_t::array) throw std::runtime_error("not an array");
-        return std::get<array_t>(m_value).end();
+        return std::get<array_ptr>(m_value)->end();
     }
 
     const_iterator cbegin() const { return begin(); }
@@ -216,12 +243,12 @@ template<> inline std::string json::get<std::string>() const {
 
 template<> inline json::object_t json::get<json::object_t>() const {
     if (m_type != value_t::object) throw std::bad_variant_access();
-    return std::get<object_t>(m_value);
+    return *std::get<object_ptr>(m_value);
 }
 
 template<> inline json::array_t json::get<json::array_t>() const {
     if (m_type != value_t::array) throw std::bad_variant_access();
-    return std::get<array_t>(m_value);
+    return *std::get<array_ptr>(m_value);
 }
 
 template<> inline size_t json::get<size_t>() const {
@@ -252,7 +279,7 @@ inline void json::dump(std::ostream& os, int indent, int depth) const {
         }
         case value_t::array: {
             os << "[";
-            const auto& arr = std::get<array_t>(m_value);
+            const auto& arr = *std::get<array_ptr>(m_value);
             if (!arr.empty()) {
                 if (indent >= 0) {
                     os << "\n";
@@ -275,7 +302,7 @@ inline void json::dump(std::ostream& os, int indent, int depth) const {
         }
         case value_t::object: {
             os << "{";
-            const auto& obj = std::get<object_t>(m_value);
+            const auto& obj = *std::get<object_ptr>(m_value);
             if (!obj.empty()) {
                 if (indent >= 0) {
                     os << "\n";

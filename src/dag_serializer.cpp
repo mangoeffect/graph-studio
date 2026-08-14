@@ -159,7 +159,7 @@ nlohmann::json DAGSerializer::serialize(const DAG& dag) {
         const auto& config = task->config();
         task_json["priority"]    = static_cast<int>(config.priority);
         task_json["max_retries"] = config.max_retries;
-        task_json["timeout_ms"]  = config.timeout.count();
+        task_json["timeout_ms"]  = static_cast<long long>(config.timeout.count());
         task_json["skip_on_fail"] = config.skip_on_fail;
 
         nlohmann::json deps_json = nlohmann::json::array();
