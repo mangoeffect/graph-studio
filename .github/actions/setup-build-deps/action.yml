@@ -64,8 +64,9 @@ runs:
       shell: pwsh
       run: |
         $ver = "${{ inputs.opencv-version-win }}"
-        # 官方包名为 *-vc14_vc15.exe，实际解压含 vc14/vc15（较新版还含 vc16/vc17）。
-        $url = "https://github.com/opencv/opencv/releases/download/$ver/opencv-$ver-vc14_vc15.exe"
+        # 官方 Windows 包名自 4.6 起为 opencv-<ver>-windows.exe（旧的 *-vc14_vc15.exe 已 404），
+        # 自解压后布局为 opencv/build/x64/vcXX，vcXX 由下方 detect 步骤动态识别。
+        $url = "https://github.com/opencv/opencv/releases/download/$ver/opencv-$ver-windows.exe"
         Write-Host "Downloading $url"
         $tmp = "$env:RUNNER_TEMP\opencv.exe"
         Invoke-WebRequest -Uri $url -OutFile $tmp
