@@ -70,12 +70,13 @@ runs:
         $ver = "${{ inputs.vulkan-version-win }}"
         $url = "https://sdk.lunarg.com/sdk/download/$ver/windows/vulkan-sdk.exe"
         Write-Host "Downloading $url"
-        $tmp = "$env:RUNNER_TEMP\vulkan-sdk.exe"
-        Invoke-WebRequest -Uri $url -OutFile $tmp
-        # LunarG 安装器是 BitRock/InstallBuilder：--mode unattended 静默安装
+        # curl.exe：进度可见、可重试；安装器直接同步调用，其控制台输出流式
+        # 进日志（Start-Process -Wait 会吞掉输出，卡住时无从判断卡在哪）。
+        curl.exe -L --fail --retry 3 --retry-delay 5 -o "$env:RUNNER_TEMP\vulkan-sdk.exe" $url
+        if ($LASTEXITCODE -ne 0) { throw "Vulkan SDK download failed: $LASTEXITCODE" }
         Write-Host "Installing to C:\VulkanSDK (unattended)"
-        $proc = Start-Process -FilePath $tmp -ArgumentList "--mode","unattended","--prefix","C:\VulkanSDK" -Wait -PassThru
-        if ($proc.ExitCode -ne 0) { throw "Vulkan SDK installer failed with exit code $($proc.ExitCode)" }
+        & "$env:RUNNER_TEMP\vulkan-sdk.exe" --mode unattended --unattendedmodebehavior none --prefix C:\VulkanSDK
+        if ($LASTEXITCODE -ne 0) { throw "Vulkan SDK installer failed: $LASTEXITCODE" }
 
     - name: Export Vulkan SDK env (Windows)
       if: runner.os == 'Windows'
