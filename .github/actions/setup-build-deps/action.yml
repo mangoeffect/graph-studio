@@ -25,7 +25,11 @@ runs:
       run: |
         # install-qt-action sets Qt6_DIR=<prefix>/lib/cmake/Qt6 ; the prefix
         # (with bin/ + lib/) is three levels up. deps.find_qt() reads this env.
-        qt_prefix="$(dirname "$(dirname "$(dirname "$Qt6_DIR"))")"
+        # 逐层 dirname：避免三层嵌套 $(dirname "$(dirname ...)") 的引号交错写法。
+        qt_prefix="$Qt6_DIR"
+        qt_prefix="$(dirname "$qt_prefix")"
+        qt_prefix="$(dirname "$qt_prefix")"
+        qt_prefix="$(dirname "$qt_prefix")"
         echo "QT_PREFIX_PATH=$qt_prefix" >> "$GITHUB_ENV"
         echo "QT_PREFIX_PATH=$qt_prefix"
 

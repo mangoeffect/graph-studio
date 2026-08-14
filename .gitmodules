@@ -1,4 +1,4 @@
-﻿[submodule "submodules/opencv"]
+[submodule "submodules/opencv"]
 	path = submodules/opencv
 	url = https://github.com/mangoeffect/plugin-opencv.git
 	branch = main
