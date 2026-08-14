@@ -1,0 +1,59 @@
+name: Fetch private submodules
+description: >
+  通过只读 deploy key 拉取四个私有 plugin-* 子模块。GitHub 的 job GITHUB_TOKEN 只对
+  公有的主仓库有权限，且一个 deploy key 不能跨仓库复用，因此每个私有仓库各绑一把
+  只读 key。仓库 secret SUBMODULES_DEPLOY_KEYS 依次拼接 plugin-opencv / plugin-gpu /
+  plugin-mediapipe / plugin-scripting 的 OpenSSH 私钥（固定顺序，不可打乱）。
+
+inputs:
+  keys:
+    description: SUBMODULES_DEPLOY_KEYS secret 的内容（4 把私钥按固定顺序拼接）
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Fetch private submodules via read-only deploy keys
+      shell: bash
+      env:
+        SUBMODULE_KEYS: ${{ inputs.keys }}
+      run: |
+        set -euo pipefail
+        if [ -z "$SUBMODULE_KEYS" ]; then
+          echo "::error::缺少 SUBMODULES_DEPLOY_KEYS secret。四个 plugin-* 子模块是私有仓库，需要把各自的只读 deploy key 私钥按 opencv, gpu, mediapipe, scripting 顺序拼接后存入该 secret。" >&2
+          exit 1
+        fi
+
+        mkdir -p "$HOME/.ssh" && chmod 700 "$HOME/.ssh"
+        bundle="$HOME/.ssh/submodule_keys.pem"
+        printf '%s\n' "$SUBMODULE_KEYS" > "$bundle"
+
+        # 按固定顺序拆分：key_00=opencv key_01=gpu key_02=mediapipe key_03=scripting
+        # （用 awk 而非 csplit：macOS 的 BSD csplit 不支持 -z）
+        (cd "$HOME/.ssh" && awk '/^-----BEGIN OPENSSH PRIVATE KEY-----$/{n++} {print > sprintf("key_%02d", n-1)}' "$bundle")
+        n_keys=$(ls "$HOME/.ssh"/key_?? 2>/dev/null | wc -l | tr -d ' ')
+        if [ "$n_keys" != "4" ]; then
+          echo "::error::SUBMODULES_DEPLOY_KEYS 应包含 4 把私钥，实际拆出 $n_keys 把（检查 secret 内容/顺序）。" >&2
+          exit 1
+        fi
+        for k in "$HOME/.ssh"/key_??; do
+          chmod 600 "$k"
+          ssh-keygen -y -f "$k" >/dev/null || { echo "::error::$k 不是有效的 OpenSSH 私钥。" >&2; exit 1; }
+        done
+
+        ssh-keyscan -t ed25519 github.com >> "$HOME/.ssh/known_hosts" 2>/dev/null
+
+        # 每个仓库一个 Host 别名、各用各的 key；insteadOf 只改写这四个仓库的精确 URL，
+        # 不影响主仓库及其它 https 依赖（如 CMake FetchContent）的访问方式。
+        i=0
+        for repo in opencv gpu mediapipe scripting; do
+          printf 'Host gh-sub-%s\n  HostName github.com\n  User git\n  IdentityFile ~/.ssh/key_%02d\n  IdentitiesOnly yes\n' \
+            "$repo" "$i" >> "$HOME/.ssh/config"
+          git config --global "url.git@gh-sub-$repo:mangoeffect/plugin-$repo.git.insteadOf" \
+            "https://github.com/mangoeffect/plugin-$repo.git"
+          i=$((i + 1))
+        done
+
+        git submodule sync --recursive
+        git submodule update --init --recursive --depth 1
+        git submodule status --recursive

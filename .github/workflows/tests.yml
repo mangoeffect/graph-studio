@@ -34,11 +34,17 @@ jobs:
         os: [macos-14, windows-2022, ubuntu-22.04]
 
     steps:
-      - name: Checkout (with submodules)
+      # 主仓库是公有仓库；四个 plugin-* 子模块是私有仓库，GITHUB_TOKEN 拉不到，
+      # 由 fetch-private-submodules 用只读 deploy key 单独拉取。
+      - name: Checkout
         uses: actions/checkout@v4
         with:
-          submodules: recursive
           fetch-depth: 1
+
+      - name: Fetch private submodules
+        uses: ./.github/actions/fetch-private-submodules
+        with:
+          keys: ${{ secrets.SUBMODULES_DEPLOY_KEYS }}
 
       - name: Setup Qt6 + OpenCV
         uses: ./.github/actions/setup-build-deps
