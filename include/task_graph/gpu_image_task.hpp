@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <plugin_api.hpp>
 #include <task_graph/task_context.hpp>
@@ -21,6 +21,10 @@ public:
 protected:
     // 通用 GPU 图像处理流程：按 op_name 查找算子，dispatch compute，返回 GPU-resident Image。
     TaskResult run_gpu_op(TaskContext& ctx, const std::string& op_name);
+
+    // 端口/预编译查询算子时使用的算子名，默认取 type()。
+    // type 名与算子名不一致的 task（如按参数动态选算子）覆写此方法。
+    virtual std::string resolve_op_name() const { return type(); }
 };
 
 // ---- 预置算子 task ----
@@ -75,7 +79,9 @@ public:
     const std::string& type() const override;
     TaskResult execute(TaskContext& ctx) override;
     std::vector<ParamSpec> param_specs() const override;
-    void on_init() override;
+
+protected:
+    std::string resolve_op_name() const override;
 
 private:
     std::string op_name_;

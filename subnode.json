@@ -103,7 +103,19 @@
         "gpu_gaussian_blur",
         "gpu_grayscale",
         "gpu_brightness_contrast",
-        "gpu_resize"
+        "gpu_resize",
+        "gpu_threshold",
+        "gpu_gamma",
+        "gpu_invert",
+        "gpu_rgb2hsv",
+        "gpu_flip",
+        "gpu_rotate90",
+        "gpu_crop",
+        "gpu_sharpen",
+        "gpu_sobel",
+        "gpu_laplacian",
+        "gpu_blend",
+        "gpu_alpha_composite"
       ]
     },
     {

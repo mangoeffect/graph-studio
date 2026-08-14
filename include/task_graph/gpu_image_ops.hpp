@@ -54,6 +54,10 @@ public:
     virtual void release_kernel(uintptr_t kernel) { (void)kernel; }
 
     virtual bool supports_compute() const { return false; }
+
+    // 后端接受的 kernel 源码语言："msl"（Metal）或 "glsl"（Vulkan compute）。
+    // run_gpu_op 据此从 GpuImageOp 选取 kernel_source / kernel_source_glsl。
+    virtual std::string kernel_language() const { return "msl"; }
 };
 
 using GpuBackendPtr = std::shared_ptr<IGpuImageBackend>;
