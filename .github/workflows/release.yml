@@ -1,0 +1,176 @@
+name: Release
+
+# 三端 GraphStudio 打包 + 发布（手动触发）。
+# 按 release_type 计算版本 tag 与 prerelease 标记，三端并行打包，
+# 汇总后创建一个 GitHub Release 并上传三件安装包（.dmg / .msix / .AppImage）。
+#
+# 版本策略（无状态）：基准版本取自 CMakeLists.txt (project VERSION)，叠加渠道后缀 + run 号：
+#   测试版 -> v<base>-alpha.<run>   (prerelease)
+#   预览版 -> v<base>-beta.<run>    (prerelease)
+#   修复版 -> v<base>-hotfix.<run>  (prerelease)
+#   正式版 -> v<base>-stable.<run>  (latest)
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: 发布渠道
+        type: choice
+        required: true
+        default: 测试版
+        options:
+          - 测试版
+          - 预览版
+          - 修复版
+          - 正式版
+      notes:
+        description: 发布说明（可选，附在 Release 正文）
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  # ------------------------------------------------------------------ 打包矩阵
+  package:
+    name: Package (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            artifact: mac-dmg
+          - os: windows-2022
+            artifact: win-msix
+          - os: ubuntu-22.04
+            artifact: linux-appimage
+
+    steps:
+      - name: Checkout (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Setup Qt6 + OpenCV
+        uses: ./.github/actions/setup-build-deps
+
+      - name: Derive package version
+        shell: bash
+        run: |
+          # project() 在 CMakeLists 里跨两行（project(task_graph \n VERSION 0.1.0），
+          # 故用 awk 跨行抓取 VERSION 字段，grep 单行匹配会失败。
+          VER=$(awk '/^project\(task_graph/{f=1;next} f&&/VERSION/{print $2;exit}' CMakeLists.txt)
+          if [ -z "$VER" ]; then echo "无法解析版本号" >&2; exit 1; fi
+          echo "PKG_VERSION=$VER" >> "$GITHUB_ENV"
+          echo "package version: $VER"
+
+      # ---- macOS: macdeployqt + dylibbundler + create-dmg -> .dmg ----
+      - name: Install macOS packaging tools
+        if: runner.os == 'macOS'
+        shell: bash
+        run: brew install dylibbundler create-dmg
+
+      - name: Build + package macOS .dmg
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          python scripts/package_macos.py \
+            --version "$PKG_VERSION" --no-sentry -c -j 3 \
+            --out-dir dist/dmg
+
+      # ---- Windows: windeployqt + makeappx -> .msix ----
+      - name: Build + package Windows .msix
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # -SkipSign：产出 Store 风格未签名包（正式上架时由 Partner Center 重签名）
+          # 生成 dist/msix/graph_studio-<ver>_x64.msix
+          scripts\build_msix.ps1 -Version "$env:PKG_VERSION" -Config RelWithDebInfo -Clean -SkipSign
+
+      # ---- Linux: linuxdeployqt + appimagetool -> .AppImage ----
+      - name: Build + package Linux .AppImage
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          python scripts/package_linux.py \
+            --version "$PKG_VERSION" -c -j 3 \
+            --out-dir dist/appimage
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            dist/dmg/*.dmg
+            dist/msix/*.msix
+            dist/appimage/*.AppImage
+          if-no-files-found: error
+          retention-days: 14
+
+  # ------------------------------------------------------------------ 汇总发布
+  release:
+    name: Publish GitHub Release
+    needs: package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Compute tag / name / prerelease
+        id: meta
+        shell: bash
+        run: |
+          base=$(awk '/^project\(task_graph/{f=1;next} f&&/VERSION/{print $2;exit}' CMakeLists.txt)
+          if [ -z "$base" ]; then echo "无法解析基准版本" >&2; exit 1; fi
+          case "${{ inputs.release_type }}" in
+            测试版) suffix="alpha";  pre="true";  title="GraphStudio 测试版 (Alpha)" ;;
+            预览版) suffix="beta";   pre="true";  title="GraphStudio 预览版 (Beta)" ;;
+            修复版) suffix="hotfix"; pre="true";  title="GraphStudio 修复版 (Hotfix)" ;;
+            正式版) suffix="stable"; pre="false"; title="GraphStudio 正式版 (Stable)" ;;
+            *) echo "未知 release_type: ${{ inputs.release_type }}" >&2; exit 1 ;;
+          esac
+          tag="v${base}-${suffix}.${{ github.run_number }}"
+          echo "tag=$tag"        >> "$GITHUB_OUTPUT"
+          echo "name=$title"     >> "$GITHUB_OUTPUT"
+          echo "prerelease=$pre" >> "$GITHUB_OUTPUT"
+          echo "渠道 ${{ inputs.release_type }} -> tag=$tag prerelease=$pre"
+
+      - name: Download all installer artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: installers
+
+      - name: Flatten installers
+        shell: bash
+        run: |
+          mkdir -p assets
+          find installers -type f \( -name '*.dmg' -o -name '*.msix' -o -name '*.AppImage' \) \
+               -exec cp {} assets/ \;
+          ls -lh assets/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: ${{ steps.meta.outputs.name }}
+          prerelease: ${{ steps.meta.outputs.prerelease }}
+          body: |
+            ${{ inputs.notes }}
+
+            **渠道**：${{ inputs.release_type }}
+            **版本标签**：${{ steps.meta.outputs.tag }}
+
+            ### 安装包
+            - macOS：`.dmg`（拖入 Applications 安装）
+            - Windows：`.msix`（需开发者模式或信任签名；正式上架由 Microsoft Store 重签名）
+            - Linux：`.AppImage`（`chmod +x` 后直接运行）
+          generate_release_notes: true
+          files: |
+            assets/*.dmg
+            assets/*.msix
+            assets/*.AppImage

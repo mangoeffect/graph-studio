@@ -1,0 +1,64 @@
+name: GraphStudio Build
+
+# 三端 GraphStudio 编译验证：构建 task_graph 根库 + subnode 插件 + graph_studio 应用，
+# 确认完整应用链路在 macOS / Windows / Linux 上可编译（不含打包/发布，详见 release.yml）。
+
+on:
+  push:
+    branches: [main, master]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  pull_request:
+    branches: [main, master]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  workflow_dispatch:
+
+concurrency:
+  group: gs-build-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+env:
+  # headless Qt + 不在编译验证阶段下载 mediapipe 模型（其测试会 soft-SKIP）
+  QT_QPA_PLATFORM: 'offscreen'
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, windows-2022, ubuntu-22.04]
+
+    steps:
+      - name: Checkout (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Setup Qt6 + OpenCV
+        uses: ./.github/actions/setup-build-deps
+
+      - name: Configure + build GraphStudio stack (RelWithDebInfo)
+        shell: bash
+        run: |
+          python scripts/run_graph_studio.py --build-only --config RelWithDebInfo -j 3
+
+      - name: Verify build artifact exists
+        shell: bash
+        run: |
+          set -e
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            test -d "app/graph_studio/build/graph_studio.app"
+            echo "OK: graph_studio.app present"
+          elif [ "$RUNNER_OS" = "Windows" ]; then
+            test -f "app/graph_studio/build/RelWithDebInfo/graph_studio.exe"
+            echo "OK: graph_studio.exe present"
+          else
+            test -f "app/graph_studio/build/graph_studio"
+            echo "OK: graph_studio present"
+          fi

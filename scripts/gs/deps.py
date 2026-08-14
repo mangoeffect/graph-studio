@@ -43,7 +43,10 @@ def find_qt(hint: Optional[str] = None) -> Optional[Path]:
             if best:
                 return best
     if is_macos():
-        for p in (Path("/opt/homebrew/opt/qt"), Path("/usr/local/opt/qt"),
+        # Homebrew 现行布局把 Qt6 拆成 qtbase/qtdeclarative 等子 formula（无整包 qt），
+        # qmake/macosdeployqt 与 lib/cmake/Qt6 都在 qtbase 前缀内。
+        for p in (Path("/opt/homebrew/opt/qt"), Path("/opt/homebrew/opt/qtbase"),
+                  Path("/usr/local/opt/qt"), Path("/usr/local/opt/qtbase"),
                   Path("/opt/homebrew/Cellar/qt/6")):
             if validate_qt(p):
                 return p

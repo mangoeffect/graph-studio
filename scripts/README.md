@@ -9,6 +9,8 @@
 | 构建并启动 GraphStudio (Qt6 GUI) | `scripts/run_graph_studio.py` |
 | 把 task_graph 装成可分发 SDK 前缀 | `scripts/build_sdk.py` |
 | 用 SDK 前缀独立编译一个插件 | `scripts/build_plugin_standalone.py` |
+| 打包 GraphStudio 为 macOS `.dmg` | `scripts/package_macos.py`（仅 macOS） |
+| 打包 GraphStudio 为 Linux `.AppImage` | `scripts/package_linux.py`（仅 Linux） |
 
 ```bash
 # 任意平台
@@ -16,7 +18,13 @@ python scripts/run_tests.py
 python scripts/run_graph_studio.py -t
 python scripts/build_sdk.py
 python scripts/build_plugin_standalone.py examples/plugins/demo
+
+# 打包（对应平台）
+python scripts/package_macos.py --version 0.1.0      # -> dist/dmg/graph_studio-0.1.0-macos.dmg
+python scripts/package_linux.py --version 0.1.0      # -> dist/appimage/graph_studio-0.1.0-x86_64.AppImage
 ```
+
+> Windows 打包仍是 `scripts\build_msix.ps1`（windeployqt + makeappx → `.msix`）。三端打包在 GitHub CI（`.github/workflows/release.yml`）中编排为手动触发的发布流水线，支持 测试版/预览版/修复版/正式版 四种渠道。
 
 > 历史的 `*.sh` / `*.ps1` 同名文件已退化为 **thin shim**：只做 `exec python3 <name>.py "$@"` / `& python <name>.py @args` 转发，下个版本删除。在没装 Python 的极少数环境下，仍可直接调用 cmake（macOS/Linux：`cmake -S . -B build && cmake --build build`；Windows VS 生成器：`cmake -S . -B build` 然后 `cmake --build build --config Debug`）。
 

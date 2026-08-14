@@ -1,0 +1,55 @@
+name: Tests
+
+# 三端 run_all_test：构建根库 + 子模块测试 + GraphStudio UI 测试，分阶段跑 ctest。
+# 复用 scripts/run_all_test.py 的「单根构建 + 多阶段 ctest」编排。
+# mediapipe 测试在缺少模型时自动 soft-SKIP；GPU/Metal 测试在无 GPU 的 CI runner 上 soft-SKIP。
+
+on:
+  push:
+    branches: [main, master]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  pull_request:
+    branches: [main, master]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+env:
+  QT_QPA_PLATFORM: 'offscreen'
+
+jobs:
+  test:
+    name: run_all_test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, windows-2022, ubuntu-22.04]
+
+    steps:
+      - name: Checkout (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Setup Qt6 + OpenCV
+        uses: ./.github/actions/setup-build-deps
+
+      - name: Run all tests (framework + submodules + UI)
+        shell: bash
+        run: |
+          python scripts/run_all_test.py -j 3 -v --config Debug
+
+      - name: Show test summary on failure
+        if: failure()
+        shell: bash
+        run: |
+          echo "::notice::run_all_test 阶段汇总见上方日志；若子模块/GPU/mediapipe 阶段被跳过属预期。"
