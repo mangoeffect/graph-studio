@@ -10,6 +10,10 @@ inputs:
     description: OpenCV version for the Windows runner (official vc14_vc15 build)
     required: false
     default: '4.11.0'
+  vulkan-version-win:
+    description: LunarG Vulkan SDK version for the Windows runner (compile coverage for the Vulkan backend)
+    required: false
+    default: '1.4.304.1'
 
 runs:
   using: composite
@@ -50,6 +54,44 @@ runs:
           libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 \
           libxcb-render-util0 libxcb-shape0 libxcb-sync1 libxcb-util1 \
           libxcb-xfixes0
+
+    - name: Cache Vulkan SDK (Windows)
+      if: runner.os == 'Windows'
+      id: vulkan-cache
+      uses: actions/cache@v4
+      with:
+        path: C:\VulkanSDK
+        key: vulkan-sdk-win-${{ inputs.vulkan-version-win }}
+
+    - name: Install Vulkan SDK (Windows)
+      if: runner.os == 'Windows' && steps.vulkan-cache.outputs.cache-hit != 'true'
+      shell: pwsh
+      run: |
+        $ver = "${{ inputs.vulkan-version-win }}"
+        $url = "https://sdk.lunarg.com/sdk/download/$ver/windows/vulkan-sdk.exe"
+        Write-Host "Downloading $url"
+        $tmp = "$env:RUNNER_TEMP\vulkan-sdk.exe"
+        Invoke-WebRequest -Uri $url -OutFile $tmp
+        # LunarG 安装器是 BitRock/InstallBuilder：--mode unattended 静默安装
+        Write-Host "Installing to C:\VulkanSDK (unattended)"
+        $proc = Start-Process -FilePath $tmp -ArgumentList "--mode","unattended","--prefix","C:\VulkanSDK" -Wait -PassThru
+        if ($proc.ExitCode -ne 0) { throw "Vulkan SDK installer failed with exit code $($proc.ExitCode)" }
+
+    - name: Export Vulkan SDK env (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        # 安装器可能在 prefix 下再嵌 <version> 目录，按 vulkan.h 实际位置探测
+        $dir = Get-ChildItem -Path "C:\VulkanSDK" -Directory -Recurse -Depth 1 -ErrorAction SilentlyContinue |
+            Where-Object { Test-Path "$($_.FullName)\Include\vulkan\vulkan.h" } |
+            Sort-Object FullName -Descending | Select-Object -First 1
+        if (-not $dir) {
+          throw "vulkan.h not found under C:\VulkanSDK (install failed?)"
+        }
+        Write-Host "Vulkan SDK dir: $($dir.FullName)"
+        Add-Content -Path $env:GITHUB_ENV -Value "VULKAN_SDK=$($dir.FullName)"
+        Add-Content -Path $env:GITHUB_PATH -Value "$($dir.FullName)\Bin"
+        Write-Host "VULKAN_SDK=$($dir.FullName)"
 
     - name: Cache OpenCV (Windows)
       if: runner.os == 'Windows'

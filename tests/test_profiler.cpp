@@ -143,7 +143,11 @@ TEST(Profiler, TaskStatsAggregation) {
 
     EXPECT_GT(sa->exec_duration.count(), 0);
     EXPECT_GT(sb->exec_duration.count(), 0);
-    EXPECT_GT(sa->exec_duration, sb->exec_duration);
+    // sleep_for 只会睡过头、不会提前醒，因此按各自 sleep 的下限断言。
+    // 顺序型断言（A > B）在 CI 负载下会 flaky：B 排在 A 之后执行，
+    // 调度抖动可能把 B 拉长得超过 A。
+    EXPECT_GE(sa->exec_duration, std::chrono::milliseconds(25));
+    EXPECT_GE(sb->exec_duration, std::chrono::milliseconds(10));
     EXPECT_EQ(sa->final_status, task_graph::TaskStatus::COMPLETED);
     EXPECT_EQ(sb->final_status, task_graph::TaskStatus::COMPLETED);
 

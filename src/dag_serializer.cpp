@@ -103,7 +103,9 @@ TaskParams parse_params_with_specs(const nlohmann::json& params_json,
         } else {
             // 未声明的 key：按 JSON 字面量类型回退
             if (value.is_number_integer())
-                params.set_int(key, static_cast<int>(value.get<int64_t>()));
+                // 用 get<long long> 而非 get<int64_t>：后者在 Linux/gcc 下是 long，
+                // 会实例化无定义的主模板（macOS 的 int64_t 是 long long 恰好有特化）。
+                params.set_int(key, static_cast<int>(value.get<long long>()));
             else if (value.is_number_float())
                 params.set_float(key, static_cast<float>(value.get<double>()));
             else if (value.is_string())
