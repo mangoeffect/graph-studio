@@ -167,7 +167,11 @@ nlohmann::json DAGSerializer::serialize(const DAG& dag) {
         task_json["dependencies"] = deps_json;
 
         nlohmann::json params_json = nlohmann::json::object();
-        for (const auto& [key, value] : config.params.params()) {
+        // 不用结构化绑定：Xcode 15 的 clang 不允许在 std::visit 的 lambda 里
+        // 捕获结构化绑定（P1091），key/value 改为普通引用。
+        for (const auto& kv : config.params.params()) {
+            const std::string& key = kv.first;
+            const auto& value = kv.second;
             // 跳过框架保留参数（_source_dir 等）：不写入 graph.json
             if (is_framework_reserved_param(key)) continue;
             std::visit([&](auto&& v) {

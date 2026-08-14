@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include <plugin_api.hpp>
+#include <cstdint>
 #include <string>
 #include <memory>
 #include <functional>
@@ -15,9 +16,20 @@ struct PluginInfo {
     std::string description;
 };
 
+using GetPluginInfoFunc = const PluginInfo*(*)();
+
 class PluginLoader {
 public:
-    struct Handle;
+    // 完整定义而非前向声明：handles_ 的 unordered_map<string, Handle> 在
+    // libstdc++ 11（ubuntu-22.04）下要求 mapped type 在声明处完整。
+    struct Handle {
+        void* lib_handle{nullptr};
+        RegisterPluginFunc register_func{nullptr};
+        UnregisterPluginFunc unregister_func{nullptr};
+        GetPluginInfoFunc info_func{nullptr};
+        uint32_t sdk_version{0};
+        std::string path;
+    };
 
     PluginLoader();
     ~PluginLoader();
@@ -38,8 +50,4 @@ private:
 
 using PluginRegistryPtr = std::shared_ptr<IPluginRegistry>;
 
-}
-
-extern "C" {
-    using GetPluginInfoFunc = const task_graph::PluginInfo*(*)();
 }

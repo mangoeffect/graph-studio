@@ -35,15 +35,6 @@ extern "C" TG_EXPORT uint32_t tg_sdk_version() {
 
 namespace task_graph {
 
-struct PluginLoader::Handle {
-    void* lib_handle{nullptr};
-    RegisterPluginFunc register_func{nullptr};
-    UnregisterPluginFunc unregister_func{nullptr};
-    GetPluginInfoFunc info_func{nullptr};
-    uint32_t sdk_version{0};
-    std::string path;
-};
-
 PluginLoader::PluginLoader() {
     // 先触碰 PluginRegistry 单例，使其构造早于本 loader。Meyers 单例按构造
     // 完成的逆序析构，从而保证退出期 registry 晚于 loader 析构；否则
