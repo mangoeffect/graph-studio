@@ -66,6 +66,7 @@ public:
     json(bool value) : m_type(value_t::boolean), m_value(value) {}
 
     json(int value) : m_type(value_t::number_integer), m_value(static_cast<int64_t>(value)) {}
+    json(long value) : m_type(value_t::number_integer), m_value(static_cast<int64_t>(value)) {}
     json(long long value) : m_type(value_t::number_integer), m_value(value) {}
 
     json(double value) : m_type(value_t::number_float), m_value(value) {}
@@ -94,6 +95,7 @@ public:
     json& operator=(std::nullptr_t) { m_type = value_t::null; m_value = nullptr; return *this; }
     json& operator=(bool value) { m_type = value_t::boolean; m_value = value; return *this; }
     json& operator=(int value) { m_type = value_t::number_integer; m_value = static_cast<int64_t>(value); return *this; }
+    json& operator=(long value) { m_type = value_t::number_integer; m_value = static_cast<int64_t>(value); return *this; }
     json& operator=(long long value) { m_type = value_t::number_integer; m_value = value; return *this; }
     json& operator=(size_t value) { m_type = value_t::number_integer; m_value = static_cast<int64_t>(value); return *this; }
     json& operator=(double value) { m_type = value_t::number_float; m_value = value; return *this; }

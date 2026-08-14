@@ -51,7 +51,9 @@ def build_stack(cm: CMake, root: Path, lib_build: Path, gs_dir: Path, gs_build: 
         defines = ["-DTASK_GRAPH_ENABLE_OPENCV=ON"]
         if platform.is_macos():
             defines.append("-DTASK_GRAPH_ENABLE_METAL=ON")
-        if platform.is_windows():
+        # Vulkan 仅在检测到 SDK（VULKAN_SDK 环境变量）时启用：CI 的 Windows runner
+        # 没有 Vulkan SDK，无后端时 gpu 子模块自动 soft-skip（与 Linux 一致）。
+        if platform.is_windows() and os.environ.get("VULKAN_SDK"):
             defines.append("-DTASK_GRAPH_ENABLE_VULKAN=ON")
         if opencv_dir:
             defines.append(f"-DOpenCV_DIR={opencv_dir / 'lib'}")

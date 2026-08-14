@@ -38,11 +38,16 @@ def multi_config_generator() -> bool:
 
 
 def feature_macros() -> List[str]:
-    """按平台启用桌面 GPU 后端特性宏（对应各平台的 sh/ps1 行为）。"""
+    """按平台启用桌面 GPU 后端特性宏（对应各平台的 sh/ps1 行为）。
+
+    Vulkan 仅在检测到 SDK（LunarG 安装器写入的 VULKAN_SDK 环境变量）时启用：
+    GitHub Windows runner 无 Vulkan SDK，find_package(Vulkan) 会致命失败；
+    无后端时 gpu 子模块自动 soft-skip（与 Linux 一致）。
+    """
     defines = ["-DTASK_GRAPH_ENABLE_OPENCV=ON"]
     if is_macos():
         defines.append("-DTASK_GRAPH_ENABLE_METAL=ON")
-    if is_windows():
+    if is_windows() and os.environ.get("VULKAN_SDK"):
         defines.append("-DTASK_GRAPH_ENABLE_VULKAN=ON")
     return defines
 
