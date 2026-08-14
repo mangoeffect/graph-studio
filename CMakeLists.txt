@@ -1,4 +1,4 @@
-﻿cmake_minimum_required(VERSION 3.16)
+﻿cmake_minimum_required(VERSION 3.18)
 
 project(task_graph
     VERSION 0.1.0
@@ -77,6 +77,10 @@ option(TASK_GRAPH_ENABLE_OPENCV "Enable OpenCV support for image conversion" ON)
 # 与 GraphStudio 开发工作流使用）。关闭后主仓库完全独立编译，插件改为运行时 dlopen：
 #   cmake -S . -B build -DTASK_GRAPH_BUILD_SUBMODULES=OFF
 option(TASK_GRAPH_BUILD_SUBMODULES "Build builtin subnodes from submodules/ into this build tree" ON)
+
+# 单元测试（GoogleTest，FetchContent 首次配置时下载并缓存到 build/_deps）。
+# WASM 不构建；离线/最小化构建可 -DTASK_GRAPH_BUILD_TESTS=OFF 跳过（免联网）。
+option(TASK_GRAPH_BUILD_TESTS "Build unit tests (fetches GoogleTest at configure time)" ON)
 
 if(TASK_GRAPH_ENABLE_OPENCV)
     # WASM 下优先用 emcmake 构建的 OpenCV 静态库
@@ -200,16 +204,38 @@ else()
 endif()
 
 # ============================================================
-# 库测试目标（合并精简后）— 移动端跳过
+# 库测试目标（合并精简后）— 移动端 / WASM 跳过
 # ============================================================
-# 一个 helper：tests/test_util.hpp（纯头文件，无需目标）
+# GoogleTest 经 FetchContent 拉取并缓存在 build/_deps。
+# gtest_discover_tests 用 PRE_TEST 模式：用例发现推迟到 ctest 运行时，
+# 避免构建期执行测试 exe 找不到 DLL（Windows 下 task_graph / opencv_world
+# 的搜索路径由 scripts 在运行 ctest 前注入进程环境）。需要 CMake >= 3.18。
 
 if(NOT TASK_GRAPH_MOBILE)
 
-# 便捷宏：定义一个链接 task_graph 的测试可执行文件
+if(NOT EMSCRIPTEN AND TASK_GRAPH_BUILD_TESTS)
+
+include(FetchContent)
+FetchContent_Declare(googletest
+    GIT_REPOSITORY https://github.com/google/googletest.git
+    GIT_TAG v1.15.2
+    GIT_SHALLOW TRUE
+)
+set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
+set(BUILD_GMOCK OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(googletest)
+include(GoogleTest)
+
+# 便捷宏：定义一个链接 task_graph 的测试可执行文件。
+# 每条 TEST(Suite, case) 注册为独立 ctest 条目（名字 "<exe>.<Suite>.<case>"），
+# 一键脚本里逐用例可见，并支持 ctest -R 用例级过滤。
 function(add_tg_test name)
     add_executable(${name} tests/${name}.cpp)
-    target_link_libraries(${name} PRIVATE task_graph)
+    target_link_libraries(${name} PRIVATE task_graph GTest::gtest_main)
+    gtest_discover_tests(${name}
+        DISCOVERY_MODE PRE_TEST
+        TEST_PREFIX "${name}."
+    )
 endfunction()
 
 add_tg_test(test_dag)
@@ -244,8 +270,14 @@ target_compile_definitions(test_plugin_abi PRIVATE
 
 if(TASK_GRAPH_ENABLE_OPENCV)
     add_executable(test_opencv_convert tests/test_opencv_convert.cpp)
-    target_link_libraries(test_opencv_convert PRIVATE task_graph ${OpenCV_LIBS})
+    target_link_libraries(test_opencv_convert PRIVATE task_graph ${OpenCV_LIBS} GTest::gtest_main)
+    gtest_discover_tests(test_opencv_convert
+        DISCOVERY_MODE PRE_TEST
+        TEST_PREFIX "test_opencv_convert."
+    )
 endif()
+
+endif() # NOT EMSCRIPTEN AND TASK_GRAPH_BUILD_TESTS
 
 # ============================================================
 # 示例
@@ -282,25 +314,11 @@ endif()
 if(NOT TASK_GRAPH_MOBILE)
 
 # ============================================================
-# ctest 注册（全部核心测试）
+# ctest 注册：核心测试经 gtest_discover_tests 逐用例注册（见上方测试块），
+# 子模块测试由各自 CMakeLists 的 add_test 注册进同一面板。
 # ============================================================
 enable_testing()
-add_test(NAME test_dag COMMAND test_dag)
-add_test(NAME test_ports COMMAND test_ports)
-add_test(NAME test_params COMMAND test_params)
-add_test(NAME test_serializer COMMAND test_serializer)
-add_test(NAME test_path_utils COMMAND test_path_utils)
-add_test(NAME test_data_types COMMAND test_data_types)
-add_test(NAME test_task_params COMMAND test_task_params)
-add_test(NAME test_profiler COMMAND test_profiler)
-add_test(NAME test_type_registry COMMAND test_type_registry)
-add_test(NAME test_logger COMMAND test_logger)
-add_test(NAME test_plugin COMMAND test_plugin)
-add_test(NAME test_stream_executor COMMAND test_stream_executor)
-add_test(NAME test_plugin_abi COMMAND test_plugin_abi)
-if(TASK_GRAPH_ENABLE_OPENCV)
-    add_test(NAME test_opencv_convert COMMAND test_opencv_convert)
-endif()
+
 endif() # NOT TASK_GRAPH_MOBILE
 
 # ============================================================

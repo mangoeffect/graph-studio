@@ -7,7 +7,7 @@
 #include <task_graph/dag_serializer.hpp>
 #include <set>
 #include <string>
-#include "test_util.hpp"
+#include <gtest/gtest.h>
 
 using namespace task_graph;
 
@@ -29,7 +29,7 @@ public:
 // registry / 唯一 ID / TaskManager
 // ============================================================
 
-TEST_CASE(registry_register_unregister) {
+TEST(Plugin, registry_register_unregister) {
     auto& registry = PluginRegistry::instance();
     registry.register_task("test_task", [](const std::string& id, const TaskConfig& cfg) {
         return std::make_shared<TestPluginTask>(id, cfg);
@@ -39,7 +39,7 @@ TEST_CASE(registry_register_unregister) {
     EXPECT_FALSE(registry.has_task("test_task"));
 }
 
-TEST_CASE(unique_task_id_same_type) {
+TEST(Plugin, unique_task_id_same_type) {
     auto& registry = PluginRegistry::instance();
     registry.register_task("test_plugin_type", [](const std::string& id, const TaskConfig& cfg) {
         return std::make_shared<TestPluginTask>(id, cfg);
@@ -58,7 +58,7 @@ TEST_CASE(unique_task_id_same_type) {
     registry.unregister_task("test_plugin_type");
 }
 
-TEST_CASE(task_manager_lifecycle) {
+TEST(Plugin, task_manager_lifecycle) {
     TaskManager manager;
     auto t1 = std::make_shared<TestPluginTask>("test1");
     auto t2 = std::make_shared<TestPluginTask>("test2");
@@ -80,7 +80,7 @@ TEST_CASE(task_manager_lifecycle) {
     EXPECT_EQ(manager.size(), size_t(0));
 }
 
-TEST_CASE(dag_multiple_same_type) {
+TEST(Plugin, dag_multiple_same_type) {
     auto& registry = PluginRegistry::instance();
     registry.register_task("test_plugin_type", [](const std::string& id, const TaskConfig& cfg) {
         return std::make_shared<TestPluginTask>(id, cfg);
@@ -103,7 +103,7 @@ TEST_CASE(dag_multiple_same_type) {
     registry.unregister_task("test_plugin_type");
 }
 
-TEST_CASE(json_type_id_separation) {
+TEST(Plugin, json_type_id_separation) {
     auto& registry = PluginRegistry::instance();
     registry.register_task("test_plugin_type", [](const std::string& id, const TaskConfig& cfg) {
         return std::make_shared<TestPluginTask>(id, cfg);
@@ -129,7 +129,7 @@ TEST_CASE(json_type_id_separation) {
 }
 
 // backward compat: id 即 type
-TEST_CASE(json_id_only_backward_compat) {
+TEST(Plugin, json_id_only_backward_compat) {
     std::string json = R"({
         "version": "1.0",
         "tasks": [{"id": "simple"}, {"id": "another"}],
@@ -140,4 +140,3 @@ TEST_CASE(json_id_only_backward_compat) {
     EXPECT_TRUE(s->type() == s->id());
 }
 
-TEST_MAIN("Plugin Tests")

@@ -113,17 +113,19 @@ def main() -> int:
         else:
             console.warn("demo 插件产物未找到（test_plugin_abi 将 soft-skip）")
 
-    # ---- 列出测试 ----
-    cm = CMake(cmake_exe)
-    if args.list:
-        return cm.ctest(ctest_exe, build_dir, config=args.config, list_only=True)
-
-    # ---- 运行时搜索路径（Windows: build\\Debug 与 OpenCV bin；Unix 通常依赖 RPATH）----
+    # ---- 运行时搜索路径（Windows: build\<Config> 与 OpenCV bin；Unix 通常依赖 RPATH）----
+    # 必须先于任何 ctest 调用（含 -l 列表）：gtest_discover_tests 的 PRE_TEST
+    # 模式在 ctest 启动时运行测试 exe 做用例发现，需要 DLL 搜索路径。
     platform.prepend_env_path(platform.runtime_lib_env() or "", build_dir / args.config)
     if args.opencv:
         opencv_dir = deps.find_opencv(args.opencv_dir) or deps.find_opencv()
         if opencv_dir:
             platform.prepend_env_path(platform.runtime_lib_env() or "", opencv_dir / "bin")
+
+    # ---- 列出测试 ----
+    cm = CMake(cmake_exe)
+    if args.list:
+        return cm.ctest(ctest_exe, build_dir, config=args.config, list_only=True)
 
     # ---- 运行测试 ----
     status = cm.ctest(ctest_exe, build_dir, config=args.config,

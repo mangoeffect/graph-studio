@@ -1,4 +1,4 @@
-// DAG 构建、调度与执行的核心行为测试。
+﻿// DAG 构建、调度与执行的核心行为测试。
 // 合并自 test_dag.cpp 与 test_dependency_injection.cpp 的执行相关用例。
 #include <task_graph/task_graph.hpp>
 #include <task_graph/executor.hpp>
@@ -8,7 +8,7 @@
 #include <mutex>
 #include <thread>
 #include <any>
-#include "test_util.hpp"
+#include <gtest/gtest.h>
 
 using namespace task_graph;
 
@@ -17,7 +17,7 @@ static TaskPtr make_task(const std::string& id, TaskFunction fn, TaskConfig cfg 
 }
 
 // 基础执行：菱形依赖 A,B -> C，全部完成
-TEST_CASE(basic_dag_execution) {
+TEST(Dag, basic_dag_execution) {
     DAG dag;
     std::atomic<int> counter{0};
     auto body = [&](TaskContext&) {
@@ -40,7 +40,7 @@ TEST_CASE(basic_dag_execution) {
 }
 
 // 环检测
-TEST_CASE(cycle_detection) {
+TEST(Dag, cycle_detection) {
     DAG dag;
     dag.add_task(make_task("A", [](TaskContext&) {
         return TaskResult{.status = TaskStatus::COMPLETED};
@@ -56,7 +56,7 @@ TEST_CASE(cycle_detection) {
 }
 
 // 并行执行：无依赖的三个任务应能并发运行
-TEST_CASE(parallel_execution) {
+TEST(Dag, parallel_execution) {
     DAG dag;
     std::atomic<int> parallel_count{0};
     std::atomic<int> max_parallel{0};
@@ -87,7 +87,7 @@ TEST_CASE(parallel_execution) {
 }
 
 // 数据传递：A 输出 42，B 通过端口 "in" 读取并 *2
-TEST_CASE(data_passing_between_tasks) {
+TEST(Dag, data_passing_between_tasks) {
     DAG dag;
     dag.add_task(make_task("A", [](TaskContext&) {
         return TaskResult{.status = TaskStatus::COMPLETED, .value = 42};
@@ -108,7 +108,7 @@ TEST_CASE(data_passing_between_tasks) {
 }
 
 // 依赖失败传播：A 失败 -> B 应被标记失败
-TEST_CASE(dependency_failure_propagation) {
+TEST(Dag, dependency_failure_propagation) {
     DAG dag;
     dag.add_task(make_task("A", [](TaskContext&) {
         return TaskResult{.status = TaskStatus::FAILED};
@@ -127,7 +127,7 @@ TEST_CASE(dependency_failure_propagation) {
 }
 
 // executor 端到端依赖：A 产出 10，B 读取 *2 = 20
-TEST_CASE(executor_dependency_dataflow) {
+TEST(Dag, executor_dependency_dataflow) {
     DAG dag;
     dag.add_task(make_task("A", [](TaskContext&) {
         return TaskResult{.status = TaskStatus::COMPLETED, .value = 10};
@@ -148,4 +148,3 @@ TEST_CASE(executor_dependency_dataflow) {
     EXPECT_EQ(std::any_cast<int>(results["B"].value), 20);
 }
 
-TEST_MAIN("DAG Tests")

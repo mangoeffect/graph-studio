@@ -1,17 +1,18 @@
-// 参数声明 (ParamSpec) 与参数存取 (TaskParams) 测试。
+﻿// 参数声明 (ParamSpec) 与参数存取 (TaskParams) 测试。
 // 覆盖：make_*_param 工厂、int/float/string/bool/enum 存取、序列化按声明类型往返。
 #include <task_graph/data_types.hpp>
 #include <task_graph/task_graph.hpp>
 #include <task_graph/dag_serializer.hpp>
 #include <plugin_api.hpp>
 #include <task_graph/task_context.hpp>
-#include "test_util.hpp"
+#include <gtest/gtest.h>
+#include "tg_test_helpers.hpp"
 
 using namespace task_graph;
 
 // ---- ParamSpec 工厂 ----
 
-TEST_CASE(int_param_factory_carries_range) {
+TEST(Params, int_param_factory_carries_range) {
     auto s = make_int_param("kernel_size", 5, 1, 31, 2);
     EXPECT_TRUE(s.name == "kernel_size");
     EXPECT_TRUE(s.type == ParamType::Int);
@@ -21,27 +22,27 @@ TEST_CASE(int_param_factory_carries_range) {
     EXPECT_TRUE(s.step.has_value() && *s.step == 2.0);
 }
 
-TEST_CASE(float_param_factory) {
+TEST(Params, float_param_factory) {
     auto s = make_float_param("sigma", 1.5f, 0.0, 100.0);
     EXPECT_TRUE(s.type == ParamType::Float);
     EXPECT_EQ(std::get<float>(s.default_value), 1.5f);
     EXPECT_TRUE(s.min_value.has_value() && *s.min_value == 0.0);
 }
 
-TEST_CASE(string_param_factory) {
+TEST(Params, string_param_factory) {
     auto s = make_string_param("mode", "RGB");
     EXPECT_TRUE(s.type == ParamType::String);
     EXPECT_TRUE(std::get<std::string>(s.default_value) == "RGB");
     EXPECT_FALSE(s.min_value.has_value());
 }
 
-TEST_CASE(bool_param_factory) {
+TEST(Params, bool_param_factory) {
     auto s = make_bool_param("normalize", true);
     EXPECT_TRUE(s.type == ParamType::Bool);
     EXPECT_EQ(std::get<bool>(s.default_value), true);
 }
 
-TEST_CASE(enum_param_factory_carries_values) {
+TEST(Params, enum_param_factory_carries_values) {
     auto s = make_enum_param("operation", 2, {{"OPEN", 2}, {"CLOSE", 3}});
     EXPECT_TRUE(s.type == ParamType::Enum);
     EXPECT_EQ(std::get<int>(s.default_value), 2);
@@ -52,7 +53,7 @@ TEST_CASE(enum_param_factory_carries_values) {
 
 // ---- TaskParams int/float/string/bool 存取 ----
 
-TEST_CASE(task_params_int_float_string_roundtrip) {
+TEST(Params, task_params_int_float_string_roundtrip) {
     TaskParams p;
     p.set_int("k", 5);
     p.set_float("sigma", 1.5f);
@@ -62,7 +63,7 @@ TEST_CASE(task_params_int_float_string_roundtrip) {
     EXPECT_TRUE(*p.get_string("mode") == "RGB");
 }
 
-TEST_CASE(task_params_bool_roundtrip) {
+TEST(Params, task_params_bool_roundtrip) {
     TaskParams p;
     p.set_bool("flag", true);
     EXPECT_TRUE(p.get_bool("flag").has_value());
@@ -71,7 +72,7 @@ TEST_CASE(task_params_bool_roundtrip) {
     EXPECT_EQ(*p.get_bool("flag"), false);
 }
 
-TEST_CASE(task_params_strict_type_mismatch_returns_nullopt) {
+TEST(Params, task_params_strict_type_mismatch_returns_nullopt) {
     TaskParams p;
     p.set_int("k", 5);
     // int 存入，float 取出应失败（不隐式转换）
@@ -79,7 +80,7 @@ TEST_CASE(task_params_strict_type_mismatch_returns_nullopt) {
     EXPECT_FALSE(p.get_bool("k").has_value());
 }
 
-TEST_CASE(task_params_has_and_clear) {
+TEST(Params, task_params_has_and_clear) {
     TaskParams p;
     p.set_int("k", 1);
     EXPECT_TRUE(p.has_param("k"));
@@ -88,7 +89,7 @@ TEST_CASE(task_params_has_and_clear) {
     EXPECT_FALSE(p.has_param("k"));
 }
 
-TEST_CASE(task_context_get_param_bool) {
+TEST(Params, task_context_get_param_bool) {
     TaskConfig cfg;
     cfg.params.set_bool("flag", true);
     TaskContext ctx(cfg.params, {}, {});
@@ -112,7 +113,7 @@ public:
     std::vector<PortSpec> output_specs() const override { return {}; }
 };
 
-TEST_CASE(node_exposes_param_specs_directly) {
+TEST(Params, node_exposes_param_specs_directly) {
     auto node = std::make_shared<TaskWithParams>("p");
     auto specs = node->param_specs();
     EXPECT_EQ(specs.size(), size_t(1));
@@ -121,7 +122,7 @@ TEST_CASE(node_exposes_param_specs_directly) {
 
 // ---- 序列化：按声明类型解析 params（核心修复点） ----
 
-TEST_CASE(serialize_params_includes_bool) {
+TEST(Params, serialize_params_includes_bool) {
     DAG dag;
     TaskConfig cfg;
     cfg.params.set_bool("flag", true);
@@ -134,7 +135,7 @@ TEST_CASE(serialize_params_includes_bool) {
     EXPECT_CONTAINS(json, "true");
 }
 
-TEST_CASE(deserialize_params_by_declared_type) {
+TEST(Params, deserialize_params_by_declared_type) {
     // 模拟一个 task type（不依赖具体插件），用 JSON 加载：
     // JSON 里 sigma 写成整数 2（无小数点），按字面量会变 int；
     // 但这里 task 未注册，无 param_specs，回退到字面量 -> int。
@@ -168,7 +169,7 @@ public:
     std::vector<PortSpec> output_specs() const override { return {}; }
 };
 
-TEST_CASE(deserialize_float_param_with_declared_spec) {
+TEST(Params, deserialize_float_param_with_declared_spec) {
     // 注册 task 类型，让反序列化能 probe 到 param_specs
     PluginRegistry::instance().register_task(
         "float_param_task",
@@ -192,4 +193,3 @@ TEST_CASE(deserialize_float_param_with_declared_spec) {
     PluginRegistry::instance().unregister_task("float_param_task");
 }
 
-TEST_MAIN("Parameter Tests")

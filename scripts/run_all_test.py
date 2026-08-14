@@ -57,12 +57,14 @@ ALL_PHASES = [PHASE_FRAMEWORK, PHASE_SUBMODULES, PHASE_UI]
 
 
 def submodule_regex() -> str:
-    """合并 SUBMODULE_TESTS 全部正则为一条 ctest -R/-E 可用的锚定正则。
+    """合并 SUBMODULE_TESTS 全部正则为一条 ctest -R/-E 可用的前缀正则。
 
-    用 ^...$ 锚定，使 -E（排除）精确剔除子模块测试、-R（包含）精确命中子模块测试，
-    与 run_all_submodules_test.py 的合并方式一致。
+    用 ^ 前缀锚定但不加 $ 尾锚定：核心测试经 gtest_discover_tests 逐用例注册
+    （名字形如 test_dag.xxx）、子模块图测试逐图注册（名字形如
+    test_image_filtering_graph.single_filter），都带点号后缀，-E（排除）按
+    前缀精确剔除子模块测试、-R（包含）按前缀精确命中。
     """
-    return "^(" + "|".join(SUBMODULE_TESTS.values()) + ")$"
+    return "^(" + "|".join(SUBMODULE_TESTS.values()) + ")"
 
 
 def setup_runtime_lib_paths(lib_build: Path, config: str, opencv_dir, qt_prefix) -> None:
@@ -260,7 +262,8 @@ def main() -> int:
                 return 1
         # test_gui.cpp 已内置 offscreen 回落；此处显式设置以确保无头确定性行为
         os.environ["QT_QPA_PLATFORM"] = "offscreen"
-        return cm.ctest(ctest_exe, gs_build, config=args.config, verbose=args.verbose)
+        # UI 阶段仅 4 个 Qt 测试套件，默认 -V 让 QTest 的逐用例输出可见
+        return cm.ctest(ctest_exe, gs_build, config=args.config, verbose=True)
 
     runners = {PHASE_FRAMEWORK: run_framework, PHASE_SUBMODULES: run_submodules, PHASE_UI: run_ui}
 

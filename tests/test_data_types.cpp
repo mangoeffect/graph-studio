@@ -1,12 +1,12 @@
-// 领域数据类型测试：Image / Coordinate2D / Coordinate3D / PointCloud / any_cast。
+﻿// 领域数据类型测试：Image / Coordinate2D / Coordinate3D / PointCloud / any_cast。
 // 纯结构与类型判定，不含执行流（Image 的 check_input 执行测试已移至 test_ports.cpp）。
 #include <task_graph/data_types.hpp>
 #include <any>
-#include "test_util.hpp"
+#include <gtest/gtest.h>
 
 using namespace task_graph;
 
-TEST_CASE(image_creation_and_any_cast) {
+TEST(DataTypes, image_creation_and_any_cast) {
     Image img(640, 480, 3);
     EXPECT_TRUE(img.valid());
     EXPECT_EQ(img.total_size(), size_t(640 * 480 * 3));
@@ -17,7 +17,7 @@ TEST_CASE(image_creation_and_any_cast) {
     EXPECT_TRUE(is_image(any_img));
 }
 
-TEST_CASE(coordinate_types) {
+TEST(DataTypes, coordinate_types) {
     Coordinate2D c2(10.5, 20.3);
     EXPECT_TRUE(c2.valid());
     std::any a2 = c2;
@@ -29,7 +29,7 @@ TEST_CASE(coordinate_types) {
     EXPECT_TRUE(is_coordinate3d(a3));
 }
 
-TEST_CASE(pointcloud_type) {
+TEST(DataTypes, pointcloud_type) {
     PointCloud cloud(1000);
     EXPECT_TRUE(cloud.valid());
     EXPECT_EQ(cloud.size(), size_t(1000));
@@ -45,4 +45,3 @@ TEST_CASE(pointcloud_type) {
     EXPECT_EQ(casted->size(), size_t(1000));
 }
 
-TEST_MAIN("Data Types Tests")

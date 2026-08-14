@@ -7,7 +7,8 @@
 #include <task_graph/path_utils.hpp>
 #include <task_graph/plugin.hpp>
 #include <string>
-#include "test_util.hpp"
+#include <gtest/gtest.h>
+#include "tg_test_helpers.hpp"
 
 using namespace task_graph;
 
@@ -40,7 +41,7 @@ public:
 
 // ---- 基础 serialize / deserialize / roundtrip ----
 
-TEST_CASE(serialize_contains_tasks_and_edges) {
+TEST(Serializer, serialize_contains_tasks_and_edges) {
     DAG dag;
     dag.add_task(noop("A"));
     dag.add_task(noop("B"));
@@ -54,7 +55,7 @@ TEST_CASE(serialize_contains_tasks_and_edges) {
     EXPECT_CONTAINS(json, "\"version\": \"2.0\"");
 }
 
-TEST_CASE(deserialize_v1_single_edge) {
+TEST(Serializer, deserialize_v1_single_edge) {
     std::string json = R"({
         "version": "1.0",
         "tasks": [{"id": "A"}, {"id": "B"}],
@@ -66,7 +67,7 @@ TEST_CASE(deserialize_v1_single_edge) {
     EXPECT_TRUE(dag.adjacency().at("A").contains("B"));
 }
 
-TEST_CASE(roundtrip_preserves_structure) {
+TEST(Serializer, roundtrip_preserves_structure) {
     DAG original;
     original.add_task(noop("A"));
     original.add_task(noop("B"));
@@ -84,7 +85,7 @@ TEST_CASE(roundtrip_preserves_structure) {
     EXPECT_TRUE(restored.has_task("C"));
 }
 
-TEST_CASE(roundtrip_preserves_task_config) {
+TEST(Serializer, roundtrip_preserves_task_config) {
     TaskConfig config;
     config.priority = TaskPriority::HIGH;
     config.max_retries = 3;
@@ -105,7 +106,7 @@ TEST_CASE(roundtrip_preserves_task_config) {
 
 // ---- v2.0 端口与 specs ----
 
-TEST_CASE(v2_ports_and_specs_roundtrip) {
+TEST(Serializer, v2_ports_and_specs_roundtrip) {
     DAG dag;
     dag.add_task(std::make_shared<ImageProducer>("P1"));
     dag.add_task(std::make_shared<ImageProducer>("P2"));
@@ -133,7 +134,7 @@ TEST_CASE(v2_ports_and_specs_roundtrip) {
     EXPECT_TRUE(has_mask);
 }
 
-TEST_CASE(v1_multi_input_migration_no_throw) {
+TEST(Serializer, v1_multi_input_migration_no_throw) {
     std::string json = R"({
         "version": "1.0",
         "tasks": [{"id": "A"}, {"id": "B"}, {"id": "C"}],
@@ -150,7 +151,7 @@ TEST_CASE(v1_multi_input_migration_no_throw) {
     EXPECT_EQ(dag.num_tasks(), size_t(3));
 }
 
-TEST_CASE(v2_missing_port_fields_default) {
+TEST(Serializer, v2_missing_port_fields_default) {
     std::string json = R"({
         "version": "2.0",
         "tasks": [{"id": "A"}, {"id": "B"}],
@@ -165,7 +166,7 @@ TEST_CASE(v2_missing_port_fields_default) {
 
 // ---- _source_dir 框架参数注入与序列化跳过 ----
 
-TEST_CASE(deserialize_without_base_dir_injects_empty_source_dir) {
+TEST(Serializer, deserialize_without_base_dir_injects_empty_source_dir) {
     // base_dir 默认空串：仍然注入 _source_dir 占位（值是空串）
     std::string json = R"({
         "version": "2.0",
@@ -177,7 +178,7 @@ TEST_CASE(deserialize_without_base_dir_injects_empty_source_dir) {
     EXPECT_EQ(t->config().params.get_string(kSourceDirParam).value_or("x"), std::string{});
 }
 
-TEST_CASE(deserialize_with_base_dir_injects_source_dir) {
+TEST(Serializer, deserialize_with_base_dir_injects_source_dir) {
     std::string json = R"({
         "version": "2.0",
         "tasks": [{"id": "A"}, {"id": "B"}]
@@ -190,7 +191,7 @@ TEST_CASE(deserialize_with_base_dir_injects_source_dir) {
               base);
 }
 
-TEST_CASE(serialize_skips_framework_reserved_param) {
+TEST(Serializer, serialize_skips_framework_reserved_param) {
     // _source_dir 不能写回 graph.json（避免泄露本机路径 / 文件移动后失效）
     std::string json = R"({
         "version": "2.0",
@@ -210,7 +211,7 @@ TEST_CASE(serialize_skips_framework_reserved_param) {
     EXPECT_FALSE(out2.find("_source_dir") != std::string::npos);
 }
 
-TEST_CASE(source_dir_round_trip_via_base_dir) {
+TEST(Serializer, source_dir_round_trip_via_base_dir) {
     // 模拟实际工作流：保存 graph.json -> 不含 _source_dir；重新加载时
     // 通过 base_dir 入参重新注入。
     TaskConfig cfg;
@@ -227,4 +228,3 @@ TEST_CASE(source_dir_round_trip_via_base_dir) {
               "/home/u/graphs");
 }
 
-TEST_MAIN("Serializer Tests")

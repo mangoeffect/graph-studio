@@ -7,7 +7,7 @@
 #include <task_graph/path_utils.hpp>
 #include <filesystem>
 #include <string>
-#include "test_util.hpp"
+#include <gtest/gtest.h>
 
 using namespace task_graph;
 namespace fs = std::filesystem;
@@ -17,12 +17,12 @@ static std::string joined(const std::string& base, const std::string& sub) {
     return (fs::path(base) / fs::path(sub)).lexically_normal().string();
 }
 
-TEST_CASE(resolve_empty_path_returns_empty) {
+TEST(PathUtils, resolve_empty_path_returns_empty) {
     EXPECT_EQ(resolve_path("/abs/dir", ""), std::string{});
     EXPECT_EQ(resolve_path("", ""), std::string{});
 }
 
-TEST_CASE(resolve_absolute_path_returned_as_is) {
+TEST(PathUtils, resolve_absolute_path_returned_as_is) {
     const std::string abs1 = "/usr/local/cfg";
     EXPECT_EQ(resolve_path("/var/data", abs1), fs::path(abs1).lexically_normal().string());
 
@@ -36,7 +36,7 @@ TEST_CASE(resolve_absolute_path_returned_as_is) {
 #endif
 }
 
-TEST_CASE(resolve_relative_path_prefixed_with_base_dir) {
+TEST(PathUtils, resolve_relative_path_prefixed_with_base_dir) {
     EXPECT_EQ(resolve_path("/home/u/graphs", "assets/test.png"),
               joined("/home/u/graphs", "assets/test.png"));
     EXPECT_EQ(resolve_path("/home/u/graphs/demo", "data/img.png"),
@@ -49,14 +49,14 @@ TEST_CASE(resolve_relative_path_prefixed_with_base_dir) {
 #endif
 }
 
-TEST_CASE(resolve_dotdot_collapsed) {
+TEST(PathUtils, resolve_dotdot_collapsed) {
     EXPECT_EQ(resolve_path("/home/u/graphs", "./assets/../assets/x.png"),
               joined("/home/u/graphs", "assets/x.png"));
     EXPECT_EQ(resolve_path("/home/u/graphs", "sub/../assets/y.png"),
               joined("/home/u/graphs", "assets/y.png"));
 }
 
-TEST_CASE(resolve_empty_base_dir_keeps_original) {
+TEST(PathUtils, resolve_empty_base_dir_keeps_original) {
     EXPECT_EQ(resolve_path("", "relative/path.png"),
               fs::path("relative/path.png").lexically_normal().string());
     EXPECT_EQ(resolve_path("", "/abs/path.png"),
@@ -64,8 +64,7 @@ TEST_CASE(resolve_empty_base_dir_keeps_original) {
     EXPECT_EQ(resolve_path("", ""), std::string{});
 }
 
-TEST_CASE(source_dir_param_constant) {
+TEST(PathUtils, source_dir_param_constant) {
     EXPECT_TRUE(std::string(kSourceDirParam) == "_source_dir");
 }
 
-TEST_MAIN("Path Utils Tests")

@@ -191,6 +191,15 @@ def main() -> int:
         console.fail(f"构建目录 {build_dir} 未配置或不存在，且指定了 --no-build")
         return 1
 
+    # ---- 运行时库搜索路径（Windows: build\<Config> 与 OpenCV bin；Unix 通常依赖 RPATH）----
+    # 必须先于任何 ctest 调用（含 -N 列表）：核心测试用 gtest_discover_tests 的
+    # PRE_TEST 模式，ctest 启动时就会运行测试 exe 做用例发现，需要 DLL 搜索路径。
+    platform.prepend_env_path(platform.runtime_lib_env() or "", build_dir / args.config)
+    if args.opencv:
+        od = deps.find_opencv(args.opencv_dir) or deps.find_opencv()
+        if od:
+            platform.prepend_env_path(platform.runtime_lib_env() or "", od / "bin")
+
     # ---- 收集：ctest -N ----
     registered = list_ctest_tests(ctest_exe, build_dir, args.config, cm.multi_config)
     console.step(f"ctest 注册测试总数: {len(registered)}")
@@ -201,7 +210,9 @@ def main() -> int:
         if pat is None:
             continue
         rx = re.compile(pat)
-        groups[name] = [t for t in registered if rx.fullmatch(t)]
+        # 前缀匹配（match）：逐图注册的子模块测试名带点号后缀，如
+        # test_image_filtering_graph.single_filter
+        groups[name] = [t for t in registered if rx.match(t)]
 
     total = sum(len(h) for h in groups.values())
     print()
@@ -225,15 +236,9 @@ def main() -> int:
         console.warn("未收集到任何子模块测试（可能被平台/依赖门控，或 OpenCV 已关闭）")
         return 0
 
-    # ---- 运行时库搜索路径（Windows: build\<Config> 与 OpenCV bin；Unix 通常依赖 RPATH）----
-    platform.prepend_env_path(platform.runtime_lib_env() or "", build_dir / args.config)
-    if args.opencv:
-        od = deps.find_opencv(args.opencv_dir) or deps.find_opencv()
-        if od:
-            platform.prepend_env_path(platform.runtime_lib_env() or "", od / "bin")
-
     # ---- 运行 ----
-    combined = "^(" + "|".join(patterns) + ")$"
+    # 前缀正则（无 $ 尾锚定）：逐图注册的子模块测试名带点号后缀
+    combined = "^(" + "|".join(patterns) + ")"
     status = cm.ctest(ctest_exe, build_dir, config=args.config,
                       filter=combined, verbose=args.verbose)
     print()

@@ -34,7 +34,7 @@ Custom types flowing across ports must be registered with `TG_REGISTER_TYPE(Type
 
 ## Build & test
 
-Requirements: CMake >= 3.16, a C++20 compiler.
+Requirements: CMake >= 3.18, a C++20 compiler.
 
 ```bash
 # configure + build + run all tests
@@ -50,6 +50,16 @@ python scripts/run_tests.py -R ports
 python scripts/run_tests.py -l
 ```
 
+Tests are registered with CTest **per test case**: every GoogleTest `TEST()` gets its
+own ctest entry (`test_dag.Dag.basic_dag_execution`), and submodule graph tests register
+one entry per graph (`test_image_filtering_graph.single_filter`). The one-shot runners
+therefore show a clear per-case pass/fail list, and single cases can be filtered:
+
+```bash
+ctest --test-dir build -C Debug -R test_dag.Dag.basic_dag_execution
+ctest --test-dir build -C Debug -R test_gpu_image_graph.gpu_crop
+```
+
 Useful CMake options (`cmake -S . -B build ...`):
 
 | Option | Default | Note |
@@ -58,6 +68,7 @@ Useful CMake options (`cmake -S . -B build ...`):
 | `TASK_GRAPH_ENABLE_METAL` | OFF | Metal GPU backend (Apple only) |
 | `TASK_GRAPH_ENABLE_VULKAN` | OFF | Vulkan GPU backend |
 | `TASK_GRAPH_ENABLE_CUDA` | OFF | CUDA GPU backend |
+| `TASK_GRAPH_BUILD_TESTS` | ON | Build unit tests; fetches GoogleTest (v1.15.2) via FetchContent on first configure and caches it under `build/_deps`. Offline builds: point `FETCHCONTENT_SOURCE_DIR_GOOGLETEST` at a local googletest copy, or turn this option OFF |
 
 Build dirs: desktop uses `build/`, WASM `build_wasm/`, iOS/Android OpenCV prebuilds live in `build_ios/` / `build_android/` — all gitignored.
 
@@ -192,8 +203,9 @@ environment variable at runtime. No DSN ⇒ clean no-op when running locally.
 
 ## Tests
 
-- Core tests: `test_dag`, `test_ports`, `test_params`, `test_serializer`, `test_data_types`, `test_task_params`, `test_profiler`, `test_type_registry`, `test_logger`, `test_plugin`, and (with OpenCV) `test_opencv_convert`.
-- Submodule tests are JSON-graph-driven: each test binary loads a `<name>_graph.json` (loaded by `DAGSerializer`, executed by `DAGExecutor`) describing `opencv_image_read` → the tasks under test. Templates are committed as `tests/graphs/*.json.in` and materialized by `configure_file` at configure time.
+- Core tests are GoogleTest-based (`tests/*.cpp`; shared assertion helpers live in `tests/tg_test_helpers.hpp`). Each `TEST(Suite, case)` registers a separate ctest entry named `<exe>.<Suite>.<case>`. Suites: `test_dag`, `test_ports`, `test_params`, `test_serializer`, `test_data_types`, `test_task_params`, `test_profiler`, `test_type_registry`, `test_logger`, `test_path_utils`, `test_plugin`, `test_stream_executor`, `test_plugin_abi` (soft-skips without the standalone demo plugin), and — with OpenCV — `test_opencv_convert`.
+- Submodule tests are JSON-graph-driven: each driver accepts graph names as argv and registers one ctest entry per graph (e.g. `test_gpu_image_graph.gpu_crop`), loaded by `DAGSerializer` and executed by `DAGExecutor`. Graphs are committed under each module's `tests/graphs/` and copied into the build tree at configure time. Exit code 2 means an environment soft-skip (missing plugin / FFmpeg / GPU compute backend) and shows up as `Skipped` in ctest.
+- Test discovery uses `gtest_discover_tests(... DISCOVERY_MODE PRE_TEST)`: test binaries are probed for their case list when ctest starts (not at build time), so the Windows DLL search paths injected by the scripts are already in place.
 
 ## Repository layout
 

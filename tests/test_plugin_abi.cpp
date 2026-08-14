@@ -1,4 +1,4 @@
-// 插件 ABI + 运行时动态加载测试。
+﻿// 插件 ABI + 运行时动态加载测试。
 //
 // 覆盖：宿主框架导出的 SDK 版本、加载独立编译的插件动态库（scripts/build_sdk.py
 // + scripts/build_plugin_standalone.py 产物）、register_plugin 注册到 PluginRegistry、
@@ -13,7 +13,7 @@
 #include <cstdlib>
 #include <string>
 #include <sys/stat.h>
-#include "test_util.hpp"
+#include <gtest/gtest.h>
 
 using namespace task_graph;
 
@@ -33,18 +33,16 @@ static std::string demo_plugin_path() {
     return TASK_GRAPH_DEMO_PLUGIN;
 }
 
-TEST_CASE(host_sdk_version_exported) {
+TEST(PluginAbi, host_sdk_version_exported) {
     EXPECT_EQ(tg_sdk_version(), TG_SDK_VERSION);
 }
 
-TEST_CASE(standalone_plugin_load_and_run) {
+TEST(PluginAbi, standalone_plugin_load_and_run) {
     const std::string path = demo_plugin_path();
     if (!file_exists(path.c_str())) {
-        std::cout << "         (soft-skip) 未找到独立插件: \""
-                  << path << "\"\n"
-                  << "         运行: scripts/build_sdk.py\n"
-                  << "         && scripts/build_plugin_standalone.py examples/plugins/demo\n";
-        return;
+        GTEST_SKIP() << "(soft-skip) 未找到独立插件: \"" << path << "\"\n"
+                     << "运行: scripts/build_sdk.py\n"
+                     << "&& scripts/build_plugin_standalone.py examples/plugins/demo";
     }
 
     PluginLoader loader;
@@ -93,4 +91,3 @@ auto& registry = PluginRegistry::instance();
     EXPECT_FALSE(registry.has_task("demo_add"));
 }
 
-TEST_MAIN("Plugin ABI / standalone dlopen Tests")

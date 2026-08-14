@@ -1,4 +1,4 @@
-// 端口契约测试（统一入口）。
+﻿// 端口契约测试（统一入口）。
 // 合并自 test_check_input.cpp、test_check_input_json.cpp、test_validate.cpp，
 // 以及 test_dependency_injection.cpp 的 TaskContext 单元测试、
 // test_data_types.cpp 的 Image check_input 执行测试。
@@ -19,7 +19,8 @@
 #include <any>
 #include <string>
 #include <unordered_map>
-#include "test_util.hpp"
+#include <gtest/gtest.h>
+#include "tg_test_helpers.hpp"
 
 using namespace task_graph;
 
@@ -117,13 +118,13 @@ static size_t count_warnings(const std::vector<ValidationError>& errs) {
 // 1) check_input 单元级
 // ============================================================
 
-TEST_CASE(check_input_success) {
+TEST(Ports, check_input_success) {
     SumTask task("sum");
     auto r = task.check_input(make_inputs({{"a", 10}, {"b", 20}}));
     EXPECT_TRUE(r.success);
 }
 
-TEST_CASE(check_input_missing_required_port) {
+TEST(Ports, check_input_missing_required_port) {
     SumTask task("sum");
     auto r = task.check_input(make_inputs({{"a", 10}}));  // 缺 b
     EXPECT_FALSE(r.success);
@@ -131,7 +132,7 @@ TEST_CASE(check_input_missing_required_port) {
     EXPECT_CONTAINS(r.error_message, "'b'");
 }
 
-TEST_CASE(check_input_wrong_type) {
+TEST(Ports, check_input_wrong_type) {
     SumTask task("sum");
     auto r = task.check_input(make_inputs({{"a", 10}, {"b", std::string("x")}}));
     EXPECT_FALSE(r.success);
@@ -139,7 +140,7 @@ TEST_CASE(check_input_wrong_type) {
     EXPECT_CONTAINS(r.error_message, "got std::string");
 }
 
-TEST_CASE(check_input_extra_port_allowed) {
+TEST(Ports, check_input_extra_port_allowed) {
     SumTask task("sum");
     auto r = task.check_input(make_inputs({{"a", 10}, {"b", 20}, {"c", 99}}));
     EXPECT_TRUE(r.success);
@@ -150,7 +151,7 @@ TEST_CASE(check_input_extra_port_allowed) {
 // ============================================================
 
 // 两个 producer 分别喂 SumTask 的 "a"/"b" 端口，正常求和
-TEST_CASE(exec_port_binding_success) {
+TEST(Ports, exec_port_binding_success) {
     DAG dag;
     dag.add_task(std::make_shared<Task>("pa", [](auto&) {
         return TaskResult{.status = TaskStatus::COMPLETED, .value = 10};
@@ -171,7 +172,7 @@ TEST_CASE(exec_port_binding_success) {
 }
 
 // 上游类型错误：SumTask 的 "b" 端口收到 string -> check_input 拦截 -> FAILED
-TEST_CASE(exec_check_input_rejects_wrong_type) {
+TEST(Ports, exec_check_input_rejects_wrong_type) {
     DAG dag;
     dag.add_task(std::make_shared<Task>("pa", [](auto&) {
         return TaskResult{.status = TaskStatus::COMPLETED, .value = 10};
@@ -190,7 +191,7 @@ TEST_CASE(exec_check_input_rejects_wrong_type) {
 }
 
 // Image 类型经端口传递到下游正常执行
-TEST_CASE(exec_image_port_dataflow) {
+TEST(Ports, exec_image_port_dataflow) {
     DAG dag;
     dag.add_task(std::make_shared<Task>("src", [](auto&) {
         return TaskResult{.status = TaskStatus::COMPLETED, .value = Image(640, 480, 3)};
@@ -205,7 +206,7 @@ TEST_CASE(exec_image_port_dataflow) {
 }
 
 // Image 端口收到 string -> check_input 拦截
-TEST_CASE(exec_image_port_rejects_wrong_type) {
+TEST(Ports, exec_image_port_rejects_wrong_type) {
     DAG dag;
     dag.add_task(std::make_shared<Task>("src", [](auto&) {
         return TaskResult{.status = TaskStatus::COMPLETED, .value = std::string("not_image")};
@@ -223,7 +224,7 @@ TEST_CASE(exec_image_port_rejects_wrong_type) {
 // 3) 构图期 validate()
 // ============================================================
 
-TEST_CASE(validate_clean_graph) {
+TEST(Ports, validate_clean_graph) {
     DAG dag;
     dag.add_task(std::make_shared<ImageProducer>("P"));
     dag.add_task(std::make_shared<ImageConsumer>("C"));
@@ -234,7 +235,7 @@ TEST_CASE(validate_clean_graph) {
     EXPECT_FALSE(has_error(errs));
 }
 
-TEST_CASE(validate_missing_required_port) {
+TEST(Ports, validate_missing_required_port) {
     DAG dag;
     dag.add_task(std::make_shared<ImageProducer>("P"));
     dag.add_task(std::make_shared<ImageConsumer>("C"));
@@ -251,7 +252,7 @@ TEST_CASE(validate_missing_required_port) {
     EXPECT_TRUE(found);
 }
 
-TEST_CASE(validate_type_mismatch) {
+TEST(Ports, validate_type_mismatch) {
     DAG dag;
     dag.add_task(std::make_shared<ImageProducer>("P"));
     dag.add_task(std::make_shared<IntConsumer>("C"));
@@ -267,7 +268,7 @@ TEST_CASE(validate_type_mismatch) {
     EXPECT_TRUE(found);
 }
 
-TEST_CASE(validate_undeclared_port_is_warning) {
+TEST(Ports, validate_undeclared_port_is_warning) {
     DAG dag;
     dag.add_task(std::make_shared<Task>("A", [](auto&) {
         return TaskResult{.status = TaskStatus::COMPLETED};
@@ -283,7 +284,7 @@ TEST_CASE(validate_undeclared_port_is_warning) {
     EXPECT_TRUE(count_warnings(errs) >= 1);
 }
 
-TEST_CASE(validate_diamond_multi_source_no_error) {
+TEST(Ports, validate_diamond_multi_source_no_error) {
     DAG dag;
     dag.add_task(std::make_shared<Task>("A", [](auto&) {
         return TaskResult{.status = TaskStatus::COMPLETED};
@@ -304,7 +305,7 @@ TEST_CASE(validate_diamond_multi_source_no_error) {
 
 // 回归：legacy "in"/"out" 默认端口名应被规范化为 task 声明的真实端口（"image"）。
 // 否则老版编辑器保存的图（to_port:"in"）运行时绑定不到 image 输入口。
-TEST_CASE(connect_canonicalizes_legacy_default_ports) {
+TEST(Ports, connect_canonicalizes_legacy_default_ports) {
     DAG dag;
     dag.add_task(std::make_shared<ImageSrcNode>("P"));
     dag.add_task(std::make_shared<PortedImageNode>("C"));
@@ -336,7 +337,7 @@ TEST_CASE(connect_canonicalizes_legacy_default_ports) {
 }
 
 // 端口级删除：同一对节点间按端口精确删一条；pair 语义删全部；事件带端口
-TEST_CASE(remove_edge_port_specific) {
+TEST(Ports, remove_edge_port_specific) {
     DAG dag;
     dag.add_task(std::make_shared<Task>("pa", [](auto&) {
         return TaskResult{.status = TaskStatus::COMPLETED, .value = 10};
@@ -397,7 +398,7 @@ TEST_CASE(remove_edge_port_specific) {
     EXPECT_EQ(dag.edges().size(), size_t(0));
 }
 
-TEST_CASE(validate_cycle_is_error) {
+TEST(Ports, validate_cycle_is_error) {
     DAG dag;
     dag.add_task(std::make_shared<Task>("A", [](auto&) {
         return TaskResult{.status = TaskStatus::COMPLETED};
@@ -422,7 +423,7 @@ TEST_CASE(validate_cycle_is_error) {
 // 4) TaskContext 数据注入单元测试
 // ============================================================
 
-TEST_CASE(context_type_safe_get_result_value) {
+TEST(Ports, context_type_safe_get_result_value) {
     TaskContext ctx;
     ctx.set_result("task1", TaskResult{.status = TaskStatus::COMPLETED, .value = 42});
 
@@ -434,7 +435,7 @@ TEST_CASE(context_type_safe_get_result_value) {
     EXPECT_FALSE(ctx.get_result_value<int>("missing").has_value());       // 不存在
 }
 
-TEST_CASE(context_dependency_methods) {
+TEST(Ports, context_dependency_methods) {
     ExecutionContext ctx;
     ctx.declare_dependency("A");
     ctx.declare_dependency("B");
@@ -450,7 +451,7 @@ TEST_CASE(context_dependency_methods) {
     EXPECT_FALSE(ctx.validate_dependencies());
 }
 
-TEST_CASE(config_dependencies_metadata) {
+TEST(Ports, config_dependencies_metadata) {
     TaskConfig config;
     config.dependencies = {"A", "B"};
     auto task = std::make_shared<Task>("C", [](TaskContext&) {
@@ -459,4 +460,3 @@ TEST_CASE(config_dependencies_metadata) {
     EXPECT_EQ(task->config().dependencies.size(), size_t(2));
 }
 
-TEST_MAIN("Port Contract Tests")

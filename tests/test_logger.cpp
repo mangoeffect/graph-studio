@@ -1,12 +1,12 @@
-// 日志系统测试。校验日志级别 get/set roundtrip、级别过滤边界，
+﻿// 日志系统测试。校验日志级别 get/set roundtrip、级别过滤边界，
 // 以及日志 API / 宏在各级别下可安全调用（不崩溃）。
 #include <plugin_api.hpp>
 #include <task_graph/task_graph.hpp>
-#include "test_util.hpp"
+#include <gtest/gtest.h>
 
 using namespace task_graph;
 
-TEST_CASE(log_level_get_set_roundtrip) {
+TEST(Logger, log_level_get_set_roundtrip) {
     tg_set_log_level(LogLevel::DEBUG);
     EXPECT_TRUE(tg_get_log_level() == LogLevel::DEBUG);
 
@@ -17,7 +17,7 @@ TEST_CASE(log_level_get_set_roundtrip) {
     EXPECT_TRUE(tg_get_log_level() == LogLevel::ERROR);
 }
 
-TEST_CASE(log_level_ordering) {
+TEST(Logger, log_level_ordering) {
     // 级别数值单调递增，保证过滤比较正确
     EXPECT_TRUE(static_cast<int>(LogLevel::TRACE) < static_cast<int>(LogLevel::DEBUG));
     EXPECT_TRUE(static_cast<int>(LogLevel::DEBUG) < static_cast<int>(LogLevel::INFO));
@@ -26,7 +26,7 @@ TEST_CASE(log_level_ordering) {
     EXPECT_TRUE(static_cast<int>(LogLevel::ERROR) < static_cast<int>(LogLevel::FATAL));
 }
 
-TEST_CASE(log_api_all_levels_safe) {
+TEST(Logger, log_api_all_levels_safe) {
     tg_set_log_level(LogLevel::TRACE);
     tg_log(LogLevel::TRACE, "trace");
     tg_log(LogLevel::DEBUG, "debug");
@@ -39,7 +39,7 @@ TEST_CASE(log_api_all_levels_safe) {
     EXPECT_TRUE(tg_get_log_level() == LogLevel::WARN);
 }
 
-TEST_CASE(log_macros_safe) {
+TEST(Logger, log_macros_safe) {
     tg_set_log_level(LogLevel::TRACE);
     TG_LOG_TRACE("macro trace");
     TG_LOG_DEBUG("macro debug");
@@ -50,4 +50,3 @@ TEST_CASE(log_macros_safe) {
     EXPECT_TRUE(true);  // 到此未崩溃即通过
 }
 
-TEST_MAIN("Logger Tests")

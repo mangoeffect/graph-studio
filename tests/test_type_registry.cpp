@@ -1,5 +1,5 @@
-#include <task_graph/data_types.hpp>
-#include <iostream>
+﻿#include <task_graph/data_types.hpp>
+#include <gtest/gtest.h>
 #include <string>
 
 // 自定义类型注册
@@ -11,75 +11,30 @@ struct MyData {
 
 TG_REGISTER_TYPE(myspace::MyData, "myspace::MyData");
 
-namespace {
-
-bool test_builtin_types_registered() {
-    std::cout << "Test: builtin types registered... ";
-    if (task_graph::type_name<task_graph::Image>() != "task_graph::Image") {
-        std::cout << "FAIL (Image)\n";
-        return false;
-    }
-    if (task_graph::type_name<task_graph::PointCloud>() != "task_graph::PointCloud") {
-        std::cout << "FAIL (PointCloud)\n";
-        return false;
-    }
-    if (task_graph::type_name<int>() != "int") {
-        std::cout << "FAIL (int)\n";
-        return false;
-    }
-    if (task_graph::type_name<std::string>() != "std::string") {
-        std::cout << "FAIL (std::string)\n";
-        return false;
-    }
-    std::cout << "OK\n";
-    return true;
+TEST(TypeRegistry, BuiltinTypesRegistered) {
+    EXPECT_EQ(task_graph::type_name<task_graph::Image>(), "task_graph::Image");
+    EXPECT_EQ(task_graph::type_name<task_graph::PointCloud>(), "task_graph::PointCloud");
+    EXPECT_EQ(task_graph::type_name<int>(), "int");
+    EXPECT_EQ(task_graph::type_name<std::string>(), "std::string");
 }
 
-bool test_user_type_registered() {
-    std::cout << "Test: user type registered... ";
-    if (task_graph::type_name<myspace::MyData>() != "myspace::MyData") {
-        std::cout << "FAIL\n";
-        return false;
-    }
-    std::cout << "OK\n";
-    return true;
+TEST(TypeRegistry, UserTypeRegistered) {
+    EXPECT_EQ(task_graph::type_name<myspace::MyData>(), "myspace::MyData");
 }
 
-bool test_unregistered_type_returns_empty() {
-    std::cout << "Test: unregistered type returns empty string... ";
+TEST(TypeRegistry, UnregisteredTypeReturnsEmpty) {
     struct Unregistered {};
-    if (task_graph::type_name<Unregistered>() != "") {
-        std::cout << "FAIL\n";
-        return false;
-    }
-    std::cout << "OK\n";
-    return true;
+    EXPECT_EQ(task_graph::type_name<Unregistered>(), "");
 }
 
-bool test_make_port_carries_type_name() {
-    std::cout << "Test: make_port carries type_name... ";
+TEST(TypeRegistry, MakePortCarriesTypeName) {
     auto spec = task_graph::make_port<task_graph::Image>("image");
-    if (spec.name != "image" || spec.type_name != "task_graph::Image" || !spec.required) {
-        std::cout << "FAIL\n";
-        return false;
-    }
+    EXPECT_EQ(spec.name, "image");
+    EXPECT_EQ(spec.type_name, "task_graph::Image");
+    EXPECT_TRUE(spec.required);
+
     auto opt_spec = task_graph::make_port<int>("count", false);
-    if (opt_spec.name != "count" || opt_spec.type_name != "int" || opt_spec.required) {
-        std::cout << "FAIL (optional)\n";
-        return false;
-    }
-    std::cout << "OK\n";
-    return true;
-}
-
-}  // namespace
-
-int main() {
-    bool ok = true;
-    ok &= test_builtin_types_registered();
-    ok &= test_user_type_registered();
-    ok &= test_unregistered_type_returns_empty();
-    ok &= test_make_port_carries_type_name();
-    std::cout << (ok ? "\nAll tests passed.\n" : "\nSome tests FAILED.\n");
-    return ok ? 0 : 1;
+    EXPECT_EQ(opt_spec.name, "count");
+    EXPECT_EQ(opt_spec.type_name, "int");
+    EXPECT_FALSE(opt_spec.required);
 }

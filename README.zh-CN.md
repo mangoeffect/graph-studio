@@ -34,7 +34,7 @@ task_graph 让您把一个流水线描述为由带类型的、端口相连的任
 
 ## 构建与测试
 
-要求：CMake >= 3.16，支持 C++20 的编译器。
+要求：CMake >= 3.18，支持 C++20 的编译器。
 
 ```bash
 # 配置 + 构建 + 运行全部测试
@@ -50,6 +50,16 @@ python scripts/run_tests.py -R ports
 python scripts/run_tests.py -l
 ```
 
+测试以**用例粒度**注册进 CTest：每条 GoogleTest `TEST()` 都是独立的 ctest 条目
+（如 `test_dag.Dag.basic_dag_execution`），子模块图测试则每张图一个条目
+（如 `test_image_filtering_graph.single_filter`）。因此一键脚本能逐用例展示
+通过/失败，也可以只过滤单个用例：
+
+```bash
+ctest --test-dir build -C Debug -R test_dag.Dag.basic_dag_execution
+ctest --test-dir build -C Debug -R test_gpu_image_graph.gpu_crop
+```
+
 常用 CMake 选项（`cmake -S . -B build ...`）：
 
 | 选项 | 默认 | 说明 |
@@ -58,6 +68,7 @@ python scripts/run_tests.py -l
 | `TASK_GRAPH_ENABLE_METAL` | OFF | Metal GPU 后端（仅 Apple） |
 | `TASK_GRAPH_ENABLE_VULKAN` | OFF | Vulkan GPU 后端 |
 | `TASK_GRAPH_ENABLE_CUDA` | OFF | CUDA GPU 后端 |
+| `TASK_GRAPH_BUILD_TESTS` | ON | 构建单元测试；首次配置时经 FetchContent 拉取 GoogleTest（v1.15.2）并缓存到 `build/_deps`。离线构建：用 `FETCHCONTENT_SOURCE_DIR_GOOGLETEST` 指向本地 googletest 副本，或关闭此选项 |
 
 构建目录：桌面端用 `build/`，WASM 用 `build_wasm/`，iOS/Android 的 OpenCV 预构建在 `build_ios/` / `build_android/` —— 均已被 gitignore。
 
@@ -187,8 +198,9 @@ python scripts/run_graph_studio.py -t         # 运行编辑器自带的 ctest �
 
 ## 测试
 
-- 核心测试：`test_dag`、`test_ports`、`test_params`、`test_serializer`、`test_data_types`、`test_task_params`、`test_profiler`、`test_type_registry`、`test_logger`、`test_plugin`，以及（启用 OpenCV 时）`test_opencv_convert`。
-- 子模块测试由 JSON 图驱动：每个测试二进制加载一个 `<name>_graph.json`（由 `DAGSerializer` 加载、`DAGExecutor` 执行），描述 `opencv_image_read` → 被测任务。模板以 `tests/graphs/*.json.in` 提交，在配置阶段由 `configure_file` 物化。
+- 核心测试基于 GoogleTest（`tests/*.cpp`，共享断言辅助在 `tests/tg_test_helpers.hpp`）。每条 `TEST(Suite, case)` 注册为独立 ctest 条目，命名为 `<exe>.<Suite>.<case>`。套件：`test_dag`、`test_ports`、`test_params`、`test_serializer`、`test_data_types`、`test_task_params`、`test_profiler`、`test_type_registry`、`test_logger`、`test_path_utils`、`test_plugin`、`test_stream_executor`、`test_plugin_abi`（缺少独立编译的 demo 插件时 soft-skip），以及（启用 OpenCV 时）`test_opencv_convert`。
+- 子模块测试由 JSON 图驱动：驱动接受图名作为 argv，每张图注册一个 ctest 条目（如 `test_gpu_image_graph.gpu_crop`），由 `DAGSerializer` 加载、`DAGExecutor` 执行。图提交在各模块的 `tests/graphs/` 下，配置阶段复制进构建树。退出码 2 表示环境类软跳过（插件 / FFmpeg / GPU compute 后端缺失），在 ctest 中显示为 `Skipped`。
+- 用例发现使用 `gtest_discover_tests(... DISCOVERY_MODE PRE_TEST)`：ctest 启动时（而非构建期）才运行测试可执行文件获取用例列表，因此脚本注入的 Windows DLL 搜索路径此时已经就位。
 
 ## 仓库结构
 
