@@ -80,6 +80,12 @@ def build_stack(cm: CMake, root: Path, lib_build: Path, gs_dir: Path, gs_build: 
     root_defines = ["-DTASK_GRAPH_ENABLE_OPENCV=ON"]
     if opencv_dir and (opencv_dir / "lib").is_dir():
         root_defines.append(f"-DOpenCV_DIR={opencv_dir / 'lib'}")
+    # Vulkan 与 app 侧的 find_package(Vulkan) 探测保持一致（run_graph_studio.py
+    # 同款 platform.has_vulkan() 门）：CI 的 ubuntu 装了 libvulkan-dev，app 的
+    # GpuBootstrap.cpp 会定义 TG_APP_HAS_VULKAN 并引用 VulkanGpuBackend；核心
+    # 库若不开启本开关，链接 graph_studio 时报 undefined reference。
+    if platform.has_vulkan():
+        root_defines.append("-DTASK_GRAPH_ENABLE_VULKAN=ON")
     if cm.configure(root, lib_build, defines=root_defines, build_type=config) != 0:
         return 1
     if cm.build(lib_build, config=config, jobs=jobs,
