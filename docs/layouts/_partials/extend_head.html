@@ -1,0 +1,44 @@
+{{- /* 官网扩展 head：浏览器语言自动检测（项目级覆盖 PaperMod 同名空模板，
+       在 head 末尾、正文渲染前执行；hreflang 备选页主题 head.html 已自带，勿重复输出）。
+
+       行为约定：
+       - localStorage 键 tg-lang-pref：zh / en = 用户手动切换过语言；auto-en = 自动跳转过。
+         存在任意值时自动检测永久让位。
+       - 自动检测只注入中文页（en 页面不反向跳转，天然无循环）；
+         浏览器首选语言（navigator.languages[0]，回退 navigator.language）非 zh 开头才跳转。
+       - location.replace 跳到当前页的英文译页（无译页的中文专属页如标签聚合页不跳转），
+         不污染历史记录；localStorage 不可用时直接放弃跳转（防循环）。 */ -}}
+
+{{- /* 手动偏好记录：点击页头语言切换器后写入，后续访问尊重该选择 */ -}}
+<script>
+    (function () {
+        document.addEventListener('click', function (ev) {
+            var a = ev.target && ev.target.closest ? ev.target.closest('.lang-menu a') : null;
+            if (!a) return;
+            try {
+                localStorage.setItem('tg-lang-pref', /\/en\//.test(a.getAttribute('href') || '') ? 'en' : 'zh');
+            } catch (e) { /* 隐私模式等场景静默跳过 */ }
+        }, false);
+    })();
+</script>
+
+{{- /* 自动检测（仅中文页注入） */ -}}
+{{- if eq .Lang "zh" }}
+    {{- $alt := "" }}
+    {{- range .Translations }}{{ if eq .Lang "en" }}{{ $alt = .RelPermalink }}{{ end }}{{ end }}
+    {{- with $alt }}
+<script>
+    (function () {
+        var ALT = "{{ . }}";
+        try {
+            if (localStorage.getItem('tg-lang-pref')) return;
+        } catch (e) { return; }
+        var primary = (navigator.languages && navigator.languages[0]) ||
+            navigator.language || navigator.userLanguage || '';
+        if (/^zh/i.test(primary)) return;
+        try { localStorage.setItem('tg-lang-pref', 'auto-en'); } catch (e) { /* 见上 */ }
+        location.replace(ALT);
+    })();
+</script>
+    {{- end }}
+{{- end }}
