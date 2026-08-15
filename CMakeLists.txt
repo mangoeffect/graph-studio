@@ -182,6 +182,14 @@ target_link_libraries(task_graph
 
 if(TASK_GRAPH_ENABLE_VULKAN AND NOT EMSCRIPTEN)
     target_link_libraries(task_graph PRIVATE Vulkan::Vulkan)
+    if(MSVC)
+        # vulkan-1.dll 延迟加载（配合 vulkan_backend.cpp 的 delayimp 失败钩子）：
+        # 用户机器缺 loader 时后端 init() 干净失败走 CPU/soft-skip 降级，
+        # 而不是 libtask_graph.dll 因缺 DLL 导致进程无法启动。
+        # 安装包（.msix/.exe）不随包分发 vulkan-1.dll——由 GPU 驱动提供。
+        target_link_options(task_graph PRIVATE "/DELAYLOAD:vulkan-1.dll")
+        target_link_libraries(task_graph PRIVATE delayimp)
+    endif()
     if(TG_SHADERC_LINK)
         target_link_libraries(task_graph PRIVATE ${TG_SHADERC_LINK})
         target_compile_definitions(task_graph PRIVATE ${TG_SHADERC_DEFINE})

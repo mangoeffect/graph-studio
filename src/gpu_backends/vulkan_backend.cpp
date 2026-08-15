@@ -9,6 +9,36 @@
 #include <shaderc/shaderc.hpp>
 #endif
 
+#if defined(_WIN32) && defined(TASK_GRAPH_ENABLE_VULKAN)
+#include <windows.h>
+#include <delayimp.h>
+
+// libtask_graph.dll 以 /DELAYLOAD:vulkan-1.dll 链接（见根 CMakeLists）：
+// 进程启动不再要求 loader 存在。用户机器缺 vulkan-1.dll（无 GPU/老驱动）时，
+// 首次 vk 调用触发 dliFailLoad——默认行为是弹窗并终止进程；这里把所有
+// vk 导入指到失败桩，让 VulkanGpuBackend::init() 拿到错误码干净返回，
+// 应用按既有约定降级（CPU 路径 / gpu 子模块 soft-skip）。
+namespace {
+extern "C" VkResult VKAPI_ATTR vk_delayload_missing_stub() {
+    return VK_ERROR_INITIALIZATION_FAILED;
+}
+
+extern "C" FARPROC WINAPI vk_delayload_hook(unsigned dliNotify, DelayLoadInfo* pdli) {
+    (void)pdli;
+    if (dliNotify == dliFailLoad) {
+        return reinterpret_cast<FARPROC>(&vk_delayload_missing_stub);
+    }
+    return nullptr;  // 其余通知走 delayimp 默认处理
+}
+}  // namespace
+
+extern "C" {
+// delayimp 约定：自定义了 failure hook 就必须同时定义 notify hook。
+const PfnDliHook __pfnDliNotifyHook2 = nullptr;
+const PfnDliHook __pfnDliFailureHook2 = &vk_delayload_hook;
+}
+#endif
+
 namespace task_graph {
 
 uint32_t VulkanGpuBackend::find_memory_type(uint32_t typeFilter, VkMemoryPropertyFlags properties) {
