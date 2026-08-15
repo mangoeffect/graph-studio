@@ -145,7 +145,10 @@ jobs:
       - name: Setup emsdk
         uses: mymindstorm/setup-emsdk@v14
         with:
-          version: '3.1.37'
+          # Google 已清理 ≤3.1.45 的 emscripten-releases 二进制（404），3.1.46
+          # 是仍可下载的最近版本（与本地验证用的 3.1.37 同属 3.1.x 系列，
+          # Qt 6.6.3 wasm 兼容窗口内）。
+          version: '3.1.46'
 
       # wasm Qt 的 host tools（moc 等）来自桌面 Qt（QT_HOST_PATH），与本地
       # mac 构建的布局一致：wasm 前缀 + 同版本桌面前缀。

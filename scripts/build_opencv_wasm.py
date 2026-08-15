@@ -107,9 +107,11 @@ def main() -> int:
         "-DCMAKE_CXX_FLAGS=-pthread",
         f"-DCMAKE_INSTALL_PREFIX={install_dir}",
     ]
-    # emcmake 是 cmake 的 emscripten 包装器：emcmake cmake -S ... -B ...
+    # emcmake 是 cmake 的 emscripten 包装器，canonical 用法是显式带 `cmake`
+    # 子命令（新版本 emcmake 对裸 flags 会把首个参数当可执行文件）：
+    # emcmake cmake -S ... -B ...
     console.step(f"Configuring OpenCV WASM (modules: {args.modules})")
-    code = runner.check([str(emcmake), "-S", str(src), "-B", str(build_dir)] + defines, what="配置 OpenCV WASM")
+    code = runner.check([str(emcmake), "cmake", "-S", str(src), "-B", str(build_dir)] + defines, what="配置 OpenCV WASM")
     if code != 0:
         return code
 
