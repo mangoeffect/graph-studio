@@ -49,6 +49,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--web-dir", type=Path,
                         default=repo_root / "docs" / "public" / "web",
                         help="Web 产物解压目录（默认 docs/public/web）")
+    # ---- 两阶段模式：website.yml 在 hugo 前跑 --data-only（模板要读数据），
+    # hugo 后跑 --unpack-only（产物进 public/web/，避开 minify；该路径只放
+    # Qt shell，落地页在 /online/，互不覆盖）。
+    parser.add_argument("--data-only", action="store_true",
+                        help="只查询 API 写 web.json，不下载解压（hugo 构建前）")
+    parser.add_argument("--unpack-only", action="store_true",
+                        help="只下载解压到 web-dir，不写 web.json（hugo 构建后）")
     # ---- 本地联调：绕过 API，直接用本地 zip 模拟 present 态 ----
     parser.add_argument("--from-zip", type=Path, default=None,
                         help="（测试）用本地 zip 模拟已发布的 Web 包")
@@ -136,24 +143,28 @@ def main() -> int:
             print(f"fetch_web_release: 尚无 Web 资产，落地页降级为空态")
             return 0
         release, asset = found
-        with tempfile.TemporaryDirectory() as tmp:
-            zip_path = Path(tmp) / asset["name"]
-            api_download(asset["browser_download_url"], token, zip_path)
-            unpack(zip_path, args.web_dir)
-        write_data(args.data_out, {
-            "present": True,
-            "tag": release.get("tag_name") or "",
-            "name": release.get("name") or "",
-            "prerelease": bool(release.get("prerelease")),
-            "published_at": release.get("published_at") or "",
-            "size": int(asset.get("size") or 0),
-            "zip_url": asset.get("browser_download_url") or "",
-        })
-        print(f"fetch_web_release: {asset['name']} ({release.get('tag_name')}) -> {args.web_dir}")
+        if not args.unpack_only:
+            write_data(args.data_out, {
+                "present": True,
+                "tag": release.get("tag_name") or "",
+                "name": release.get("name") or "",
+                "prerelease": bool(release.get("prerelease")),
+                "published_at": release.get("published_at") or "",
+                "size": int(asset.get("size") or 0),
+                "zip_url": asset.get("browser_download_url") or "",
+            })
+        if not args.data_only:
+            with tempfile.TemporaryDirectory() as tmp:
+                zip_path = Path(tmp) / asset["name"]
+                api_download(asset["browser_download_url"], token, zip_path)
+                unpack(zip_path, args.web_dir)
+        print(f"fetch_web_release: {asset['name']} ({release.get('tag_name')}) "
+              f"{'data+unpack' if not (args.data_only or args.unpack_only) else ('data-only' if args.data_only else 'unpack-only')}")
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError,
             zipfile.BadZipFile, OSError) as exc:
         # 官网空态兜底：不阻塞部署
-        write_data(args.data_out, empty_payload(args.repo, error=str(exc)))
+        if not args.unpack_only:
+            write_data(args.data_out, empty_payload(args.repo, error=str(exc)))
         print(f"fetch_web_release: 警告：拉取/解压 Web 包失败（{exc}），已写入空态数据",
               file=sys.stderr)
     return 0

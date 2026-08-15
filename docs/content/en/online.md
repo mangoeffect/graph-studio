@@ -1,7 +1,7 @@
 ---
 title: Try Online
 description: Run GraphStudio (WebAssembly build) directly in your browser — nothing to install.
-layout: web
+layout: online
 ---
 
 GraphStudio is fully compiled to WebAssembly (multi-threaded) and runs directly in the browser.

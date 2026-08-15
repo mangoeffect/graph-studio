@@ -76,16 +76,24 @@ jobs:
         run: python scripts/fetch_releases.py
         # 拉取失败时脚本写空数据、退出 0 —— 站点降级为空态，不阻塞构建
 
+      # 两阶段：hugo 前只写 docs/data/web.json（落地页模板要读）；
+      # hugo 后 --unpack-only 把 zip 解进产物目录（不经 static/，避免
+      # --minify 改写 Qt shell 与二次拷贝）。/web/ 只放应用，
+      # 落地页在 /online/，互不覆盖。
+      - name: Fetch web release data (pre-hugo)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python scripts/fetch_web_release.py --data-only
+
       - name: Build site
         working-directory: docs
         run: hugo --minify --gc
 
-      # 在 hugo 之后解压 Web 包到产物目录（不经 static/，避免 --minify 改写
-      # Qt shell 与二次拷贝）。失败/无资产时脚本写空态数据退出 0，不阻塞部署。
-      - name: Fetch web release (WASM build)
+      - name: Unpack web release (post-hugo)
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: python scripts/fetch_web_release.py
+        run: python scripts/fetch_web_release.py --unpack-only
+        # 失败/无资产时退出 0，不阻塞部署
 
       - name: Configure Pages
         id: pages

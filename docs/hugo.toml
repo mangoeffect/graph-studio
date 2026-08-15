@@ -82,7 +82,7 @@ weight = 10
 [[languages.zh.menu.main]]
 identifier = "web"
 name = "在线体验"
-url = "/web/"
+url = "/online/"
 weight = 15
 
 [[languages.zh.menu.main]]
@@ -124,7 +124,7 @@ weight = 10
 [[languages.en.menu.main]]
 identifier = "web"
 name = "Try Online"
-url = "/web/"
+url = "/online/"
 weight = 15
 
 [[languages.en.menu.main]]

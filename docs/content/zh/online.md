@@ -1,7 +1,7 @@
 ---
 title: 在线体验
 description: 在浏览器中直接运行 GraphStudio（WebAssembly 版），无需安装任何东西。
-layout: web
+layout: online
 ---
 
 GraphStudio 被完整编译为 WebAssembly（多线程），可以在浏览器里直接运行。
