@@ -27,13 +27,26 @@ runs:
     - name: Export QT_PREFIX_PATH
       shell: bash
       run: |
-        # install-qt-action sets Qt6_DIR=<prefix>/lib/cmake/Qt6 ; the prefix
-        # (with bin/ + lib/) is three levels up. deps.find_qt() reads this env.
-        # 逐层 dirname：避免三层嵌套 $(dirname "$(dirname ...)") 的引号交错写法。
-        qt_prefix="$Qt6_DIR"
-        qt_prefix="$(dirname "$qt_prefix")"
-        qt_prefix="$(dirname "$qt_prefix")"
-        qt_prefix="$(dirname "$qt_prefix")"
+        # install-qt-action 老版本导出 Qt6_DIR=<prefix>/lib/cmake/Qt6（前缀在
+        # 三层之上）；新版本只导出 QT_ROOT_DIR=<prefix> 本身。两者都试，
+        # 并以 lib/cmake/Qt6 存在性校验，避免空变量 dirname 出 "." 污染下游
+        # （package_linux.py 会因 QT_PREFIX_PATH=. 报「Qt6 未找到」）。
+        qt_prefix="${Qt6_DIR:-${QT6_DIR:-}}"
+        if [ -n "$qt_prefix" ]; then
+          qt_prefix="$(dirname "$qt_prefix")"
+          qt_prefix="$(dirname "$qt_prefix")"
+          qt_prefix="$(dirname "$qt_prefix")"
+        else
+          qt_prefix="${QT_ROOT_DIR:-}"
+        fi
+        if [ -n "$qt_prefix" ] && [ ! -d "$qt_prefix/lib/cmake/Qt6" ]; then
+          qmake_bin="$(command -v qmake6 || command -v qmake || true)"
+          if [ -n "$qmake_bin" ]; then qt_prefix="$(dirname "$qmake_bin")/.."; fi
+        fi
+        if [ -z "$qt_prefix" ] || [ ! -d "$qt_prefix/lib/cmake/Qt6" ]; then
+          echo "::error::无法定位 Qt 前缀（Qt6_DIR/QT_ROOT_DIR/qmake 均无效）" >&2
+          exit 1
+        fi
         echo "QT_PREFIX_PATH=$qt_prefix" >> "$GITHUB_ENV"
         echo "QT_PREFIX_PATH=$qt_prefix"
 
