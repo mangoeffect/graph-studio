@@ -151,7 +151,8 @@ jobs:
           version: '3.1.46'
 
       # wasm Qt 的 host tools（moc 等）来自桌面 Qt（QT_HOST_PATH），与本地
-      # mac 构建的布局一致：wasm 前缀 + 同版本桌面前缀。
+      # mac 构建的布局一致：wasm 前缀 + 同版本桌面前缀。新版 install-qt-action
+      # 不导出 Qt6_DIR，回退读它导出的 QT_ROOT_DIR（本步骤时 = 桌面前缀）。
       - name: Setup Qt6 host (linux desktop 6.6.3)
         uses: jurplel/install-qt-action@v4
         with:
@@ -163,8 +164,11 @@ jobs:
       - name: Export QT_HOST_ROOT
         shell: bash
         run: |
-          echo "QT_HOST_ROOT=$(dirname "$(dirname "$Qt6_DIR")")" >> "$GITHUB_ENV"
-          echo "QT_HOST_ROOT=$(dirname "$(dirname "$Qt6_DIR")")"
+          p="${Qt6_DIR:-}"
+          if [ -n "$p" ]; then p="$(dirname "$(dirname "$(dirname "$p")")")"; else p="${QT_ROOT_DIR:-}"; fi
+          [ -n "$p" ] && [ -d "$p/lib/cmake/Qt6" ] || { echo "::error::无法定位 Qt host 前缀"; exit 1; }
+          echo "QT_HOST_ROOT=$p" >> "$GITHUB_ENV"
+          echo "QT_HOST_ROOT=$p"
 
       - name: Setup Qt6 wasm (wasm_multithread 6.6.3)
         uses: jurplel/install-qt-action@v4
@@ -178,8 +182,11 @@ jobs:
       - name: Export QT_WASM_ROOT
         shell: bash
         run: |
-          echo "QT_WASM_ROOT=$(dirname "$(dirname "$Qt6_DIR")")" >> "$GITHUB_ENV"
-          echo "QT_WASM_ROOT=$(dirname "$(dirname "$Qt6_DIR")")"
+          p="${Qt6_DIR:-}"
+          if [ -n "$p" ]; then p="$(dirname "$(dirname "$(dirname "$p")")")"; else p="${QT_ROOT_DIR:-}"; fi
+          [ -n "$p" ] && [ -d "$p/lib/cmake/Qt6" ] || { echo "::error::无法定位 Qt wasm 前缀"; exit 1; }
+          echo "QT_WASM_ROOT=$p" >> "$GITHUB_ENV"
+          echo "QT_WASM_ROOT=$p"
 
       - name: Cache OpenCV WASM install
         uses: actions/cache@v4
