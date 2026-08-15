@@ -42,13 +42,14 @@ runs:
       shell: bash
       run: brew install opencv
 
-    - name: Install OpenCV + Qt runtime libs (Linux)
+    - name: Install OpenCV + Qt runtime libs + Vulkan dev (Linux)
       if: runner.os == 'Linux'
       shell: bash
       run: |
         sudo apt-get update
         sudo apt-get install -y \
           libopencv-dev \
+          libvulkan-dev \
           libegl1 libgl1 libglib2.0-0 libfontconfig1 libdbus-1-3 \
           libxkbcommon0 libxkbcommon-x11-0 libxcb-cursor0 libxcb-xinerama0 \
           libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 \
@@ -70,28 +71,39 @@ runs:
         $ver = "${{ inputs.vulkan-version-win }}"
         $url = "https://sdk.lunarg.com/sdk/download/$ver/windows/vulkan-sdk.exe"
         Write-Host "Downloading $url"
-        # curl.exe：进度可见、可重试；安装器直接同步调用，其控制台输出流式
-        # 进日志（Start-Process -Wait 会吞掉输出，卡住时无从判断卡在哪）。
         curl.exe -L --fail --retry 3 --retry-delay 5 -o "$env:RUNNER_TEMP\vulkan-sdk.exe" $url
         if ($LASTEXITCODE -ne 0) { throw "Vulkan SDK download failed: $LASTEXITCODE" }
-        Write-Host "Installing to C:\VulkanSDK (unattended)"
-        & "$env:RUNNER_TEMP\vulkan-sdk.exe" --mode unattended --unattendedmodebehavior none --prefix C:\VulkanSDK
-        if ($LASTEXITCODE -ne 0) { throw "Vulkan SDK installer failed: $LASTEXITCODE" }
+        # 该安装器是 Qt Installer Framework（BitRock 的 --mode unattended 等参数
+        # 无效，且会弹 GUI 窗口把无头 CI 挂死）。exe 本身是 7z SFX，直接解出
+        # 编译所需的 Include + Lib（vulkan-1.lib / shaderc 等），不执行安装器、
+        # 不写注册表。runner 自带 7z。
+        Write-Host "Extracting Include + Lib to C:\VulkanSDK"
+        7z x "$env:RUNNER_TEMP\vulkan-sdk.exe" -o"C:\VulkanSDK" -y "Include" "Lib" | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "7z extract failed: $LASTEXITCODE" }
+        Remove-Item "$env:RUNNER_TEMP\vulkan-sdk.exe" -Force
 
     - name: Export Vulkan SDK env (Windows)
       if: runner.os == 'Windows'
       shell: pwsh
       run: |
-        # 安装器可能在 prefix 下再嵌 <version> 目录，按 vulkan.h 实际位置探测
-        $dir = Get-ChildItem -Path "C:\VulkanSDK" -Directory -Recurse -Depth 1 -ErrorAction SilentlyContinue |
-            Where-Object { Test-Path "$($_.FullName)\Include\vulkan\vulkan.h" } |
-            Sort-Object FullName -Descending | Select-Object -First 1
+        # 7z 解压布局是 C:\VulkanSDK\Include\...（无版本子目录）；
+        # 兼容保留版本子目录布局的探测（若改回安装器方式安装）。
+        $dir = $null
+        if (Test-Path "C:\VulkanSDK\Include\vulkan\vulkan.h") {
+          $dir = Get-Item "C:\VulkanSDK"
+        } else {
+          $dir = Get-ChildItem -Path "C:\VulkanSDK" -Directory -Recurse -Depth 1 -ErrorAction SilentlyContinue |
+              Where-Object { Test-Path "$($_.FullName)\Include\vulkan\vulkan.h" } |
+              Sort-Object FullName -Descending | Select-Object -First 1
+        }
         if (-not $dir) {
-          throw "vulkan.h not found under C:\VulkanSDK (install failed?)"
+          throw "vulkan.h not found under C:\VulkanSDK (extract failed?)"
         }
         Write-Host "Vulkan SDK dir: $($dir.FullName)"
         Add-Content -Path $env:GITHUB_ENV -Value "VULKAN_SDK=$($dir.FullName)"
-        Add-Content -Path $env:GITHUB_PATH -Value "$($dir.FullName)\Bin"
+        if (Test-Path "$($dir.FullName)\Bin") {
+          Add-Content -Path $env:GITHUB_PATH -Value "$($dir.FullName)\Bin"
+        }
         Write-Host "VULKAN_SDK=$($dir.FullName)"
 
     - name: Cache OpenCV (Windows)

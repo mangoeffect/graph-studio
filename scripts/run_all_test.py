@@ -174,10 +174,9 @@ def main() -> int:
     root_defines = ["-DTASK_GRAPH_BUILD_SUBMODULES=ON", "-DTASK_GRAPH_ENABLE_OPENCV=ON"]
     if platform.is_macos():
         root_defines.append("-DTASK_GRAPH_ENABLE_METAL=ON")
-    # Vulkan 仅在检测到 SDK（VULKAN_SDK 环境变量，CI 由 setup-build-deps
-    # 安装 LunarG SDK 后导出，本地由 LunarG 安装器写入）时启用；
-    # 未装 SDK 时 gpu 子模块自动 soft-skip（与 Linux 一致）。
-    if platform.is_windows() and os.environ.get("VULKAN_SDK"):
+    # Vulkan 按平台探测（Windows 看 VULKAN_SDK，Linux 看 libvulkan-dev）；
+    # 未装 SDK 时 gpu 子模块自动 soft-skip。
+    if platform.has_vulkan():
         root_defines.append("-DTASK_GRAPH_ENABLE_VULKAN=ON")
     if opencv_dir and (opencv_dir / "lib").is_dir():
         root_defines.append(f"-DOpenCV_DIR={opencv_dir / 'lib'}")

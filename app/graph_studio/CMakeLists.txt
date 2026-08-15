@@ -126,6 +126,17 @@ if(NOT EMSCRIPTEN)
     target_link_libraries(graph_studio PRIVATE ${OpenCV_LIBS})
 endif()
 
+# Vulkan 后端头（GpuBootstrap.cpp 直接 include vulkan_backend.hpp）：非 Apple
+# 桌面端按需开启；找不到 SDK/开发包时该源文件编译为无 GPU 后端的空实现。
+if(NOT APPLE AND NOT EMSCRIPTEN)
+    find_package(Vulkan QUIET)
+    if(Vulkan_FOUND)
+        target_compile_definitions(graph_studio PRIVATE TG_APP_HAS_VULKAN=1)
+        # 只为头文件搜索路径；vulkan-1 由 libtask_graph PRIVATE 链接并在其内部解析
+        target_include_directories(graph_studio PRIVATE ${Vulkan_INCLUDE_DIRS})
+    endif()
+endif()
+
 # ============================================================
 # Sentry 崩溃上报（crashpad backend，仅桌面端）
 # 依赖 scripts/fetch_sentry.py 拉取；未拉取则跳过（无崩溃上报能力）。

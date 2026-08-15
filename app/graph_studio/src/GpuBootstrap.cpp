@@ -3,10 +3,12 @@
 #include <task_graph_api.hpp>
 #include <task_graph/gpu_image_ops.hpp>
 
+// 后端可用性由 CMake 判定（TG_APP_HAS_*），而非平台硬编码：
+// 例如 Linux 没装 libvulkan-dev 时这里编译为无后端空实现。
 #if defined(__APPLE__)
     #include <task_graph/gpu_backends/metal_backend.hpp>
     #define TG_HAS_METAL 1
-#elif (defined(_WIN32) || defined(__linux__)) && !defined(__EMSCRIPTEN__)
+#elif defined(TG_APP_HAS_VULKAN)
     #include <task_graph/gpu_backends/vulkan_backend.hpp>
     #define TG_HAS_VULKAN 1
 #endif
@@ -50,9 +52,9 @@ bool try_init_vulkan() {
 }  // namespace
 
 void InitGpuBackend() {
-#if defined(__APPLE__)
+#if defined(TG_HAS_METAL)
     try_init_metal();
-#elif (defined(_WIN32) || defined(__linux__)) && !defined(__EMSCRIPTEN__)
+#elif defined(TG_HAS_VULKAN)
     try_init_vulkan();
 #else
     TG_LOG_INFO("No GPU backend available on this platform; gpu tasks will fail at runtime");
