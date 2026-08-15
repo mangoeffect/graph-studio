@@ -1,0 +1,84 @@
+{{- /* 下载页：数据来自 docs/data/releases.json（scripts/fetch_releases.py 在构建期生成）。 */ -}}
+{{ define "main" }}
+<article class="post-single tg-downloads">
+  <header class="post-header">
+    <h1 class="post-title">{{ .Title }}</h1>
+    {{- with .Description }}
+    <div class="post-description">{{ . }}</div>
+    {{- end }}
+  </header>
+
+  {{- $data := site.Data.releases }}
+  {{- if and $data (gt (len $data.releases) 0) }}
+    {{- $stable := "" }}
+    {{- range first 1 (where $data.releases "prerelease" false) }}{{ $stable = . }}{{ end }}
+
+    {{- with $stable }}
+    <div class="tg-release-head">
+      <span class="tg-channel tg-ch-stable">STABLE</span>
+      <span class="tg-release-tag">{{ .tag_name }}</span>
+      <span class="tg-release-date">{{ i18n "released_at" }} {{ time .published_at | time.Format "2006-01-02" }}</span>
+    </div>
+
+    {{- $mac := "" }}{{ $win := "" }}{{ $linux := "" }}
+    {{- range .assets }}
+      {{- if hasSuffix .name ".dmg" }}{{ $mac = . }}
+      {{- else if hasSuffix .name ".msix" }}{{ $win = . }}
+      {{- else if hasSuffix .name ".AppImage" }}{{ $linux = . }}
+      {{- end }}
+    {{- end }}
+
+    <div class="tg-dl-grid">
+      {{- range $card := slice (dict "os" "macOS" "ver" "12+" "asset" $mac "hint" ".dmg · Apple silicon / Intel")
+                               (dict "os" "Windows" "ver" "10 1809+" "asset" $win "hint" ".msix · x64")
+                               (dict "os" "Linux" "ver" "x86_64" "asset" $linux "hint" ".AppImage") }}
+      {{- with $card.asset }}
+      <a class="tg-dl-card" href="{{ .url }}">
+        <div class="tg-dl-os">{{ $card.os }} <small>{{ $card.ver }}</small></div>
+        <div class="tg-dl-btn">{{ i18n "download_now" }}</div>
+        <div class="tg-dl-file">{{ .name }}</div>
+        <div class="tg-dl-size">{{ printf "%.1f" (div (mul .size 1.0) 1048576.0) }} MB · {{ $card.hint }}</div>
+      </a>
+      {{- else }}
+      <div class="tg-dl-card tg-dl-card-missing">
+        <div class="tg-dl-os">{{ $card.os }} <small>{{ $card.ver }}</small></div>
+        <div class="tg-dl-file">{{ i18n "asset_missing" }}</div>
+      </div>
+      {{- end }}
+      {{- end }}
+    </div>
+    {{- end }}
+
+    {{- $rest := $data.releases }}
+    {{- if $stable }}{{ $rest = where $data.releases "tag_name" "ne" $stable.tag_name }}{{ end }}
+    {{- if $rest }}
+    <h2 class="tg-sub-title">{{ i18n "prereleases_title" }}</h2>
+    <ul class="tg-release-list">
+      {{- range first 10 $rest }}
+      <li>
+        <span class="tg-channel tg-ch-{{ .channel | default "unknown" }}">{{ upper (.channel | default "?") }}</span>
+        <a href="{{ .html_url }}">{{ .tag_name }}</a>
+        {{- if .prerelease }}<span class="tg-pre-flag">pre-release</span>{{ end }}
+        <time>{{ time .published_at | time.Format "2006-01-02" }}</time>
+      </li>
+      {{- end }}
+    </ul>
+    {{- end }}
+
+    <p class="tg-all-releases">
+      <a href="{{ $data.html_url | default "https://github.com/mangoeffect/graph-studio/releases" }}" target="_blank" rel="noopener">{{ i18n "all_releases" }} ↗</a>
+    </p>
+  {{- else }}
+  <div class="tg-empty">
+    <h2>{{ i18n "downloads_empty_title" }}</h2>
+    <p>{{ i18n "downloads_empty_body" | markdownify }}</p>
+    <div class="tg-hero-actions">
+      <a class="tg-btn" href="{{ "blog/" | relLangURL }}">{{ .Params.buildPostTitle | default "Blog" }}</a>
+      <a class="tg-btn" href="https://github.com/mangoeffect/graph-studio/releases" target="_blank" rel="noopener">GitHub Releases ↗</a>
+    </div>
+  </div>
+  {{- end }}
+
+  <div class="post-content">{{ .Content }}</div>
+</article>
+{{ end }}

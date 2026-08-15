@@ -1,0 +1,31 @@
+# 官网自定义词条（与主题自带 zh.yaml 合并）
+- id: hero_download
+  translation: "下载 GraphStudio"
+- id: hero_github
+  translation: "在 GitHub 上查看"
+- id: features_title
+  translation: "核心特性"
+- id: latest_stable
+  translation: "最新稳定版"
+- id: download_now
+  translation: "立即下载"
+- id: released_at
+  translation: "发布于"
+- id: prereleases_title
+  translation: "预发布与历史版本"
+- id: all_releases
+  translation: "在 GitHub 查看全部版本"
+- id: downloads_empty_title
+  translation: "尚未发布任何版本"
+- id: downloads_empty_body
+  translation: "GraphStudio 的安装包（macOS `.dmg` / Windows `.msix` / Linux `.AppImage`）将通过 GitHub Releases 提供，发布后会第一时间出现在这里。你现在可以先从源码构建，或到 GitHub 关注发布动态。"
+- id: changelog_empty_title
+  translation: "暂无更新日志"
+- id: changelog_empty_body
+  translation: "第一个版本发布后，更新日志会自动出现在这里（数据来自 GitHub Releases）。"
+- id: view_release
+  translation: "发布页"
+- id: asset_missing
+  translation: "该平台安装包缺失"
+- id: file_size
+  translation: "大小"

@@ -4,7 +4,7 @@
 
 task_graph 让您把一个流水线描述为由带类型的、端口相连的任务组成的图，自动进行拓扑并行执行，并可序列化为 JSON / 从 JSON 加载。框架自带插件系统、可选 GPU 后端（Metal / Vulkan / CUDA）、OpenCV、JavaScript（QuickJS）和 MediaPipe 子模块，以及 Qt6 桌面编辑器（GraphStudio）。
 
-[English](./README.md)
+[English](./README.md) · [官网](https://mangoeffect.github.io/graph-studio/)
 
 ---
 

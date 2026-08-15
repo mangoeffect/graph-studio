@@ -1,0 +1,48 @@
+{{- /* 更新日志页：数据来自 docs/data/releases.json（scripts/fetch_releases.py 在构建期生成）。 */ -}}
+{{ define "main" }}
+<article class="post-single tg-changelog">
+  <header class="post-header">
+    <h1 class="post-title">{{ .Title }}</h1>
+    {{- with .Description }}
+    <div class="post-description">{{ . }}</div>
+    {{- end }}
+  </header>
+
+  {{- $data := site.Data.releases }}
+  {{- if and $data (gt (len $data.releases) 0) }}
+  <div class="tg-cl-list">
+    {{- range $data.releases }}
+    <section class="tg-cl-item" id="{{ .tag_name }}">
+      <div class="tg-cl-head">
+        <span class="tg-channel tg-ch-{{ .channel | default "unknown" }}">{{ upper (.channel | default "?") }}</span>
+        <a class="tg-cl-tag" href="{{ .html_url }}">{{ .tag_name }}</a>
+        {{- if .prerelease }}<span class="tg-pre-flag">pre-release</span>{{ end }}
+        <time>{{ time .published_at | time.Format "2006-01-02" }}</time>
+        {{- with .name }}<span class="tg-cl-name">{{ . }}</span>{{ end }}
+      </div>
+      {{- with .body_md }}
+      <div class="tg-cl-body">{{ . | markdownify }}</div>
+      {{- end }}
+      {{- if .assets }}
+      <div class="tg-cl-assets">
+        {{- range .assets }}
+        <a href="{{ .url }}" title="{{ printf "%.1f" (div (mul .size 1.0) 1048576.0) }} MB">{{ .name }}</a>
+        {{- end }}
+      </div>
+      {{- end }}
+    </section>
+    {{- end }}
+  </div>
+  <p class="tg-all-releases">
+    <a href="{{ $data.html_url | default "https://github.com/mangoeffect/graph-studio/releases" }}" target="_blank" rel="noopener">{{ i18n "all_releases" }} ↗</a>
+  </p>
+  {{- else }}
+  <div class="tg-empty">
+    <h2>{{ i18n "changelog_empty_title" }}</h2>
+    <p>{{ i18n "changelog_empty_body" }}</p>
+  </div>
+  {{- end }}
+
+  <div class="post-content">{{ .Content }}</div>
+</article>
+{{ end }}

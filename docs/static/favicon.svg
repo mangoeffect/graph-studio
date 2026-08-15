@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Background gradient -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0F172A"/>
+      <stop offset="100%" stop-color="#1E293B"/>
+    </linearGradient>
+
+    <!-- Blue node gradient (top-light to bottom-dark) -->
+    <linearGradient id="blueNode" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#60A5FA"/>
+      <stop offset="40%" stop-color="#3B82F6"/>
+      <stop offset="100%" stop-color="#1E40AF"/>
+    </linearGradient>
+
+    <!-- Green node gradient (accent / completed task) -->
+    <linearGradient id="greenNode" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#4ADE80"/>
+      <stop offset="40%" stop-color="#22C55E"/>
+      <stop offset="100%" stop-color="#15803D"/>
+    </linearGradient>
+
+    <!-- Edge gradient -->
+    <linearGradient id="edgeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#60A5FA"/>
+      <stop offset="100%" stop-color="#38BDF8"/>
+    </linearGradient>
+
+    <!-- Arrowhead marker -->
+    <marker id="arrow" markerWidth="24" markerHeight="24"
+            refX="18" refY="12" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M 0,2 L 22,12 L 0,22 L 5,12 Z" fill="#38BDF8"/>
+    </marker>
+
+    <!-- Subtle glow for green accent node -->
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="10" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Dot grid pattern (canvas / editor feel) -->
+    <pattern id="dots" x="0" y="0" width="48" height="48" patternUnits="userSpaceOnUse">
+      <circle cx="24" cy="24" r="2.5" fill="#334155"/>
+    </pattern>
+  </defs>
+
+  <!-- ── Background ── -->
+  <rect width="1024" height="1024" rx="200" fill="url(#bgGrad)"/>
+  <rect width="1024" height="1024" rx="200" fill="url(#dots)"/>
+
+  <!-- ── Edges (behind nodes) ── -->
+  <!-- A → B : upper branch -->
+  <path d="M 360,470 C 480,470 540,312 648,312"
+        fill="none" stroke="url(#edgeGrad)" stroke-width="14"
+        stroke-linecap="round" marker-end="url(#arrow)"/>
+  <!-- A → C : lower branch -->
+  <path d="M 360,554 C 480,554 540,712 648,712"
+        fill="none" stroke="url(#edgeGrad)" stroke-width="14"
+        stroke-linecap="round" marker-end="url(#arrow)"/>
+
+  <!-- ── Node A (left, blue — input/start) ── -->
+  <rect x="140" y="427" width="220" height="170" rx="28" fill="url(#blueNode)"/>
+  <rect x="140" y="427" width="220" height="170" rx="28"
+        fill="none" stroke="#93C5FD" stroke-width="3" opacity="0.5"/>
+
+  <!-- ── Node B (top-right, green accent — completed task) ── -->
+  <rect x="660" y="227" width="220" height="170" rx="28"
+        fill="url(#greenNode)" filter="url(#glow)"/>
+  <rect x="660" y="227" width="220" height="170" rx="28"
+        fill="none" stroke="#86EFAC" stroke-width="3" opacity="0.6"/>
+
+  <!-- ── Node C (bottom-right, blue — pending task) ── -->
+  <rect x="660" y="627" width="220" height="170" rx="28" fill="url(#blueNode)"/>
+  <rect x="660" y="627" width="220" height="170" rx="28"
+        fill="none" stroke="#93C5FD" stroke-width="3" opacity="0.5"/>
+
+  <!-- ── Port circles (connection points) ── -->
+  <circle cx="360" cy="470" r="16" fill="#38BDF8" stroke="#0F172A" stroke-width="4"/>
+  <circle cx="360" cy="554" r="16" fill="#38BDF8" stroke="#0F172A" stroke-width="4"/>
+  <circle cx="660" cy="312" r="16" fill="#4ADE80" stroke="#0F172A" stroke-width="4"/>
+  <circle cx="660" cy="712" r="16" fill="#38BDF8" stroke="#0F172A" stroke-width="4"/>
+</svg>

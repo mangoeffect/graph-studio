@@ -1,0 +1,62 @@
+{{- /* 官网落地页：覆盖 PaperMod 首页。文案与特性卡片来自 content/<lang>/_index.md 的 front matter。 */ -}}
+{{ define "main" }}
+<div class="tg-hero">
+  {{- with .Params.heroBadge }}
+  <span class="tg-pill">{{ . }}</span>
+  {{- end }}
+  <h1 class="tg-hero-title">{{ .Params.heroTitle | default .Site.Title }}</h1>
+  <p class="tg-hero-sub">{{ .Params.heroSubtitle }}</p>
+  <div class="tg-hero-actions">
+    <a class="tg-btn tg-btn-primary" href="{{ "download/" | relLangURL }}">{{ i18n "hero_download" }}</a>
+    <a class="tg-btn" href="{{ site.Params.repoUrl | default "https://github.com/mangoeffect/graph-studio" }}" target="_blank" rel="noopener">{{ i18n "hero_github" }} ↗</a>
+  </div>
+  {{- with .Params.platforms }}
+  <div class="tg-platforms">
+    {{- range . }}
+    <span class="tg-chip">{{ . }}</span>
+    {{- end }}
+  </div>
+  {{- end }}
+</div>
+
+{{- with .Params.graphStudio }}
+<section class="tg-section tg-graphstudio">
+  <h2>{{ .title }}</h2>
+  <div class="tg-gs-cols">
+    <div class="tg-gs-text">
+      <p>{{ .desc }}</p>
+      <ul class="tg-gs-list">
+        {{- range .bullets }}
+        <li>{{ . }}</li>
+        {{- end }}
+      </ul>
+      <div class="tg-hero-actions">
+        <a class="tg-btn tg-btn-primary" href="{{ "download/" | relLangURL }}">{{ i18n "hero_download" }}</a>
+        <a class="tg-btn" href="{{ $.Params.graphStudio.tutorialUrl | default ("blog/" | relLangURL) }}">{{ $.Params.graphStudio.tutorialLabel | default "Blog" }}</a>
+      </div>
+    </div>
+    <div class="tg-gs-shot" aria-hidden="true">
+      <img src="{{ "img/og-image.png" | relURL }}" alt="GraphStudio" loading="lazy" />
+    </div>
+  </div>
+</section>
+{{- end }}
+
+<section class="tg-section">
+  <h2>{{ i18n "features_title" }}</h2>
+  <div class="tg-grid">
+    {{- range .Params.features }}
+    <div class="tg-card">
+      <div class="tg-card-icon">{{ .icon }}</div>
+      <h3>{{ .title }}</h3>
+      <p>{{ .desc }}</p>
+    </div>
+    {{- end }}
+  </div>
+</section>
+
+{{- /* _index.md 正文：快速上手代码示例等 */ -}}
+<div class="post-content tg-home-content">
+  {{- .Content }}
+</div>
+{{ end }}

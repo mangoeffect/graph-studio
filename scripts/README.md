@@ -32,6 +32,7 @@ python scripts/package_linux.py --version 0.1.0      # -> dist/appimage/graph_st
 
 - `generate_submodule.py` — 插件子模块脚手架生成器（纯 Python，无平台依赖）
 - `wasm_dev_server.py` — WASM 多线程开发服务器（标准库 `http.server`，跨平台）
+- `fetch_releases.py` — 拉取 GitHub Releases 到 `docs/data/releases.json`，供官网（`docs/`，Hugo）下载页/更新日志页构建期渲染。失败时写空数据、退出码 0（站点降级为空态，不阻塞构建）；CI 在 `website.yml` 中传 `GITHUB_TOKEN` 规避匿名限流。
 
 其余 `*.sh`（`run_ui_tests.sh`、`release_graph_studio.sh`、`build_android/ios/wasm/opencv_*/mediapipe_macos.sh`、`fetch_sentry.sh`、`upload_sentry_symbols.sh`、`download_mediapipe_models.sh`）目前只有 macOS/Linux 版本，详见各脚本头部注释。
 

@@ -14,3 +14,6 @@
 	path = submodules/scripting
 	url = https://github.com/mangoeffect/plugin-scripting.git
 	branch = main
+[submodule "docs/themes/PaperMod"]
+	path = docs/themes/PaperMod
+	url = https://github.com/adityatelange/hugo-PaperMod.git

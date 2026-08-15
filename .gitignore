@@ -15,3 +15,9 @@ app/graph_studio/third_party/
 # Python (cross-platform scripts under scripts/)
 __pycache__/
 *.pyc
+
+# Website (docs/ 是 Hugo 站点源码；以下为构建期产物)
+docs/public/
+docs/resources/_gen/
+docs/.hugo_build.lock
+docs/data/releases.json

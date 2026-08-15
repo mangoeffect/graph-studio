@@ -4,7 +4,7 @@
 
 task_graph lets you describe a pipeline as a graph of typed, port-connected tasks, execute it with automatic topological parallelization, and serialize it to/from JSON. It ships with a plugin system, opt-in GPU backends (Metal / Vulkan / CUDA), OpenCV, JavaScript (QuickJS) and MediaPipe subnodes, and a Qt6 desktop editor (GraphStudio).
 
-[简体中文](./README.zh-CN.md)
+[简体中文](./README.zh-CN.md) · [Website](https://mangoeffect.github.io/graph-studio/)
 
 ---
 

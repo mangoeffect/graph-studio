@@ -1,0 +1,134 @@
+# task_graph / GraphStudio 官网（GitHub Pages）
+# 站点源码在 docs/，由 .github/workflows/website.yml 构建部署。
+# 本地开发：python scripts/fetch_releases.py && hugo server -s docs
+
+baseURL = "https://mangoeffect.github.io/graph-studio/"
+title = "task_graph · GraphStudio"
+theme = "PaperMod"
+defaultContentLanguage = "zh"
+enableRobotsTXT = true
+enableGitInfo = false
+enableEmoji = true
+
+[pagination]
+pagerSize = 10
+
+[params]
+env = "production"
+defaultTheme = "auto"
+disableThemeToggle = false
+ShowReadingTime = true
+ShowShareButtons = false
+ShowPostNavLinks = true
+ShowBreadCrumbs = true
+ShowCodeCopyButtons = true
+ShowRssButtonInSectionTermList = true
+displayFullLangName = true
+ShowFullTextInRSS = false
+ShowWordCount = false
+comments = false
+mainSections = ["blog"]
+# 日期显示为 ISO 风格（主题支持 ":date_long" 等 CLDR 预设）
+DateFormat = "2006-01-02"
+repoUrl = "https://github.com/mangoeffect/graph-studio"
+# og:image 兜底（无封面文章的社交分享图）
+images = ["img/og-image.png"]
+
+[params.assets]
+favicon = "favicon.svg"
+favicon16x16 = "favicon-16x16.png"
+favicon32x32 = "favicon-32x32.png"
+apple_touch_icon = "apple-touch-icon.png"
+
+[params.label]
+icon = "logo.png"
+iconHeight = 28
+
+[markup]
+  [markup.highlight]
+    noClasses = true
+    style = "monokai"
+    codeFences = true
+    guessSyntax = true
+  [markup.goldmark.renderer]
+    # release notes 正文可能包含 HTML（GitHub 自动生成内容）
+    unsafe = true
+
+[outputs]
+home = ["HTML", "RSS", "JSON"]
+
+[taxonomies]
+tag = "tags"
+category = "categories"
+
+# ---------------------------------------------------------------- 中文（默认，根路径）
+[languages.zh]
+locale = "zh-CN"
+languageName = "简体中文"
+languageCode = "zh-CN"
+weight = 1
+contentDir = "content/zh"
+
+[languages.zh.params]
+description = "轻量级、跨平台的 C++20 DAG 任务执行框架，附带 GraphStudio 可视化编辑器"
+keywords = ["task_graph", "GraphStudio", "DAG", "C++20", "任务图", "计算图", "插件系统", "GPU"]
+
+[[languages.zh.menu.main]]
+identifier = "download"
+name = "下载"
+url = "/download/"
+weight = 10
+
+[[languages.zh.menu.main]]
+identifier = "changelog"
+name = "更新日志"
+url = "/changelog/"
+weight = 20
+
+[[languages.zh.menu.main]]
+identifier = "blog"
+name = "博客"
+url = "/blog/"
+weight = 30
+
+[[languages.zh.menu.main]]
+identifier = "github"
+name = "GitHub"
+url = "https://github.com/mangoeffect/graph-studio"
+weight = 40
+
+# ---------------------------------------------------------------- English (/en/)
+[languages.en]
+locale = "en-US"
+languageName = "English"
+languageCode = "en-US"
+weight = 2
+contentDir = "content/en"
+
+[languages.en.params]
+description = "A lightweight, cross-platform DAG task-execution framework in C++20, with the GraphStudio visual editor"
+keywords = ["task_graph", "GraphStudio", "DAG", "C++20", "task graph", "compute graph", "plugin system", "GPU"]
+
+[[languages.en.menu.main]]
+identifier = "download"
+name = "Download"
+url = "/download/"
+weight = 10
+
+[[languages.en.menu.main]]
+identifier = "changelog"
+name = "Changelog"
+url = "/changelog/"
+weight = 20
+
+[[languages.en.menu.main]]
+identifier = "blog"
+name = "Blog"
+url = "/blog/"
+weight = 30
+
+[[languages.en.menu.main]]
+identifier = "github"
+name = "GitHub"
+url = "https://github.com/mangoeffect/graph-studio"
+weight = 40

@@ -1,0 +1,31 @@
+# Website-specific strings (merged with the theme's en.yaml)
+- id: hero_download
+  translation: "Download GraphStudio"
+- id: hero_github
+  translation: "View on GitHub"
+- id: features_title
+  translation: "Features"
+- id: latest_stable
+  translation: "Latest stable"
+- id: download_now
+  translation: "Download"
+- id: released_at
+  translation: "Released"
+- id: prereleases_title
+  translation: "Pre-releases & previous versions"
+- id: all_releases
+  translation: "See all releases on GitHub"
+- id: downloads_empty_title
+  translation: "No releases yet"
+- id: downloads_empty_body
+  translation: "GraphStudio installers (macOS `.dmg` / Windows `.msix` / Linux `.AppImage`) are published via GitHub Releases and will show up here as soon as the first one is out. In the meantime you can build from source or watch the repo for releases."
+- id: changelog_empty_title
+  translation: "No changelog yet"
+- id: changelog_empty_body
+  translation: "Once the first release is published, the changelog will appear here automatically (sourced from GitHub Releases)."
+- id: view_release
+  translation: "Release page"
+- id: asset_missing
+  translation: "Installer missing for this platform"
+- id: file_size
+  translation: "Size"

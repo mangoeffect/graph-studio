@@ -1,0 +1,90 @@
+name: Website
+
+# 官网（GitHub Pages）：docs/ 下的 Hugo 站点构建 + 官方 Pages Actions 部署。
+# - 站点源码在 docs/；tests/graphstudio-build 的 paths-ignore 已豁免 docs/**，
+#   纯站点改动不会触发三端编译 CI。
+# - 监听 release: published —— 新版本发布后自动重建站点，下载页/更新日志即时刷新
+#   （数据由 scripts/fetch_releases.py 在构建期从 GitHub API 拉取）。
+# - PR 只构建不部署；gh-pages 分支不需要，部署走 actions/deploy-pages。
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - 'scripts/fetch_releases.py'
+      - '.github/workflows/website.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - 'scripts/fetch_releases.py'
+      - '.github/workflows/website.yml'
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build site (Hugo)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          # 不递归：plugin-* 私有子模块与站点无关（无 deploy key 拉不到会直接失败），
+          # 主题子模块是公有仓库，下面单独按需拉取。
+
+      - name: Fetch Hugo theme (PaperMod)
+        shell: bash
+        run: |
+          # 只初始化 docs/themes/PaperMod（https 公有仓库，无需凭证）
+          git submodule update --init -- docs/themes/PaperMod
+
+      - name: Setup Hugo
+        uses: peaceiris/actions-hugo@v3
+        with:
+          hugo-version: '0.165.0'
+          extended: true
+
+      - name: Fetch GitHub Releases data
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python scripts/fetch_releases.py
+        # 拉取失败时脚本写空数据、退出 0 —— 站点降级为空态，不阻塞构建
+
+      - name: Build site
+        working-directory: docs
+        run: hugo --minify --gc
+
+      - name: Configure Pages
+        id: pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/public
+
+  deploy:
+    name: Deploy to GitHub Pages
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
