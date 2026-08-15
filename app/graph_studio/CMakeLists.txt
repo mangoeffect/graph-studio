@@ -95,6 +95,14 @@ if(NOT EMSCRIPTEN AND EXISTS "${GRAPH_STUDIO_SENTRY_ROOT}/CMakeLists.txt")
 endif()
 
 if(EMSCRIPTEN)
+    # WASM：GpuImageViewer 依赖桌面 core profile（QOpenGLFunctions_3_3_Core），
+    # Qt wasm 构建只有 OpenGL ES、没有该头文件。排除后 MainWindow 内部
+    # __EMSCRIPTEN__ 分支退化为 QLabel 展示结果图。
+    list(REMOVE_ITEM PROJECT_SOURCES src/view/GpuImageViewer.cpp)
+    list(REMOVE_ITEM PROJECT_HEADERS include/view/GpuImageViewer.h)
+endif()
+
+if(EMSCRIPTEN)
     # WASM：用 qt_add_executable 才能自动生成 .html + qtloader.js。
     # Qt 的 wasm_multithread 构建已在 qt_add_executable 内部设置了
     # -pthread / -sUSE_PTHREADS / PROXY_TO_PTHREAD 等链接标志，
@@ -312,6 +320,10 @@ endif()
 if(EMSCRIPTEN)
     set(TG_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../)
     include(${TG_ROOT}/cmake/Subnode.cmake)
+    # subnode 的 CMakeLists 调用 use_task_graph_sdk()（桌面主仓库构建由根
+    # CMakeLists include(SdkUtil) 提供）。此处 app 自身是顶层工程，必须显式引入；
+    # SdkUtil 走 legacy 模式（TASK_GRAPH_ROOT + 预构建 build_wasm/libtask_graph.a）。
+    include(${TG_ROOT}/cmake/SdkUtil.cmake)
     parse_subnode_json("${TG_ROOT}/subnode.json")
 
     # OpenCV WASM 静态库若已用 scripts/build_opencv_wasm.py 构建到
@@ -364,5 +376,9 @@ if(EMSCRIPTEN)
             ${_wasm_subnode_libs}
             "-Wl,--no-whole-archive"
         )
+        # 每个子节点库都定义 extern "C" register_plugin/unregister_plugin
+        # （桌面 dlopen 入口），--whole-archive 全量拉入会彼此冲突；子节点
+        # 源码里这两个入口已用 #ifndef __EMSCRIPTEN__ 守卫（WASM 静态链接下
+        # 仅靠 constructor 注册，PluginBootstrap 不做 dlopen）。
     endif()
 endif()

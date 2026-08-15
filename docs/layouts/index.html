@@ -8,6 +8,7 @@
   <p class="tg-hero-sub">{{ .Params.heroSubtitle }}</p>
   <div class="tg-hero-actions">
     <a class="tg-btn tg-btn-primary" href="{{ "download/" | relLangURL }}">{{ i18n "hero_download" }}</a>
+    <a class="tg-btn" href="{{ "web/" | relLangURL }}">{{ i18n "hero_web" }}</a>
     <a class="tg-btn" href="{{ site.Params.repoUrl | default "https://github.com/mangoeffect/graph-studio" }}" target="_blank" rel="noopener">{{ i18n "hero_github" }} ↗</a>
   </div>
   {{- with .Params.platforms }}

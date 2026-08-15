@@ -123,10 +123,104 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  # ------------------------------------------------------------------ WASM Web
+  # 官网在线体验（GitHub Pages /web/）的来源：构建多线程 WASM 版 GraphStudio
+  # 并打包为 GraphStudio-<ver>-web.zip 附到同一 Release。website.yml 由
+  # release:published 自动触发，fetch_web_release.py 下载最新 web zip 解压进
+  # Pages 产物。版本组合与本地验证一致：emsdk 3.1.37 + Qt 6.6.3 wasm_multithread。
+  wasm:
+    name: Package (wasm web)
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Fetch private submodules
+        uses: ./.github/actions/fetch-private-submodules
+        with:
+          keys: ${{ secrets.SUBMODULES_DEPLOY_KEYS }}
+
+      - name: Setup emsdk
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: '3.1.37'
+
+      # wasm Qt 的 host tools（moc 等）来自桌面 Qt（QT_HOST_PATH），与本地
+      # mac 构建的布局一致：wasm 前缀 + 同版本桌面前缀。
+      - name: Setup Qt6 host (linux desktop 6.6.3)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.6.3'
+          host: 'linux'
+          target: 'desktop'
+          cache: true
+
+      - name: Export QT_HOST_ROOT
+        shell: bash
+        run: |
+          echo "QT_HOST_ROOT=$(dirname "$(dirname "$Qt6_DIR")")" >> "$GITHUB_ENV"
+          echo "QT_HOST_ROOT=$(dirname "$(dirname "$Qt6_DIR")")"
+
+      - name: Setup Qt6 wasm (wasm_multithread 6.6.3)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.6.3'
+          host: 'linux'
+          target: 'desktop'
+          arch: 'wasm_multithread'
+          cache: true
+
+      - name: Export QT_WASM_ROOT
+        shell: bash
+        run: |
+          echo "QT_WASM_ROOT=$(dirname "$(dirname "$Qt6_DIR")")" >> "$GITHUB_ENV"
+          echo "QT_WASM_ROOT=$(dirname "$(dirname "$Qt6_DIR")")"
+
+      - name: Cache OpenCV WASM install
+        uses: actions/cache@v4
+        with:
+          path: build_wasm/opencv/install
+          key: opencv-wasm-4x-${{ hashFiles('scripts/build_opencv_wasm.py') }}
+
+      - name: Build OpenCV WASM (on cache miss)
+        shell: bash
+        run: |
+          if [ -d build_wasm/opencv/install/lib/cmake/opencv4 ]; then
+            echo "OpenCV WASM cached, skip build"
+          else
+            python3 scripts/build_opencv_wasm.py -j 4
+          fi
+
+      - name: Build GraphStudio WASM
+        shell: bash
+        run: python3 scripts/run_graph_studio_wasm.py --build-only -j 4
+
+      - name: Derive package version
+        shell: bash
+        run: |
+          VER=$(awk '/^project\(task_graph/{f=1;next} f&&/VERSION/{print $2;exit}' CMakeLists.txt)
+          if [ -z "$VER" ]; then echo "无法解析版本号" >&2; exit 1; fi
+          echo "PKG_VERSION=$VER" >> "$GITHUB_ENV"
+          echo "package version: $VER"
+
+      - name: Package web zip
+        shell: bash
+        run: python3 scripts/package_web.py --version "$PKG_VERSION" --out-dir dist/web
+
+      - name: Upload web artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-zip
+          path: dist/web/*.zip
+          if-no-files-found: error
+          retention-days: 14
+
   # ------------------------------------------------------------------ 汇总发布
   release:
     name: Publish GitHub Release
-    needs: package
+    needs: [package, wasm]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -162,7 +256,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p assets
-          find installers -type f \( -name '*.dmg' -o -name '*.msix' -o -name '*.AppImage' \) \
+          find installers -type f \( -name '*.dmg' -o -name '*.msix' -o -name '*.AppImage' -o -name '*.zip' \) \
                -exec cp {} assets/ \;
           ls -lh assets/
 
@@ -182,8 +276,10 @@ jobs:
             - macOS：`.dmg`（拖入 Applications 安装）
             - Windows：`.msix`（需开发者模式或信任签名；正式上架由 Microsoft Store 重签名）
             - Linux：`.AppImage`（`chmod +x` 后直接运行）
+            - Web：`GraphStudio-*-web.zip`（WASM 版，无需安装）——官网[在线体验](https://mangoeffect.github.io/graph-studio/web/)直接运行；zip 可解压到任意 HTTPS 静态托管自部署
           generate_release_notes: true
           files: |
             assets/*.dmg
             assets/*.msix
             assets/*.AppImage
+            assets/*.zip

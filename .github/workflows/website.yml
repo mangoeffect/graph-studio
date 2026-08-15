@@ -5,6 +5,9 @@ name: Website
 #   纯站点改动不会触发三端编译 CI。
 # - 监听 release: published —— 新版本发布后自动重建站点，下载页/更新日志即时刷新
 #   （数据由 scripts/fetch_releases.py 在构建期从 GitHub API 拉取）。
+# - WASM 在线体验：release.yml 的 wasm job 把 GraphStudio-*-web.zip 附到 Release，
+#   scripts/fetch_web_release.py 在 hugo 构建后下载最新 web zip 解压进
+#   docs/public/web/，部署后即 /web/ 在线运行（无 Web 资产时落地页降级空态）。
 # - PR 只构建不部署；gh-pages 分支不需要，部署走 actions/deploy-pages。
 
 on:
@@ -13,12 +16,14 @@ on:
     paths:
       - 'docs/**'
       - 'scripts/fetch_releases.py'
+      - 'scripts/fetch_web_release.py'
       - '.github/workflows/website.yml'
   pull_request:
     branches: [main]
     paths:
       - 'docs/**'
       - 'scripts/fetch_releases.py'
+      - 'scripts/fetch_web_release.py'
       - '.github/workflows/website.yml'
   release:
     types: [published]
@@ -66,6 +71,13 @@ jobs:
       - name: Build site
         working-directory: docs
         run: hugo --minify --gc
+
+      # 在 hugo 之后解压 Web 包到产物目录（不经 static/，避免 --minify 改写
+      # Qt shell 与二次拷贝）。失败/无资产时脚本写空态数据退出 0，不阻塞部署。
+      - name: Fetch web release (WASM build)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python scripts/fetch_web_release.py
 
       - name: Configure Pages
         id: pages

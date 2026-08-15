@@ -433,3 +433,15 @@
 .tg-empty code {
     color: var(--secondary);
 }
+
+/* ---------------------------------------------------------------- web (try online) */
+.tg-web-box {
+    background: var(--entry);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    margin: 20px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}

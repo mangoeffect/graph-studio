@@ -80,6 +80,12 @@ url = "/download/"
 weight = 10
 
 [[languages.zh.menu.main]]
+identifier = "web"
+name = "在线体验"
+url = "/web/"
+weight = 15
+
+[[languages.zh.menu.main]]
 identifier = "changelog"
 name = "更新日志"
 url = "/changelog/"
@@ -114,6 +120,12 @@ identifier = "download"
 name = "Download"
 url = "/download/"
 weight = 10
+
+[[languages.en.menu.main]]
+identifier = "web"
+name = "Try Online"
+url = "/web/"
+weight = 15
 
 [[languages.en.menu.main]]
 identifier = "changelog"

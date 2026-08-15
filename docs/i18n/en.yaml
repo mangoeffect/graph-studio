@@ -1,6 +1,8 @@
 # Website-specific strings (merged with the theme's en.yaml)
 - id: hero_download
   translation: "Download GraphStudio"
+- id: hero_web
+  translation: "Try Online"
 - id: hero_github
   translation: "View on GitHub"
 - id: features_title
@@ -29,3 +31,11 @@
   translation: "Installer missing for this platform"
 - id: file_size
   translation: "Size"
+- id: web_launch
+  translation: "Launch GraphStudio Web"
+- id: web_zip
+  translation: "Self-hosting zip"
+- id: web_empty_title
+  translation: "Web build not published yet"
+- id: web_empty_body
+  translation: "The WebAssembly build of GraphStudio ships with each GitHub Release (`GraphStudio-*-web.zip`); once published you can launch it here with one click. In the meantime, grab a desktop installer or build from source."

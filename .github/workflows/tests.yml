@@ -11,12 +11,18 @@ on:
       - '**.md'
       - 'docs/**'
       - '.github/workflows/website.yml'
+      - 'scripts/fetch_releases.py'
+      - 'scripts/fetch_web_release.py'
+      - 'scripts/package_web.py'
   pull_request:
     branches: [main, master]
     paths-ignore:
       - '**.md'
       - 'docs/**'
       - '.github/workflows/website.yml'
+      - 'scripts/fetch_releases.py'
+      - 'scripts/fetch_web_release.py'
+      - 'scripts/package_web.py'
   workflow_dispatch:
 
 concurrency:

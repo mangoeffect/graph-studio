@@ -1,6 +1,8 @@
 # 官网自定义词条（与主题自带 zh.yaml 合并）
 - id: hero_download
   translation: "下载 GraphStudio"
+- id: hero_web
+  translation: "在线体验"
 - id: hero_github
   translation: "在 GitHub 上查看"
 - id: features_title
@@ -29,3 +31,11 @@
   translation: "该平台安装包缺失"
 - id: file_size
   translation: "大小"
+- id: web_launch
+  translation: "启动 GraphStudio Web"
+- id: web_zip
+  translation: "自托管压缩包"
+- id: web_empty_title
+  translation: "Web 版尚未发布"
+- id: web_empty_body
+  translation: "GraphStudio 的 WebAssembly 版会随 GitHub Release 一起发布（`GraphStudio-*-web.zip`），发布后即可在此一键启动。你也可以先下载桌面安装包，或从源码构建。"

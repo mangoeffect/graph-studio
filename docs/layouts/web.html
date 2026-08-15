@@ -1,0 +1,42 @@
+{{- /* 在线体验落地页：数据来自 docs/data/web.json（scripts/fetch_web_release.py 在
+     构建期生成；WASM 产物解压到站点 /web/，由 release.yml 的 wasm job 发布）。 */ -}}
+{{ define "main" }}
+<article class="post-single tg-web">
+  <header class="post-header">
+    <h1 class="post-title">{{ .Title }}</h1>
+    {{- with .Description }}
+    <div class="post-description">{{ . }}</div>
+    {{- end }}
+  </header>
+
+  {{- $web := site.Data.web }}
+  {{- if and $web $web.present }}
+  <div class="tg-web-box">
+    <div class="tg-release-head">
+      <span class="tg-pill">WASM</span>
+      <span class="tg-release-tag">{{ $web.tag }}</span>
+      {{- with $web.published_at }}
+      <span class="tg-release-date">{{ i18n "released_at" }} {{ time . | time.Format "2006-01-02" }}</span>
+      {{- end }}
+    </div>
+    <div class="tg-hero-actions">
+      <a class="tg-btn tg-btn-primary" href="{{ "web/" | relURL }}" target="_blank" rel="noopener">{{ i18n "web_launch" }}</a>
+      {{- with $web.zip_url }}
+      <a class="tg-btn" href="{{ . }}" target="_blank" rel="noopener">{{ i18n "web_zip" }} · {{ printf "%.1f" (div (mul $web.size 1.0) 1048576.0) }} MB ↗</a>
+      {{- end }}
+    </div>
+  </div>
+  {{- else }}
+  <div class="tg-empty">
+    <h2>{{ i18n "web_empty_title" }}</h2>
+    <p>{{ i18n "web_empty_body" | markdownify }}</p>
+    <div class="tg-hero-actions">
+      <a class="tg-btn" href="{{ "download/" | relLangURL }}">{{ i18n "hero_download" }}</a>
+      <a class="tg-btn" href="https://github.com/mangoeffect/graph-studio/releases" target="_blank" rel="noopener">GitHub Releases ↗</a>
+    </div>
+  </div>
+  {{- end }}
+
+  <div class="post-content">{{ .Content }}</div>
+</article>
+{{ end }}

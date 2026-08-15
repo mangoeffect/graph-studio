@@ -4,7 +4,9 @@
 #include "view/NodeItem.h"
 #include "view/EdgeItem.h"
 #include "view/ProfilePanel.h"
+#ifndef __EMSCRIPTEN__
 #include "view/GpuImageViewer.h"
+#endif
 #include "viewmodel/GraphViewModel.h"
 
 #include <QMenu>
@@ -24,6 +26,7 @@
 #include <QFormLayout>
 #include <QTimer>
 #include <QScrollArea>
+#include <QPalette>
 #include <QPainter>
 #include <QPixmap>
 #include <QFileDialog>
@@ -530,7 +533,15 @@ QWidget* MainWindow::CreateImageResultPanel()
     resultSelector_->setEnabled(false);
     layout->addWidget(resultSelector_);
 
-    // GPU-accelerated image viewer
+    // GPU-accelerated image viewer（桌面）/ QLabel 退化视图（WASM：
+    // QOpenGLFunctions_3_3_Core 是桌面 core profile，Qt wasm 只有 OpenGL ES）
+#ifdef __EMSCRIPTEN__
+    imageViewerFallback_ = new QLabel(tr("No image"));
+    imageViewerFallback_->setMinimumSize(300, 200);
+    imageViewerFallback_->setAlignment(Qt::AlignCenter);
+    imageViewerFallback_->setBackgroundRole(QPalette::Dark);
+    layout->addWidget(imageViewerFallback_, 1);
+#else
     imageViewer_ = new GpuImageViewer();
     imageViewer_->setMinimumSize(300, 200);
     layout->addWidget(imageViewer_, 1);
@@ -544,6 +555,7 @@ QWidget* MainWindow::CreateImageResultPanel()
 
     connect(imageViewer_, &GpuImageViewer::pixelInfoChanged,
             pixelInfoLabel_, &QLabel::setText);
+#endif
 
     return container;
 }
@@ -1399,9 +1411,7 @@ void MainWindow::onExecutionStarted()
         resultSelector_->setEnabled(false);
         resultSelector_->blockSignals(false);
     }
-    if (imageViewer_) {
-        imageViewer_->clearImage();
-    }
+    ShowViewerImage(QImage());
     UpdateRunActions();
 }
 
@@ -1471,19 +1481,39 @@ void MainWindow::RebuildResultSelector(const QStringList& keys)
                         : QString());
 }
 
+void MainWindow::ShowViewerImage(const QImage& image)
+{
+#ifndef __EMSCRIPTEN__
+    if (!imageViewer_) return;
+    if (image.isNull()) {
+        imageViewer_->clearImage();
+        return;
+    }
+    imageViewer_->setImage(image);
+#else
+    if (!imageViewerFallback_) return;
+    if (image.isNull()) {
+        imageViewerFallback_->setText(tr("No image"));
+        imageViewerFallback_->setPixmap(QPixmap());
+        return;
+    }
+    imageViewerFallback_->setPixmap(QPixmap::fromImage(image).scaled(
+        imageViewerFallback_->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+#endif
+}
+
 void MainWindow::ShowResultImage(const QString& key)
 {
-    if (!imageViewer_) return;
     if (key.isEmpty()) {
-        imageViewer_->clearImage();
+        ShowViewerImage(QImage());
         return;
     }
     QImage img = vm_.imageResult(key);
     if (img.isNull()) {
-        imageViewer_->clearImage();
+        ShowViewerImage(QImage());
         return;
     }
-    imageViewer_->setImage(img);
+    ShowViewerImage(img);
 }
 
 void MainWindow::keyPressEvent(QKeyEvent* event)

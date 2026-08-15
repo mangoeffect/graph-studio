@@ -33,6 +33,8 @@ python scripts/package_linux.py --version 0.1.0      # -> dist/appimage/graph_st
 - `generate_submodule.py` — 插件子模块脚手架生成器（纯 Python，无平台依赖）
 - `wasm_dev_server.py` — WASM 多线程开发服务器（标准库 `http.server`，跨平台）
 - `fetch_releases.py` — 拉取 GitHub Releases 到 `docs/data/releases.json`，供官网（`docs/`，Hugo）下载页/更新日志页构建期渲染。失败时写空数据、退出码 0（站点降级为空态，不阻塞构建）；CI 在 `website.yml` 中传 `GITHUB_TOKEN` 规避匿名限流。
+- `package_web.py` — 把 `run_graph_studio_wasm.py --build-only` 的产物打包为 `GraphStudio-<ver>-web.zip`（官网在线体验 / 自托管包）：注入 coi-serviceworker + 隔离就绪启动守卫，`graph_studio.html` 复制为 `index.html`。release.yml 的 wasm job 调用。
+- `fetch_web_release.py` — 官网构建期下载最新 `GraphStudio-*-web.zip` Release 资产，解压到 `docs/public/web/` 并写 `docs/data/web.json`（落地页「在线体验」数据源）。无资产/失败写空态退出 0；`--from-zip/--tag/--date` 供本地联调。
 
 其余 `*.sh`（`run_ui_tests.sh`、`release_graph_studio.sh`、`build_android/ios/wasm/opencv_*/mediapipe_macos.sh`、`fetch_sentry.sh`、`upload_sentry_symbols.sh`、`download_mediapipe_models.sh`）目前只有 macOS/Linux 版本，详见各脚本头部注释。
 
