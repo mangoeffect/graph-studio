@@ -25,7 +25,12 @@ extern "C" VkResult VKAPI_ATTR vk_delayload_missing_stub() {
 
 extern "C" FARPROC WINAPI vk_delayload_hook(unsigned dliNotify, DelayLoadInfo* pdli) {
     (void)pdli;
-    if (dliNotify == dliFailLoad) {
+    // dliFailLoadLib 的返回值会被当作 HMODULE 调 GetProcAddress：返回本进程
+    // 模块句柄让流程安全推进到 GetProcAddress 失败，再在 dliFailGetProc 落桩。
+    if (dliNotify == dliFailLoadLib) {
+        return reinterpret_cast<FARPROC>(GetModuleHandleW(nullptr));
+    }
+    if (dliNotify == dliFailGetProc) {
         return reinterpret_cast<FARPROC>(&vk_delayload_missing_stub);
     }
     return nullptr;  // 其余通知走 delayimp 默认处理
