@@ -62,8 +62,8 @@ runs:
       uses: actions/cache@v4
       with:
         path: C:\VulkanSDK
-        # 尾缀 -rt：v2 = Include+Lib+vulkan-1.dll 运行期加载器（旧缓存无 Bin）
-        key: vulkan-sdk-win-${{ inputs.vulkan-version-win }}-rt-2
+        # 尾缀含义：-rt = 带运行期 loader；-ifw = 官方静默安装器布局（<ver>/ 子目录）
+        key: vulkan-sdk-win-${{ inputs.vulkan-version-win }}-rt-ifw-3
 
     - name: Install Vulkan SDK (Windows)
       if: runner.os == 'Windows' && steps.vulkan-cache.outputs.cache-hit != 'true'
@@ -74,26 +74,28 @@ runs:
         Write-Host "Downloading $url"
         curl.exe -L --fail --retry 3 --retry-delay 5 -o "$env:RUNNER_TEMP\vulkan-sdk.exe" $url
         if ($LASTEXITCODE -ne 0) { throw "Vulkan SDK download failed: $LASTEXITCODE" }
-        # 该安装器是 Qt Installer Framework（BitRock 的 --mode unattended 等参数
-        # 无效，且会弹 GUI 窗口把无头 CI 挂死）。exe 本身是 7z SFX，直接解出
-        # 编译所需的 Include + Lib（vulkan-1.lib / shaderc 等），不执行安装器、
-        # 不写注册表。runner 自带 7z。
-        Write-Host "Extracting Include + Lib to C:\VulkanSDK"
-        7z x "$env:RUNNER_TEMP\vulkan-sdk.exe" -o"C:\VulkanSDK" -y "Include" "Lib" | Out-Null
-        if ($LASTEXITCODE -ne 0) { throw "7z extract failed: $LASTEXITCODE" }
+        # 安装器是 Qt Installer Framework：用 LunarG 官方文档的静默参数
+        # （wgpu/scoop/jakoch action 同款）。copy_only=1 = 只拷文件不写注册表。
+        # 此前误用 BitRock 的 --mode unattended 会报 Unknown option 并弹 GUI
+        # 挂死无头 CI；也不要走 7z 解压 SFX 的捷径（依赖容器内部布局，
+        # 且 >=1.4.313.1 的 runtime 需要安装器落地）。
+        Write-Host "Installing to C:\VulkanSDK\$ver (Qt IFW unattended, copy_only)"
+        & "$env:RUNNER_TEMP\vulkan-sdk.exe" --root "C:\VulkanSDK\$ver" --accept-licenses --accept-messages --default-answer --confirm-command install copy_only=1
+        if ($LASTEXITCODE -ne 0) { throw "Vulkan SDK installer failed: $LASTEXITCODE" }
         Remove-Item "$env:RUNNER_TEMP\vulkan-sdk.exe" -Force
 
         # 运行期加载器：libtask_graph.dll 依赖 vulkan-1.dll，而 runner 的
         # Windows Server 镜像不带（无 GPU），测试进程会 0xc0000135
         # (DLL_NOT_FOUND)。1.4.304.1 未发布 Runtime 组件包，取同系列
-        # 1.4.304.0 的（加载器向后兼容）；放入 Bin（export 步骤已加 PATH）。
+        # 1.4.304.0 的（加载器向后兼容）；拷入 <ver>\Bin（export 步骤
+        # 探测到版本目录后会把该 Bin 加进 PATH）。
         $rt = "https://sdk.lunarg.com/sdk/download/1.4.304.0/windows/VulkanRT-1.4.304.0-Components.zip"
         curl.exe -L --fail --retry 3 --retry-delay 5 -o "$env:RUNNER_TEMP\vulkanrt.zip" $rt
         if ($LASTEXITCODE -ne 0) { throw "VulkanRT download failed: $LASTEXITCODE" }
         7z x "$env:RUNNER_TEMP\vulkanrt.zip" -o"$env:RUNNER_TEMP\vulkanrt" -y "VulkanRT-1.4.304.0-Components/x64/*.dll" | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "VulkanRT extract failed: $LASTEXITCODE" }
-        New-Item -ItemType Directory -Force -Path "C:\VulkanSDK\Bin" | Out-Null
-        Copy-Item "$env:RUNNER_TEMP\vulkanrt\VulkanRT-1.4.304.0-Components\x64\*.dll" "C:\VulkanSDK\Bin\" -Force
+        New-Item -ItemType Directory -Force -Path "C:\VulkanSDK\$ver\Bin" | Out-Null
+        Copy-Item "$env:RUNNER_TEMP\vulkanrt\VulkanRT-1.4.304.0-Components\x64\*.dll" "C:\VulkanSDK\$ver\Bin\" -Force
         Remove-Item "$env:RUNNER_TEMP\vulkanrt.zip","$env:RUNNER_TEMP\vulkanrt" -Recurse -Force -ErrorAction SilentlyContinue
 
     - name: Export Vulkan SDK env (Windows)
