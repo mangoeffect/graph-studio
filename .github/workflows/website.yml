@@ -27,6 +27,12 @@ on:
       - '.github/workflows/website.yml'
   release:
     types: [published]
+  # Release workflow 用 job 的 GITHUB_TOKEN 创建 Release，GitHub 的防递归
+  # 规则使 release:published 事件不会触发新 workflow（实测不生效）。改用
+  # workflow_run 链式触发（不受该规则限制），成功时才重建站点。
+  workflow_run:
+    workflows: ['Release']
+    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -41,6 +47,8 @@ concurrency:
 jobs:
   build:
     name: Build site (Hugo)
+    # workflow_run 在 Release 失败时也会 fire，仅在成功后重建站点
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
