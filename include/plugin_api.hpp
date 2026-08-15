@@ -312,6 +312,10 @@ private:
 
     std::unordered_map<std::string, std::function<PluginTaskPtr(const std::string&, const TaskConfig&)>> task_creators_;
     mutable std::mutex mutex_;
+    // 析构标志：Linux 上插件 .so 的 _dl_fini 析构可能晚于本单例析构，
+    // 其 unregister 回调会踩已析构的容器/互斥量（退出期 SegFault）。
+    // 单例在静态存储上、内存始终映射，析构后读该标志安全。
+    bool destroyed_{false};
 };
 
 }

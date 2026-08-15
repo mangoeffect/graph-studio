@@ -55,17 +55,32 @@ if(TASK_GRAPH_ENABLE_VULKAN)
     add_definitions(-DTASK_GRAPH_ENABLE_VULKAN)
 
     # shaderc（Vulkan SDK 自带）：Vulkan compute 的 GLSL -> SPIR-V 运行时编译。
-    # 可选依赖——找不到时 Vulkan 后端仅保留 buffer 上传/下载，compute 降级。
+    # 可选依赖--找不到时 Vulkan 后端仅保留 buffer 上传/下载，compute 降级。
     find_path(SHADERC_INCLUDE_DIR shaderc/shaderc.hpp
         HINTS "$ENV{VULKAN_SDK}/Include" "$ENV{VULKAN_SDK}/include")
     find_library(SHADERC_LIBRARY NAMES shaderc_combined
         HINTS "$ENV{VULKAN_SDK}/Lib" "$ENV{VULKAN_SDK}/lib")
-    # MSVC 多配置：Debug 需链接调试版 shaderc_combinedd（运行时库匹配）
     find_library(SHADERC_LIBRARY_DEBUG NAMES shaderc_combinedd
         HINTS "$ENV{VULKAN_SDK}/Lib" "$ENV{VULKAN_SDK}/lib")
-    if(SHADERC_INCLUDE_DIR AND (SHADERC_LIBRARY OR SHADERC_LIBRARY_DEBUG))
-        message(STATUS "Vulkan compute enabled: shaderc at ${SHADERC_LIBRARY}${SHADERC_LIBRARY_DEBUG}")
-        add_definitions(-DTASK_GRAPH_VULKAN_COMPUTE)
+    set(TG_SHADERC_LINK "")
+    set(TG_SHADERC_DEFINE "")
+    if(SHADERC_INCLUDE_DIR AND SHADERC_LIBRARY AND SHADERC_LIBRARY_DEBUG)
+        message(STATUS "Vulkan compute enabled: shaderc at ${SHADERC_LIBRARY} / ${SHADERC_LIBRARY_DEBUG}")
+        set(TG_SHADERC_LINK optimized ${SHADERC_LIBRARY} debug ${SHADERC_LIBRARY_DEBUG})
+        set(TG_SHADERC_DEFINE TASK_GRAPH_VULKAN_COMPUTE)
+    elseif(SHADERC_INCLUDE_DIR AND SHADERC_LIBRARY)
+        if(MSVC)
+            # SDK 只带 release 版 shaderc_combined.lib：Debug 配置（MDd）链接它
+            # 会 LNK2038 运行时库不匹配，仅在非 Debug 配置启用 shaderc/compute。
+            message(STATUS "Vulkan compute enabled in non-Debug configs only: "
+                           "release-only shaderc at ${SHADERC_LIBRARY}")
+            set(TG_SHADERC_LINK "$<$<NOT:$<CONFIG:Debug>>:${SHADERC_LIBRARY}>")
+            set(TG_SHADERC_DEFINE "$<$<NOT:$<CONFIG:Debug>>:TASK_GRAPH_VULKAN_COMPUTE>")
+        else()
+            message(STATUS "Vulkan compute enabled: shaderc at ${SHADERC_LIBRARY}")
+            set(TG_SHADERC_LINK ${SHADERC_LIBRARY})
+            set(TG_SHADERC_DEFINE TASK_GRAPH_VULKAN_COMPUTE)
+        endif()
     else()
         message(WARNING "shaderc not found in Vulkan SDK; Vulkan compute disabled (buffer ops only)")
     endif()
@@ -167,13 +182,9 @@ target_link_libraries(task_graph
 
 if(TASK_GRAPH_ENABLE_VULKAN AND NOT EMSCRIPTEN)
     target_link_libraries(task_graph PRIVATE Vulkan::Vulkan)
-    if(SHADERC_LIBRARY AND SHADERC_LIBRARY_DEBUG)
-        target_link_libraries(task_graph PRIVATE
-            optimized ${SHADERC_LIBRARY} debug ${SHADERC_LIBRARY_DEBUG})
-    elseif(SHADERC_LIBRARY)
-        target_link_libraries(task_graph PRIVATE ${SHADERC_LIBRARY})
-    elseif(SHADERC_LIBRARY_DEBUG)
-        target_link_libraries(task_graph PRIVATE ${SHADERC_LIBRARY_DEBUG})
+    if(TG_SHADERC_LINK)
+        target_link_libraries(task_graph PRIVATE ${TG_SHADERC_LINK})
+        target_compile_definitions(task_graph PRIVATE ${TG_SHADERC_DEFINE})
     endif()
     if(SHADERC_INCLUDE_DIR)
         target_include_directories(task_graph PRIVATE ${SHADERC_INCLUDE_DIR})
