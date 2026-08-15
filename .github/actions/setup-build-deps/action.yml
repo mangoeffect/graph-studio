@@ -62,7 +62,8 @@ runs:
       uses: actions/cache@v4
       with:
         path: C:\VulkanSDK
-        key: vulkan-sdk-win-${{ inputs.vulkan-version-win }}
+        # 尾缀 -rt：v2 = Include+Lib+vulkan-1.dll 运行期加载器（旧缓存无 Bin）
+        key: vulkan-sdk-win-${{ inputs.vulkan-version-win }}-rt-2
 
     - name: Install Vulkan SDK (Windows)
       if: runner.os == 'Windows' && steps.vulkan-cache.outputs.cache-hit != 'true'
@@ -81,6 +82,19 @@ runs:
         7z x "$env:RUNNER_TEMP\vulkan-sdk.exe" -o"C:\VulkanSDK" -y "Include" "Lib" | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "7z extract failed: $LASTEXITCODE" }
         Remove-Item "$env:RUNNER_TEMP\vulkan-sdk.exe" -Force
+
+        # 运行期加载器：libtask_graph.dll 依赖 vulkan-1.dll，而 runner 的
+        # Windows Server 镜像不带（无 GPU），测试进程会 0xc0000135
+        # (DLL_NOT_FOUND)。1.4.304.1 未发布 Runtime 组件包，取同系列
+        # 1.4.304.0 的（加载器向后兼容）；放入 Bin（export 步骤已加 PATH）。
+        $rt = "https://sdk.lunarg.com/sdk/download/1.4.304.0/windows/VulkanRT-1.4.304.0-Components.zip"
+        curl.exe -L --fail --retry 3 --retry-delay 5 -o "$env:RUNNER_TEMP\vulkanrt.zip" $rt
+        if ($LASTEXITCODE -ne 0) { throw "VulkanRT download failed: $LASTEXITCODE" }
+        7z x "$env:RUNNER_TEMP\vulkanrt.zip" -o"$env:RUNNER_TEMP\vulkanrt" -y "VulkanRT-1.4.304.0-Components/x64/*.dll" | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "VulkanRT extract failed: $LASTEXITCODE" }
+        New-Item -ItemType Directory -Force -Path "C:\VulkanSDK\Bin" | Out-Null
+        Copy-Item "$env:RUNNER_TEMP\vulkanrt\VulkanRT-1.4.304.0-Components\x64\*.dll" "C:\VulkanSDK\Bin\" -Force
+        Remove-Item "$env:RUNNER_TEMP\vulkanrt.zip","$env:RUNNER_TEMP\vulkanrt" -Recurse -Force -ErrorAction SilentlyContinue
 
     - name: Export Vulkan SDK env (Windows)
       if: runner.os == 'Windows'
