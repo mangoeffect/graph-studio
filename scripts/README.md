@@ -195,6 +195,45 @@ python scripts/run_tests.py --disable-opencv
 
 ---
 
+## run_e2e_windows.py — Windows 安装态 E2E（真实环境）
+
+对「MSIX 安装 → 像真人一样使用 → 卸载」整条链路做黑盒自动化测试：安装
+`build_msix.ps1` 产出的签名包，从 `shell:AppsFolder` 启动安装态应用，用
+pywinauto(UIA) + 真实鼠标键盘驱动，断言走 UIA 可见文本与磁盘工件（graph.json、
+`*.dmp`）。完整设计见 `dev-docs/e2e-windows-installed.md`。
+
+```bash
+# 依赖（一次性）
+python -m pip install -r scripts/e2e_windows/requirements.txt
+
+# 完整流程：构建签名包 → 安装 → 全场景 → 卸载（需交互式桌面会话）
+python scripts/run_e2e_windows.py
+
+# 测现成包 / 场景过滤 / 保留安装
+python scripts/run_e2e_windows.py --msix dist\msix\graph_studio-0.1.0.0_x64.msix
+python scripts/run_e2e_windows.py --only core,files
+python scripts/run_e2e_windows.py --keep-installed
+
+# files 场景规模控制
+python scripts/run_e2e_windows.py --only files --max-graphs 20   # 纳入更多子模块图
+python scripts/run_e2e_windows.py --only files --graphs gpu      # 按路径过滤
+```
+
+场景（`--only` 逗号过滤）：
+
+| 场景 | 覆盖 |
+|---|---|
+| `core` | 右键菜单建节点、端口拖拽连线、参数面板、Run 执行、Save As 落盘校验 |
+| `files` | File>Open 原生对话框、WM_DROPFILES 拖拽打开、相对路径资产解析 |
+| `crash` | 安装态 `--test-crash` + dummy DSN，断言 `.dmp` 落盘（真实/MSIX 虚拟化双落点） |
+| `lifecycle` | 覆盖安装升级（数据保留）、卸载清理（安装目录/LocalCache 消失） |
+
+> 注意：真实输入需要**已连接的交互式桌面**（RDP 断开会导致失效）；真实安装
+> （`Add-AppxPackage`）需要管理员导入签名证书，非提权自动降级 staging register
+> 模式。失败现场（截图 + UIA 树）在 `dist/e2e/<时间戳>/`。
+
+---
+
 ## Windows 脚本（`*.ps1`，已退化为 thin shim）
 
 > **注意**：自跨平台 Python 脚本上线后，`*.ps1` 与 `*.sh` 都已退化为 thin shim，仅转发到同名 `.py`（下个版本删除）。Windows 上**推荐直接用 Python**：`python scripts\run_tests.py`、`python scripts\run_graph_studio.py` 等。下方历史用法仍可工作（shim 会自动转发），但参数风格为旧 PowerShell 形式。

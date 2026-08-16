@@ -21,3 +21,4 @@ docs/public/
 docs/resources/_gen/
 docs/.hugo_build.lock
 docs/data/releases.json
+/profile_trace.json

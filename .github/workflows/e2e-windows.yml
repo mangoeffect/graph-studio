@@ -1,0 +1,84 @@
+name: GraphStudio E2E (Windows installed)
+
+# 安装态 E2E：构建签名 MSIX → 安装 → 真实输入驱动场景 → 卸载 → 上传失败现场。
+# 完整设计见 dev-docs/e2e-windows-installed.md。
+#
+# ⚠️ 仅 workflow_dispatch 手动触发：GitHub 托管 Windows runner 的作业运行在
+# Session 0 非交互桌面（runner-images #7227），真实鼠标/键盘与窗口渲染不可靠，
+# UI 场景（core/files/lifecycle）在此环境下预期失败——此 workflow 用于验证
+# harness 在 CI 上的可运行性与「无输入注入」子集（crash 场景）。
+# 全量稳定运行请用自托管交互式会话 runner（自动登录 VM），届时把
+# E2E_ONLY 改为 core,files,crash,lifecycle 并接入 release.yml 做发版门禁。
+
+on:
+  workflow_dispatch:
+    inputs:
+      scenarios:
+        description: "场景（逗号分隔：core,files,crash,lifecycle）"
+        required: false
+        default: "crash"
+      register_mode:
+        description: "staging register 模式（免签名/免管理员）"
+        type: boolean
+        required: false
+        default: true
+
+env:
+  # Windows runner 默认 cp1252，脚本输出的中文会导致 UnicodeEncodeError
+  PYTHONUTF8: '1'
+
+jobs:
+  e2e:
+    name: E2E installed (windows-2022)
+    runs-on: windows-2022
+    timeout-minutes: 90
+
+    steps:
+      # 主仓库是公有仓库；四个 plugin-* 子模块是私有仓库，GITHUB_TOKEN 拉不到，
+      # 由 fetch-private-submodules 用只读 deploy key 单独拉取。
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Fetch private submodules
+        uses: ./.github/actions/fetch-private-submodules
+        with:
+          keys: ${{ secrets.SUBMODULES_DEPLOY_KEYS }}
+
+      - name: Setup Qt6 + OpenCV + Vulkan SDK
+        uses: ./.github/actions/setup-build-deps
+        timeout-minutes: 25
+
+      - name: Install E2E python deps
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check -r scripts/e2e_windows/requirements.txt
+
+      - name: Run installed-app E2E
+        shell: pwsh
+        run: |
+          $only = "${{ github.event.inputs.scenarios }}"
+          if (-not $only) { $only = "crash" }
+          $extra = @("--only", $only)
+          if ("${{ github.event.inputs.register_mode }}" -eq "true") { $extra += "--register" }
+          python scripts/run_e2e_windows.py @extra --keep-installed
+
+      # run_e2e_windows.py 失败即退出非零；先上传现场再让 job 红
+      - name: Upload E2E report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-windows-report
+          path: dist/e2e/**
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Uninstall leftover package
+        if: always()
+        shell: pwsh
+        run: |
+          try {
+            Get-AppxPackage -Name GraphStudio | Remove-AppxPackage -ErrorAction Stop
+            Write-Host "uninstalled"
+          } catch { Write-Host "nothing to uninstall: $($_.Exception.Message)" }
