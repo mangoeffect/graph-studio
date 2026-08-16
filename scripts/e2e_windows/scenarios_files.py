@@ -203,10 +203,18 @@ def run(pkg, report, fixtures, ctx) -> None:
             try:
                 graph_copy = _stage_copy(e, report)
                 s.new_graph()
-                # 真实用户拖放：Explorer 为源的真 OLE 拖拽（Qt 忽略 WM_DROPFILES）
-                s.drop_file_via_explorer(graph_copy)
-                wait_until(lambda: name in s.win.window_text(), timeout=15,
-                           desc=f"拖拽后标题含 {name}")
+                # 真实用户拖放：Explorer 为源的真 OLE 拖拽（Qt 忽略 WM_DROPFILES）。
+                # 拖拽是最长手势、被干扰概率最高——校验标题，未成则整段重拖。
+                for drop_attempt in range(3):
+                    s.drop_file_via_explorer(graph_copy)
+                    try:
+                        wait_until(lambda: name in s.win.window_text(), timeout=6,
+                                   desc=f"拖拽后标题含 {name}")
+                        break
+                    except Exception:
+                        if drop_attempt == 2:
+                            raise
+                        time.sleep(0.5)
                 wait_until(lambda: s.status_counts() == (len(e["tasks"]), len(e["edges"])),
                            desc="拖拽后节点/边计数")
                 detail = "标题 + 计数"

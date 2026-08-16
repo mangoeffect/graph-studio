@@ -490,26 +490,40 @@ class AppSession:
                 continue
         return None
 
-    def menu_click(self, *path: str, attempts: int = 2):
+    def menu_click(self, *path: str, attempts: int = 3):
         """点击主菜单（如 menu_click('File', 'Open...')）。
 
         已知路径优先走键盘快捷（MENU_SHORTCUTS：ALT+mnemonic + DOWN + ENTER，
-        抗光标干扰）；未知路径退回鼠标方案（带重试）。
+        抗光标干扰）；每一步带效果验证：mnemonic 后确认下拉真的打开（目标项
+        进入主窗口子树——菜单栏常态只有 File/Edit/... 顶级项），没打开则
+        ESC 清场重来（此前版本的和弦可能被焦点抖动整个吃掉且静默失败）。
+        未知路径退回鼠标方案（带重试）。
         """
         sc = MENU_SHORTCUTS.get(tuple(path))
         if sc is not None:
             chord, idx = sc
-            for _ in range(attempts):
-                self.win.set_focus()
-                send_keys(chord)          # 打开下拉（mnemonic 会预选第一项）
-                time.sleep(0.2)
-                if idx > 0:
-                    send_keys("{DOWN %d}" % idx)   # 已预选 idx0：选 idx 只需 idx 次
-                    time.sleep(0.12)
-                send_keys("{ENTER}")
-                time.sleep(0.15)
-                return
-        last_err: Exception | None = None
+            last_err: Exception | None = None
+            for _attempt in range(attempts):
+                try:
+                    self.win.set_focus()
+                    send_keys(chord)          # 打开下拉（mnemonic 会预选第一项）
+                    time.sleep(0.2)
+                    # 验证下拉已打开：目标项只在下拉展开时出现在主窗口子树
+                    wait_until(lambda: self._menu_item_in(self.win, path[-1]),
+                               timeout=2, interval=0.15,
+                               desc=f"下拉已打开（含 {path[-1]}）")
+                    if idx > 0:
+                        send_keys("{DOWN %d}" % idx)   # 预选 idx0：选 idx 只需 idx 次
+                        time.sleep(0.12)
+                    send_keys("{ENTER}")
+                    time.sleep(0.15)
+                    return
+                except AppError as e:
+                    last_err = e
+                    send_keys("{ESC}")
+                    time.sleep(0.25)
+            raise last_err
+        last_err = None
         for attempt in range(attempts):
             try:
                 top = wait_until(lambda: self._menu_item_in(self.win, path[0]),
@@ -546,10 +560,19 @@ class AppSession:
         return bool(b and b.is_enabled())
 
     def new_graph(self):
-        """File > New：清空画布（vm_.clear，无确认弹窗）。"""
-        self.menu_click("File", "New")
-        wait_until(lambda: self.status_counts() == (0, 0), desc="New 后画布清空")
-        wait_until(lambda: self.win.window_text() == "Graph Studio", desc="New 后标题复位")
+        """File > New：清空画布（vm_.clear，无确认弹窗）。效果校验 + 重试。"""
+        for attempt in range(3):
+            self.menu_click("File", "New")
+            try:
+                wait_until(lambda: self.status_counts() == (0, 0),
+                           timeout=4, desc="New 后画布清空")
+                wait_until(lambda: self.win.window_text() == "Graph Studio",
+                           timeout=4, desc="New 后标题复位")
+                return
+            except AppError:
+                if attempt == 2:
+                    raise
+                time.sleep(0.3)
 
     # ---------- 节点操作（真实鼠标） ----------
     def add_node_at(self, task_type: str, screen_pt: tuple[int, int], category: str,
@@ -642,21 +665,39 @@ class AppSession:
         return None
 
     def set_param_value(self, label: str, value: str):
-        """在 Parameters 分组按标签输入值（点击→全选→剪贴板粘贴→回车提交）。
+        """在 Parameters 分组按标签输入值（点击→全选→粘贴→回车提交）。
 
         QLineEdit（string/file）、QSpinBox（int）、QDoubleSpinBox（float）通用；
         editingFinished → ChangeParamCommand（可撤销，与真人输入同路径）。
+        提交后回读校验——真实输入可能被外部光标/焦点干扰偷走，参数没落上
+        会直接导致后续执行空路径失败（实测发生），必须当场发现重试。
         """
         edit = wait_until(lambda: self._param_widget(label),
                           timeout=8, interval=0.3,
                           desc=f"参数控件 {label}")
-        real_click(*_mid(edit.rectangle()))
-        send_keys("^a")
-        set_clipboard_text(str(value))
-        send_keys("^v")
-        time.sleep(0.15)
-        send_keys("{ENTER}")
-        time.sleep(0.1)
+        for attempt in range(3):
+            real_click(*_mid(edit.rectangle()))
+            send_keys("^a")
+            set_clipboard_text(str(value))
+            send_keys("^v")
+            time.sleep(0.15)
+            send_keys("{ENTER}")
+            time.sleep(0.12)
+            try:
+                # 回读双通道：QSpinBox 内嵌 Edit 的 UIA Name 可能陈旧（实测
+                # 提交成功仍读到旧值），LegacyIAccessible Value 是权威通道
+                current = edit.window_text() or ""
+                try:
+                    current += " " + str(edit.legacy_properties().get("Value", ""))
+                except Exception:
+                    pass
+            except Exception:
+                current = ""
+            if str(value) in current:
+                return
+            if attempt == 2:
+                raise AppError(f"参数 {label} 提交校验失败: 期望 {value!r} "
+                               f"实际 {current!r}")
 
     def defocus_to_canvas(self):
         real_click(*self.canvas_center())  # 点画布空白去焦点（促 editingFinished）
@@ -747,12 +788,13 @@ class AppSession:
         return wait_until(_done, timeout=timeout, interval=0.6,
                           desc="执行完成（Profile 摘要更新）")
 
-    def run_and_wait(self, timeout: float = 60.0) -> tuple[int, int, str]:
+    def run_and_wait(self, timeout: float = 25.0) -> tuple[int, int, str]:
         """点击 Run 并等待完成。
 
         基准摘要必须在点击**前**捕获——小图执行 ~2ms，点击后再读摘要已是
         完成态，变化检测永远不触发（帧计数每次 +1，摘要文本必然变化）。
-        首次点击若被干扰抢走（摘要无变化），30s 后补点一次再等。
+        首击被干扰偷走时：小图 25s 无摘要变化即可判死，重击一次再等 20s
+        （此前 60s+30s 的宽松超时让被偷的用例白等近两分钟才自愈）。
         """
         prior = self.finished_counts()
         base_summary = self.profile_summary_text()
@@ -760,7 +802,7 @@ class AppSession:
             self.click_run()
             try:
                 return self.wait_run_finished(
-                    prior, timeout=(30.0 if attempt else timeout),
+                    prior, timeout=(20.0 if attempt else timeout),
                     base_summary=base_summary)
             except AppError:
                 if attempt:
@@ -959,14 +1001,18 @@ class AppSession:
         OLE 拖放（Explorer 作为拖放源），这也正是用户的实际操作方式。
         """
         path = Path(path)
-        existed = {w.handle for w in self._explorer_windows()}
+        own = getattr(self, "_own_explorers", None)
+        if own is None:
+            own = self._own_explorers = set()
+        # 外部窗口 = 不是本 harness 此前打开且仍存活的（重试时旧窗口不算外部）
+        external = {w.handle for w in self._explorer_windows()} - own
         subprocess.Popen(["explorer.exe", "/select,", str(path)])
         folder = path.parent.name
         # /select 可能复用已有 Explorer 进程并新开窗口；只认标题含目标目录的
         # 新窗口（残留旧窗口指向别的目录，在里面找文件项必然失败）
         def _new_win():
             for w in self._explorer_windows():
-                if w.handle in existed:
+                if w.handle in external or w.handle in own:
                     continue
                 if folder in (w.window_text() or ""):
                     return w
@@ -974,6 +1020,17 @@ class AppSession:
 
         exp = wait_until(_new_win, timeout=timeout,
                          desc=f"Explorer 窗口（{folder}）出现")
+        own.add(exp.handle)
+        # 把 Explorer 挪到应用窗口右侧：默认开窗位置可能盖住画布，
+        # 拖拽落点被它挡住 = 拖回 Explorer 自己（实测失败模式之一）
+        try:
+            screen_w = _user32.GetSystemMetrics(0)
+            app_r = self.win.rectangle()
+            ex = min(max(app_r.right + 20, 40), max(40, screen_w - 1000))
+            _user32.SetWindowPos(exp.handle, 0, ex, 30, 980, 900, 0x0004)
+            time.sleep(0.4)
+        except Exception:
+            pass
         time.sleep(1.2)   # 视图加载
         stem = path.stem
         wanted = {path.name, stem}   # Explorer 默认隐藏已知扩展名，只显示 stem
@@ -994,10 +1051,11 @@ class AppSession:
         time.sleep(0.25)
         real_release(target[0], target[1])
         time.sleep(0.6)
-        for w in self._explorer_windows():   # 只清理本次新开的 Explorer 窗口
-            if w.handle not in existed:
+        for w in self._explorer_windows():   # 清理本次及历次重试新开的窗口
+            if w.handle not in external:
                 try:
                     w.close()
+                    own.discard(w.handle)
                 except Exception:
                     pass
 

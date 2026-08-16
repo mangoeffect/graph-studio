@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import json
+import time
 
 from gs import console
 from .app import AppSession, wait_until
@@ -33,6 +34,95 @@ def _substitute(value: str, subs: dict[str, str]) -> str:
         if value.startswith(key + "/") or value.startswith(key + "\\"):
             return str(real).replace("\\", "/") + "/" + value[len(key) + 1:].replace("\\", "/")
     return value
+
+
+def _run_case(s: AppSession, case, report, fixtures, subs, gpu_ok) -> None:
+    """单个 PluginCase 的完整交互流（异常上抛，由调用方决定重试/记录）。
+
+    每个真实输入步骤后做效果校验并就地重试：建点逐个校验计数、选中校验
+    面板 ID、参数提交回读、连线逐条校验计数——单步被偷当场补做，避免
+    错误传播到执行阶段才以更难排查的方式失败。
+    """
+    s.new_graph()
+    pos = _node_positions(s.canvas_center(), len(case.nodes))
+
+    # 建节点（逐个：计数到 i+1 才算成功，未到则重试该节点）
+    for i, (spec, pt) in enumerate(zip(case.nodes, pos)):
+        for attempt in range(3):
+            s.add_node_at(spec["type"], pt, category=spec["category"])
+            try:
+                wait_until(lambda: s.status_counts()[0] == i + 1,
+                           timeout=4, desc=f"{case.name}: 节点数 {i + 1}")
+                break
+            except Exception:
+                if attempt == 2:
+                    raise
+                time.sleep(0.3)
+
+    # 设参数（选中 → 校验选中 → 逐标签输入[带回读] → 点画布去焦点）
+    for i, spec in enumerate(case.nodes):
+        if not spec.get("params"):
+            continue
+        for attempt in range(3):   # 选中点击可能被光标干扰抢走
+            s.select_node(pos[i])
+            try:
+                wait_until(lambda: s.selected_node_id()
+                           .startswith(spec["type"] + "_"),
+                           timeout=3, desc=f"选中 {spec['type']}")
+                break
+            except Exception:
+                if attempt == 2:
+                    raise
+        for label, value in spec["params"].items():
+            s.set_param_value(label, _substitute(str(value), subs))
+        s.defocus_to_canvas()
+
+    # 连线（逐条：计数到 j+1 才算成功，未到则重试该条拖拽；重试间重新
+    # 锚定窗口焦点——拖拽路径长，被外部光标/焦点干扰概率最高）
+    for j, (a, b) in enumerate(case.edges):
+        for attempt in range(4):
+            if attempt:
+                s.win.set_focus()
+                time.sleep(0.3)
+            s.connect_ports(pos[a], pos[b])
+            try:
+                wait_until(lambda: s.status_counts() == (len(case.nodes), j + 1),
+                           timeout=4, desc=f"{case.name}: 连线数 {j + 1}")
+                break
+            except Exception:
+                if attempt == 3:
+                    raise
+                time.sleep(0.3)
+
+    # 执行
+    ok, failed, _log = s.run_and_wait()
+    if failed != 0:
+        raise AssertionError(f"执行有 {failed} 个任务失败（ok={ok}）")
+
+    # 断言：结果下拉
+    if case.expect_results is not None:
+        items = wait_until(lambda: (s.result_combo_texts() or None),
+                           timeout=15, interval=0.5, desc="结果下拉条目")
+        for sub in case.expect_results:
+            if not any(sub in it for it in items):
+                raise AssertionError(f"结果下拉缺少 {sub!r}: {items}")
+
+    # 断言：磁盘产物
+    for rel in case.expect_files:
+        p = report.path(_substitute(rel, subs) if rel.startswith("$OUT")
+                        else rel)
+        if not p.is_file():
+            raise AssertionError(f"执行后未见输出文件: {p}")
+
+    # 断言：日志子串（执行后停在 Profile 页，先切回 Log 可读）
+    if case.expect_log:
+        s.ensure_log_visible()
+        log = s.log_text()
+        combined = log + s.output_text()
+        for sub in case.expect_log:
+            if sub not in combined:
+                raise AssertionError(f"日志缺少 {sub!r}（尾部: "
+                                     f"{log.splitlines()[-5:] if log else '空'}）")
 
 
 def run(pkg, report, fixtures, ctx) -> None:
@@ -68,86 +158,31 @@ def run(pkg, report, fixtures, ctx) -> None:
                 report.record(full, "skip", "GPU 后端未初始化（CI/无 GPU 机器预期行为）")
                 continue
 
-            artifacts: list[str] = []
-            try:
-                s.new_graph()
-                pos = _node_positions(s.canvas_center(), len(case.nodes))
-
-                # 建节点
-                for spec, pt in zip(case.nodes, pos):
-                    s.add_node_at(spec["type"], pt, category=spec["category"])
-                wait_until(lambda: s.status_counts() == (len(case.nodes), 0),
-                           desc=f"{case.name}: 节点数 {len(case.nodes)}")
-
-                # 设参数（选中节点 → 校验选中成功 → 逐标签输入 → 点画布去焦点）
-                for i, spec in enumerate(case.nodes):
-                    if not spec.get("params"):
-                        continue
-                    for attempt in range(3):   # 选中点击可能被光标干扰抢走
-                        s.select_node(pos[i])
-                        try:
-                            wait_until(lambda: s.selected_node_id()
-                                       .startswith(spec["type"] + "_"),
-                                       timeout=3, desc=f"选中 {spec['type']}")
-                            break
-                        except Exception:
-                            if attempt == 2:
-                                raise
-                    for label, value in spec["params"].items():
-                        s.set_param_value(label, _substitute(str(value), subs))
-                    s.defocus_to_canvas()
-
-                # 连线
-                for a, b in case.edges:
-                    s.connect_ports(pos[a], pos[b])
-                wait_until(lambda: s.status_counts() == (len(case.nodes), len(case.edges)),
-                           desc=f"{case.name}: 连线数 {len(case.edges)}")
-
-                # 执行
-                ok, failed, _log = s.run_and_wait()
-                if failed != 0:
-                    raise AssertionError(f"执行有 {failed} 个任务失败（ok={ok}）")
-
-                # 断言：结果下拉
-                if case.expect_results is not None:
-                    items = wait_until(lambda: (s.result_combo_texts() or None),
-                                       timeout=30, interval=0.5, desc="结果下拉条目")
-                    for sub in case.expect_results:
-                        if not any(sub in it for it in items):
-                            raise AssertionError(f"结果下拉缺少 {sub!r}: {items}")
-
-                # 断言：磁盘产物
-                for rel in case.expect_files:
-                    p = report.path(_substitute(rel, subs) if rel.startswith("$OUT")
-                                    else rel)
-                    if not p.is_file():
-                        raise AssertionError(f"执行后未见输出文件: {p}")
-                    artifacts.append(str(p))
-
-                # 断言：日志子串（执行后停在 Profile 页，先切回 Log 可读）
-                s.ensure_log_visible()
-                log = s.log_text()
-                combined = log + s.output_text()
-                for sub in case.expect_log:
-                    if sub not in combined:
-                        raise AssertionError(f"日志缺少 {sub!r}（尾部: "
-                                         f"{log.splitlines()[-5:] if log else '空'}）")
-
-                report.record(full, "pass", f"ok={ok} failed={failed}",
-                              artifacts=artifacts)
-            except Exception as e:
+            # 用例级重试：真实输入可能被外部光标/焦点干扰整段偷走（实测
+            # 连续多个用例窗口期失败），单次失败先清场整例重来一遍再记失败
+            last_exc: Exception | None = None
+            for case_attempt in range(2):
                 try:
-                    artifacts.append(s.screenshot(f"{case.name}_failure.png"))
+                    _run_case(s, case, report, fixtures, subs, gpu_ok)
+                    report.record(full, "pass")
+                    last_exc = None
+                    break
+                except Exception as e:
+                    last_exc = e
+                    try:  # 清场，重试或留给失败记录
+                        s.new_graph()
+                    except Exception:
+                        pass
+            if last_exc is not None:
+                e = last_exc
+                try:
+                    s.screenshot(f"{case.name}_failure.png")
                     s.dump_ui(f"{case.name}_failure_ui.txt")
                     state = s.state_snapshot()
                 except Exception:
                     state = {}
                 report.record(full, "fail", f"{type(e).__name__}: {e}",
-                              artifacts=artifacts, exc=e, app_state=state)
-                try:  # 现场可能残留弹窗/选中态：清一次，避免影响下一用例
-                    s.new_graph()
-                except Exception:
-                    pass
+                              exc=e, app_state=state)
 
         # 末尾：Save As 落盘 JSON 往返（用当前画布=最后一个用例的图）
         report.begin("core/save_roundtrip")
