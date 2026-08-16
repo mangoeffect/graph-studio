@@ -101,6 +101,10 @@ jobs:
       SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
       SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
       SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+      # Windows .msix 固定签名证书（scripts/generate_msix_cert.ps1 一次性产出）：
+      # 未配置时打包脚本退化为按次自签名（每个版本证书不同，用户需重新信任）。
+      MSIX_CERT_PFX: ${{ secrets.MSIX_CERT_PFX }}
+      MSIX_CERT_PASSWORD: ${{ secrets.MSIX_CERT_PASSWORD }}
 
     steps:
       # 主仓库是公有仓库；四个 plugin-* 子模块是私有仓库，GITHUB_TOKEN 拉不到，
@@ -157,19 +161,32 @@ jobs:
             --version "$PKG_VERSION" "${sentry_args[@]}" -c -j 3 \
             --out-dir dist/dmg
 
-      # ---- Windows: windeployqt + makeappx -> .msix ----
+      # ---- Windows: windeployqt + makeappx -> 签名 .msix ----
       - name: Build + package Windows .msix
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          # -SkipSign：产出 Store 风格未签名包（正式上架时由 Partner Center 重签名）
-          # 生成 dist/msix/graph_studio-<ver>_x64.msix
+          # 签名：配置了 MSIX_CERT_PFX secret（固定自签证书的 base64 PFX）则用它
+          # 签名，所有版本共享同一发布者身份，用户只需信任一次 .cer；未配置时
+          # 脚本按次自签名（每次证书不同）。两种情况都会导出 .cer 公钥一并归档
+          # 为 Release 资产。走 Microsoft Store 上架需另行本地 -SkipSign 出未签名
+          # msixupload（Partner Center 会重签名，不接受外部签名包）。
+          # 生成 dist/msix/graph_studio-<ver>_x64.msix + GraphStudioDev.cer
+          $signArgs = @()
+          if ($env:MSIX_CERT_PFX) {
+            if (-not $env:MSIX_CERT_PASSWORD) {
+              throw "MSIX_CERT_PFX is set but MSIX_CERT_PASSWORD is missing; cannot sign."
+            }
+            $pfxPath = Join-Path $env:RUNNER_TEMP "msix-codesign.pfx"
+            [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String(($env:MSIX_CERT_PFX -replace '\s', '')))
+            $signArgs = @("-CertPfx", $pfxPath, "-CertPfxPassword", $env:MSIX_CERT_PASSWORD)
+          }
           $sentryArgs = @("-SkipSentry")
           if ($env:SENTRY_DSN) {
             $sentryArgs = @("-SentryDsn", $env:SENTRY_DSN,
                             "-SentryRelease", "${{ needs.meta.outputs.release }}")
           }
-          scripts\build_msix.ps1 -Version "$env:PKG_VERSION" -Config RelWithDebInfo -Clean -SkipSign @sentryArgs
+          scripts\build_msix.ps1 -Version "$env:PKG_VERSION" -Config RelWithDebInfo -Clean @signArgs @sentryArgs
 
       # ---- Linux: linuxdeployqt + appimagetool -> .AppImage ----
       - name: Build + package Linux .AppImage
@@ -267,6 +284,7 @@ jobs:
           path: |
             dist/dmg/*.dmg
             dist/msix/*.msix
+            dist/msix/*.cer
             dist/appimage/*.AppImage
             dist/symbols/*.zip
           if-no-files-found: error
@@ -401,7 +419,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p assets
-          find installers -type f \( -name '*.dmg' -o -name '*.msix' -o -name '*.AppImage' -o -name '*.zip' \) \
+          find installers -type f \( -name '*.dmg' -o -name '*.msix' -o -name '*.cer' -o -name '*.AppImage' -o -name '*.zip' \) \
                -exec cp {} assets/ \;
           ls -lh assets/
 
@@ -419,7 +437,7 @@ jobs:
 
             ### 安装包
             - macOS：`.dmg`（拖入 Applications 安装）
-            - Windows：`.msix`（需开发者模式或信任签名；正式上架由 Microsoft Store 重签名）
+            - Windows：`.msix`（首次安装需先信任发布者证书：双击附件 `GraphStudioDev.cer` → 安装证书 → 存储位置选“本地计算机” → “受信任的根证书颁发机构”或“受信任人”；之后所有版本无需重复。上架 Microsoft Store 后由 Store 重签名，届时无需此步骤）
             - Linux：`.AppImage`（`chmod +x` 后直接运行）
             - Web：`GraphStudio-*-web.zip`（WASM 版，无需安装）——官网[在线体验](https://mangoeffect.github.io/graph-studio/web/)直接运行；zip 可解压到任意 HTTPS 静态托管自部署
 
@@ -429,5 +447,6 @@ jobs:
           files: |
             assets/*.dmg
             assets/*.msix
+            assets/*.cer
             assets/*.AppImage
             assets/*.zip

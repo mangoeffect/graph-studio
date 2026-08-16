@@ -14,6 +14,9 @@
     Result layout ($OutDir):
       graph_studio-<version>_x64.msix        — signed (default) or unsigned (-SkipSign)
       graph_studio-<version>_x64.msixupload  — upload this to the Microsoft Store
+      <publisher-CN>.cer                     — public key of the signing cert; trust it
+                                               (LocalMachine\TrustedPeople) before installing
+                                               a signed package locally
 
     Store submission notes:
       * -IdentityName must equal the name you reserved in Partner Center.
@@ -62,6 +65,16 @@
 .PARAMETER CertThumbprint
     Reuse an existing code-signing certificate (CurrentUser\My) by thumbprint.
 
+.PARAMETER CertPfx
+    Sign with a certificate from a PFX file (e.g. the fixed dev certificate
+    stored in CI secrets, produced by scripts\generate_msix_cert.ps1) instead
+    of the CurrentUser store. The certificate subject must equal -Publisher;
+    if -Publisher is not passed explicitly it is derived from the PFX so the
+    AppxManifest always matches the signature.
+
+.PARAMETER CertPfxPassword
+    Password protecting the PFX. Falls back to env GS_MSIX_CERT_PASSWORD.
+
 .PARAMETER IdentityName
     Package identity Name (default "GraphStudio"). Must match the Store-reserved
     app name for Store submissions.
@@ -95,6 +108,7 @@
     scripts\build_msix.ps1 -Version 0.2.0 -SkipSign
     scripts\build_msix.ps1 -SkipSentry                # build without crash reporting
     scripts\build_msix.ps1 -SentryDsn <dsn> -SentryRelease 0.1.0-beta.42 -SkipSign
+    scripts\build_msix.ps1 -CertPfx dist\msix-cert\GraphStudioDev.pfx -CertPfxPassword <pwd>
 .note
     Requires the Windows SDK tools (makeappx, makepri, signtool) — bundled with
     Visual Studio / Windows SDK installs. windeployqt comes with Qt.
@@ -112,6 +126,8 @@ param(
     [string]$SentryDsn = "",
     [string]$SentryRelease = "",
     [string]$CertThumbprint = "",
+    [string]$CertPfx = "",
+    [string]$CertPfxPassword = "",
     [string]$IdentityName = "GraphStudio",
     [string]$Publisher = "CN=GraphStudioDev",
     [string]$DisplayName = "Graph Studio",
@@ -170,6 +186,41 @@ if ($VersionQuad -ne $Version) {
 $PackageBaseName = "graph_studio-$VersionQuad`_$Arch"
 
 if (-not $Publisher.StartsWith("CN=")) { $Publisher = "CN=$Publisher" }
+
+# ---- resolve -CertPfx early: its subject must feed the AppxManifest ----
+# Windows refuses an MSIX whose signature subject differs from the manifest
+# Publisher (the 0x800B010A "publisher certificate could not be validated"
+# family of install errors), so the PFX subject wins unless -Publisher was
+# passed explicitly (Store submissions pin it to the Partner Center ID).
+$PfxCert = $null
+if ($CertPfx) {
+    if (-not (Test-Path $CertPfx)) { Write-Fail "Certificate PFX not found: $CertPfx"; exit 1 }
+    $CertPfx = (Resolve-Path $CertPfx).Path
+    if (-not $CertPfxPassword) { $CertPfxPassword = $env:GS_MSIX_CERT_PASSWORD }
+    if ($CertPfxPassword) { $CertPfxPassword = $CertPfxPassword.Trim() } # secrets set via echo carry trailing newlines
+    if (-not $CertPfxPassword) {
+        Write-Fail "-CertPfx needs a password (-CertPfxPassword or env GS_MSIX_CERT_PASSWORD)."
+        exit 1
+    }
+    try {
+        # EphemeralKeySet: inspect/export the cert without persisting a key
+        # container; signtool reads the PFX file itself via /f /p.
+        $kflags = [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet
+        $PfxCert = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($CertPfx, $CertPfxPassword, $kflags)
+    } catch {
+        Write-Fail "Cannot open certificate PFX '$CertPfx' (wrong password?): $($_.Exception.Message)"
+        exit 1
+    }
+    if ($PSBoundParameters.ContainsKey('Publisher')) {
+        if ($PfxCert.Subject -ne $Publisher) {
+            Write-Fail "-Publisher '$Publisher' does not match the PFX certificate subject '$($PfxCert.Subject)'; they must be identical."
+            exit 1
+        }
+    } else {
+        $Publisher = $PfxCert.Subject
+        Write-Step "Publisher derived from PFX: $Publisher"
+    }
+}
 
 Write-Step "Publishing identity: $IdentityName  publisher: $Publisher  version: $VersionQuad"
 
@@ -303,15 +354,18 @@ $Code = Invoke-Native $Makeappx @("pack", "/d", $Staging, "/p", $PkgPath, "/o")
 if ($Code -ne 0) { exit $Code }
 
 # ---- 6) sign (unless -SkipSign) ----
+$CerPath = ""
 if (-not $SkipSign) {
-    Write-Step "Signing .msix (self-signed dev certificate, signtool)"
-    $cert = $null
-    if ($CertThumbprint) {
+    $cert = $PfxCert
+    if (-not $cert -and $CertThumbprint) {
         $cert = Get-Item "Cert:\CurrentUser\My\$CertThumbprint" -ErrorAction SilentlyContinue
     }
     if (-not $cert) {
+        # newest first: several certs may share the subject (e.g. an old
+        # one-year cert beside the fixed five-year CI certificate)
         $cert = Get-ChildItem "Cert:\CurrentUser\My" -CodeSigningCert -ErrorAction SilentlyContinue |
-            Where-Object { $_.Subject -eq $Publisher } | Select-Object -First 1
+            Where-Object { $_.Subject -eq $Publisher } |
+            Sort-Object NotAfter -Descending | Select-Object -First 1
     }
     if (-not $cert) {
         Write-Step "Creating self-signed code-signing certificate: $Publisher"
@@ -319,15 +373,31 @@ if (-not $SkipSign) {
             -CertStoreLocation "Cert:\CurrentUser\My" -KeyExportPolicy Exportable `
             -NotAfter (Get-Date).AddYears(1)
     }
-    $SignArgs = @("sign", "/sha1", $cert.Thumbprint, "/fd", "SHA256",
+
+    # signtool takes the certificate either straight from the PFX file
+    # (/f /p) or from the CurrentUser store (/sha1 thumbprint).
+    if ($PfxCert) {
+        Write-Step "Signing .msix (signtool, PFX subject $($PfxCert.Subject))"
+        $IdentityArgs = @("/f", $CertPfx, "/p", $CertPfxPassword)
+    } else {
+        Write-Step "Signing .msix (self-signed dev certificate, signtool)"
+        $IdentityArgs = @("/sha1", $cert.Thumbprint)
+    }
+    $SignArgs = @("sign") + $IdentityArgs + @("/fd", "SHA256",
                   "/td", "SHA256", "/tr", "http://timestamp.digicert.com", $PkgPath)
     $Code = Invoke-Native $Signtool $SignArgs
     if ($Code -ne 0) {
         Write-Step "Timestamp server unreachable; retrying without RFC3161 timestamp"
-        $Code = Invoke-Native $Signtool @("sign", "/sha1", $cert.Thumbprint,
-                                          "/fd", "SHA256", $PkgPath)
+        $Code = Invoke-Native $Signtool (@("sign") + $IdentityArgs + @("/fd", "SHA256", $PkgPath))
     }
     if ($Code -ne 0) { exit $Code }
+
+    # Export the publisher cert next to the package: users must import it
+    # (LocalMachine\TrustedPeople) before installing, otherwise Windows
+    # rejects the self-signed/untrusted chain with 0x800B010A.
+    $CerPath = Join-Path $OutDir ((($Publisher -replace '^CN=', '') -replace '[^A-Za-z0-9_.-]', '_') + ".cer")
+    Export-Certificate -Cert $cert -FilePath $CerPath | Out-Null
+    Write-Ok "Publisher certificate: $CerPath"
 } else {
     Write-Step "Skipped signing (-SkipSign); the Microsoft Store will re-sign on submission."
 }
@@ -353,6 +423,11 @@ Compress-ToFile -Items $UploadItems -Target $UploadPath
 # ---- summary ----
 Write-Ok "$PkgPath"
 Write-Ok "$UploadPath"
-Write-Step "Local test: trust the cert, then  Add-AppxPackage -Path '$PkgPath'"
+if ($CerPath) {
+    Write-Step "Install test: first import '$CerPath' into LocalMachine\TrustedPeople (admin),"
+    Write-Step "  then  Add-AppxPackage -Path '$PkgPath'"
+    Write-Step "Note: this msixupload contains a SIGNED package; Partner Center needs an"
+    Write-Step "  unsigned one - rebuild locally with -SkipSign for Store submission."
+}
 Write-Step "Store upload: Partner Center > upload '$UploadPath' (identity '$IdentityName', publisher '$Publisher'),"
 Write-Step "  and declare the runFullTrust restricted capability. Bump -Version for every submission."
