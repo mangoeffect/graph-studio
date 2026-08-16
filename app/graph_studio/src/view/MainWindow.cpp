@@ -448,6 +448,9 @@ QWidget* MainWindow::CreateTaskPanel()
     layout->addWidget(header);
 
     taskList_ = new TaskListWidget();
+    // 供外部 UI 自动化（E2E）稳定定位：objectName + accessibleName
+    taskList_->setObjectName("taskLibrary");
+    taskList_->setAccessibleName("Task Library");
     taskList_->setDragEnabled(true);
     taskList_->setDragDropMode(QAbstractItemView::DragOnly);
     taskList_->setDefaultDropAction(Qt::CopyAction);
@@ -529,6 +532,8 @@ QWidget* MainWindow::CreateImageResultPanel()
     layout->addWidget(header);
 
     resultSelector_ = new QComboBox();
+    resultSelector_->setObjectName("resultSelector");
+    resultSelector_->setAccessibleName("Image Results");
     resultSelector_->setPlaceholderText(QStringLiteral("No results"));
     resultSelector_->setEnabled(false);
     layout->addWidget(resultSelector_);
@@ -620,6 +625,8 @@ QWidget* MainWindow::CreateLogPanel()
     layout->addWidget(header);
 
     logWidget_ = new QPlainTextEdit();
+    logWidget_->setObjectName("logPanel");
+    logWidget_->setAccessibleName("Log Panel");
     logWidget_->setReadOnly(true);
     logWidget_->setMaximumBlockCount(5000);
     logWidget_->appendHtml("<span style=\"color:#d4d4d4\">[INFO] Graph Studio started.</span>");
@@ -645,6 +652,8 @@ QWidget* MainWindow::CreateOutputPanel()
     layout->addWidget(header);
 
     outputWidget_ = new QPlainTextEdit();
+    outputWidget_->setObjectName("outputPanel");
+    outputWidget_->setAccessibleName("Output Panel");
     outputWidget_->setReadOnly(true);
     outputWidget_->appendPlainText("Waiting for execution...");
     layout->addWidget(outputWidget_);
@@ -671,6 +680,8 @@ void MainWindow::CreateCanvas()
     scene_ = new GraphScene(this);
     scene_->setAvailableTaskTypes(vm_.availableTaskTypes());
     graphicsView_ = new GraphView(scene_);
+    graphicsView_->setObjectName("graphView");
+    graphicsView_->setAccessibleName("Graph Canvas");
     graphicsView_->setRenderHint(QPainter::Antialiasing);
     graphicsView_->setMinimumWidth(400);
 }
@@ -678,7 +689,13 @@ void MainWindow::CreateCanvas()
 void MainWindow::CreateStatusBar()
 {
     statusBar_ = new QStatusBar(this);
+    // 节点/边计数用永久控件（瞬态 showMessage 的 QLabel 不进 UIA 树，
+    // 外部 E2E 自动化读不到；永久控件可读，zoomLabel 同理）
+    countsLabel_ = new QLabel("Nodes: 0  |  Edges: 0");
+    countsLabel_->setObjectName("countsLabel");
+    statusBar_->addPermanentWidget(countsLabel_);
     zoomLabel_ = new QLabel("Zoom: 100%");
+    zoomLabel_->setObjectName("zoomLabel");
     zoomLabel_->setStyleSheet("color: #ffffff; padding: 0 8px;");
     statusBar_->addPermanentWidget(zoomLabel_);
     statusBar_->showMessage("Ready");
@@ -892,7 +909,12 @@ void MainWindow::CreateNodeAt(const QString& taskType, const QPointF& scenePos)
 
 void MainWindow::UpdateStatusBar()
 {
-    if (statusBar_) {
+    if (countsLabel_) {
+        countsLabel_->setText(QString("Nodes: %1  |  Edges: %2")
+                                  .arg(vm_.taskCount())
+                                  .arg(vm_.edgeCount()));
+    }
+    if (statusBar_ && statusBar_->currentMessage().isEmpty()) {
         statusBar_->showMessage(QString("Nodes: %1  |  Edges: %2")
                                     .arg(vm_.taskCount())
                                     .arg(vm_.edgeCount()));
@@ -1298,6 +1320,7 @@ void MainWindow::ActionSaveAs()
         path += ".json";
     if (vm_.saveToFile(path)) {
         currentFilePath_ = path;
+        UpdateWindowTitle();  // E2E 发现：另存后标题未更新（与 Open 行为不一致）
     }
 #endif
 }

@@ -172,6 +172,7 @@ private:
     QTabWidget* bottomTabs_ = nullptr;
     ProfilePanel* profilePanel_ = nullptr;
     QLabel* zoomLabel_ = nullptr;
+    QLabel* countsLabel_ = nullptr;
 
     // Property panel widgets
     QLineEdit* propIdEdit_ = nullptr;
