@@ -3,11 +3,12 @@
 
 流程：
   1) 构建 task_graph 根库 + subnode 插件（RelWithDebInfo + OpenCV）。
-  2) 构建 graph_studio 可执行文件。
-  3) 搭建 AppDir 布局（usr/bin/graph_studio + .desktop + 图标 + subnode 插件）。
-  4) linuxdeployqt 收集 Qt/OpenCV 等依赖进 AppDir/usr/lib 并修正 rpath。
-  5) 用自定义 AppRun 包一层，注入 TASK_GRAPH_PLUGINS_PATH（PluginBootstrap 从此加载 subnode 插件）。
-  6) appimagetool 把 AppDir 打包成 .AppImage。
+  2) 拉取 sentry-native（可选，构建含崩溃上报的发布版）。
+  3) 构建 graph_studio 可执行文件。
+  4) 搭建 AppDir 布局（usr/bin/graph_studio + .desktop + 图标 + subnode 插件）。
+  5) linuxdeployqt 收集 Qt/OpenCV 等依赖进 AppDir/usr/lib 并修正 rpath。
+  6) 用自定义 AppRun 包一层，注入 TASK_GRAPH_PLUGINS_PATH（PluginBootstrap 从此加载 subnode 插件）。
+  7) appimagetool 把 AppDir 打包成 .AppImage。
 
 需要 Linux + Qt6（qmake 在 PATH 或 --qmake 指定）。linuxdeployqt / appimagetool
 未在 PATH 时自动下载到 dist/tools/（CI 友好）。
@@ -17,6 +18,9 @@
   python scripts/package_linux.py --version 0.1.0
   python scripts/package_linux.py -c                      # 清空构建目录后全新构建
   python scripts/package_linux.py -j 8
+  python scripts/package_linux.py --no-sentry             # 不构建崩溃上报
+  python scripts/package_linux.py --dsn <sentry_dsn>      # 嵌入 Sentry DSN
+  python scripts/package_linux.py --sentry-release 0.1.0-beta.42
   python scripts/package_linux.py --skip-build            # 复用现有产物只打包
   python scripts/package_linux.py --out-dir dist/appimage
   python scripts/package_linux.py --qt <prefix>           # 指定 Qt6 前缀
@@ -37,6 +41,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from gs import console, deps, platform, repo_root, runner  # noqa: E402
 from gs import sdk, toolchain  # noqa: E402
+from gs import sentry as gs_sentry  # noqa: E402
 from gs.cmake import CMake  # noqa: E402
 
 APP_NAME = "graph_studio"
@@ -68,7 +73,8 @@ exec "${{appdir}}/usr/bin/{exe}" "$@"
 
 
 def build_stack(cm: CMake, root: Path, lib_build: Path, gs_dir: Path, gs_build: Path,
-                config: str, jobs: int, qt_prefix: Path, opencv_dir, clean: bool) -> int:
+                config: str, jobs: int, qt_prefix: Path, opencv_dir, sentry_dsn: str,
+                sentry_release: str, clean: bool) -> int:
     """构建 task_graph 根库 + subnode 插件，再构建 graph_studio。返回退出码。"""
     if clean:
         for d in (lib_build, gs_build):
@@ -95,6 +101,9 @@ def build_stack(cm: CMake, root: Path, lib_build: Path, gs_dir: Path, gs_build: 
     app_defines = ["-DCMAKE_PREFIX_PATH={}".format(qt_prefix)] if qt_prefix else []
     if opencv_dir and (opencv_dir / "lib").is_dir():
         app_defines.append(f"-DOpenCV_DIR={opencv_dir / 'lib'}")
+    app_defines += gs_sentry.cmake_defines(dsn=sentry_dsn, release=sentry_release)
+    if sentry_dsn:
+        console.step(f"嵌入 Sentry DSN: {sentry_dsn}")
     console.step("配置 graph_studio")
     if cm.configure(gs_dir, gs_build, defines=app_defines, build_type=config) != 0:
         return 1
@@ -140,6 +149,13 @@ def stage_appdir(appdir: Path, gs_build: Path, lib_build: Path, resources: Path,
         console.fail(f"构建产物不存在: {exe_src}")
         return 1
     shutil.copy2(exe_src, appdir / "usr" / "bin" / APP_NAME)
+
+    # crashpad_handler 需与主程序同目录（Sentry 构建产物；POST_BUILD 已拷到
+    # gs_build，linuxdeployqt 只收集动态依赖、不会带上独立可执行文件）。
+    handler_src = gs_build / "crashpad_handler"
+    if handler_src.is_file():
+        shutil.copy2(handler_src, appdir / "usr" / "bin" / "crashpad_handler")
+        console.step("拷贝 crashpad_handler -> usr/bin/（与主程序同目录）")
 
     # subnode 插件 .so -> usr/plugins/
     plugin_dirs = sdk.plugin_build_dirs(lib_build, config)
@@ -205,6 +221,10 @@ def main() -> int:
                     choices=["Debug", "Release", "RelWithDebInfo", "MinSizeRel"],
                     help="构建配置（默认 RelWithDebInfo）")
     ap.add_argument("--skip-build", action="store_true", help="跳过构建，复用现有 graph_studio 打包")
+    ap.add_argument("--no-sentry", action="store_true", help="不构建 Sentry 崩溃上报")
+    ap.add_argument("--dsn", default="", help="嵌入的 Sentry DSN（默认不嵌入，运行时读 SENTRY_DSN 环境变量）")
+    ap.add_argument("--sentry-release", default="",
+                    help="Sentry release 版本（默认取根 project VERSION；发布时传完整渠道版本如 0.1.0-beta.42）")
     ap.add_argument("--out-dir", default="", help="输出目录（默认 dist/appimage）")
     ap.add_argument("--qt", default="", help="Qt6 前缀（含 lib/cmake/Qt6）")
     ap.add_argument("--qmake", default="", help="qmake 路径（默认 <qt>/bin/qmake）")
@@ -246,8 +266,12 @@ def main() -> int:
     cm = CMake(cmake_exe)
 
     if not args.skip_build:
+        if gs_sentry.ensure_fetched(root, not args.no_sentry) != 0:
+            console.fail("拉取 sentry-native 失败")
+            return 1
         code = build_stack(cm, root, lib_build, gs_dir, gs_build, args.config, jobs,
-                           qt_prefix, opencv_dir, args.clean)
+                           qt_prefix, opencv_dir, args.dsn, args.sentry_release,
+                           args.clean)
         if code != 0:
             return code
 

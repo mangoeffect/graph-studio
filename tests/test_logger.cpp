@@ -50,3 +50,50 @@ TEST(Logger, log_macros_safe) {
     EXPECT_TRUE(true);  // 到此未崩溃即通过
 }
 
+TEST(Logger, add_log_sink_multiple_and_remove) {
+    tg_set_log_level(LogLevel::TRACE);
+    std::vector<std::string> got_a, got_b;
+    LogSinkHandle ha = add_log_sink([&](const LogEntry& e) { got_a.push_back(e.msg); });
+    LogSinkHandle hb = add_log_sink([&](const LogEntry& e) { got_b.push_back(e.msg); });
+    EXPECT_NE(ha, 0u);
+    EXPECT_NE(hb, 0u);
+    EXPECT_NE(ha, hb);
+
+    tg_log(LogLevel::INFO, "both");
+    remove_log_sink(ha);
+    tg_log(LogLevel::INFO, "only-b");
+    remove_log_sink(hb);
+    tg_log(LogLevel::INFO, "neither");
+    // 重复注销是安全的 no-op
+    remove_log_sink(ha);
+
+    ASSERT_EQ(got_a.size(), 1u);
+    EXPECT_EQ(got_a[0], "both");
+    ASSERT_EQ(got_b.size(), 2u);
+    EXPECT_EQ(got_b[0], "both");
+    EXPECT_EQ(got_b[1], "only-b");
+}
+
+TEST(Logger, add_log_sink_coexists_with_set_log_sink) {
+    tg_set_log_level(LogLevel::TRACE);
+    std::vector<std::string> got_main, got_extra;
+    set_log_sink([&](const LogEntry& e) { got_main.push_back(e.msg); });
+    LogSinkHandle h = add_log_sink([&](const LogEntry& e) { got_extra.push_back(e.msg); });
+    tg_log(LogLevel::WARN, "fanout");
+    // 主槽被覆盖不影响附加观察者
+    set_log_sink({});
+    tg_log(LogLevel::WARN, "after-main-replaced");
+    remove_log_sink(h);
+    clear_log_sink();
+
+    ASSERT_EQ(got_main.size(), 1u);
+    EXPECT_EQ(got_main[0], "fanout");
+    ASSERT_EQ(got_extra.size(), 2u);
+    EXPECT_EQ(got_extra[1], "after-main-replaced");
+}
+
+TEST(Logger, add_log_sink_empty_returns_zero) {
+    EXPECT_EQ(add_log_sink(nullptr), 0u);
+    remove_log_sink(0);  // no-op，不崩溃
+}
+

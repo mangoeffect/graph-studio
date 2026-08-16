@@ -3,6 +3,7 @@
 #include <string>
 #include <memory>
 #include <functional>
+#include <cstdint>
 #include <unordered_map>
 #include <vector>
 #include <any>
@@ -81,10 +82,17 @@ struct LogEntry {
 // 可能在任意线程触发，调用方需自行做线程编组。
 using LogSink = std::function<void(const LogEntry& entry)>;
 
+// add_log_sink 返回的 sink 句柄；0 表示注册失败（空 sink），有效句柄从 1 起。
+using LogSinkHandle = std::uint64_t;
+
 // 注册/注销全局日志 sink。sink 附加到 stdout 输出（不替代），headless/CLI 仍可见日志。
-// 同一时刻仅支持一个 sink；重复注册会覆盖前一个。
+// set_log_sink 是"主槽"语义：同一时刻仅一个，重复注册覆盖前一个（GUI 日志面板用）。
+// add_log_sink 注册附加观察者（如崩溃上报的 breadcrumb sink），与主槽并存、
+// 按注册顺序在主槽之后回调；返回句柄用于 remove_log_sink 精确注销。
 TG_EXPORT void set_log_sink(LogSink sink);
 TG_EXPORT void clear_log_sink();
+TG_EXPORT LogSinkHandle add_log_sink(LogSink sink);
+TG_EXPORT void remove_log_sink(LogSinkHandle handle);
 
 enum class TaskStatus {
     PENDING,

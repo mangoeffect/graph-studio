@@ -10,6 +10,7 @@
 #include <task_graph_api.hpp>
 #include <nlohmann/json.hpp>
 #include <opencv2/opencv.hpp>
+#include "CrashReporter.h"
 
 using namespace graph_studio;
 
@@ -22,6 +23,14 @@ const int kLogInfo  = static_cast<int>(task_graph::LogLevel::INFO);
 const int kLogWarn  = static_cast<int>(task_graph::LogLevel::WARN);
 const int kLogError = static_cast<int>(task_graph::LogLevel::ERROR);
 const int kLogFatal = static_cast<int>(task_graph::LogLevel::FATAL);
+
+// 同步崩溃上报的图上下文（文件名 + 规模）。崩溃事件据此定位"崩在哪个图"；
+// 未启用崩溃上报时为 no-op。只上报文件名，避免泄漏用户目录结构。
+void syncGraphCrashContext(GraphModel& model, const QString& filePath) {
+    SetGraphContext(QFileInfo(filePath).fileName().toStdString(),
+                    static_cast<int>(model.dag().num_tasks()),
+                    static_cast<int>(model.dag().edge_list().size()));
+}
 
 QVariantMap paramSpecToVariant(const task_graph::ParamSpec& s) {
     QVariantMap m;
@@ -667,6 +676,8 @@ void GraphViewModel::clear()
     model_.clear();
     emit selectionChanged({});
     emit logMessage(kLogInfo, "Graph cleared");
+    // 清空后同步崩溃上下文，避免崩溃报告携带已不存在的旧图信息。
+    syncGraphCrashContext(model_, QString());
 }
 
 bool GraphViewModel::saveToFile(const QString& filePath)
@@ -699,6 +710,7 @@ bool GraphViewModel::saveToFile(const QString& filePath)
     file.close();
 
     emit logMessage(kLogInfo, "Graph saved to: " + filePath);
+    syncGraphCrashContext(model_, filePath);
     return true;
 }
 
@@ -754,6 +766,7 @@ bool GraphViewModel::loadFromFile(const QString& filePath)
     }
 
     emit logMessage(kLogInfo, "Graph loaded from: " + filePath);
+    syncGraphCrashContext(model_, filePath);
     return true;
 }
 
@@ -907,6 +920,9 @@ void GraphViewModel::onExecutionEvent(const task_graph::ExecutionEvent& e) {
         emit logMessage(kLogError, QStringLiteral("%1%2")
                             .arg(QString::fromStdString(e.task_id))
                             .arg(e.failure_reason.empty() ? QString() : QStringLiteral(": %1").arg(QString::fromStdString(e.failure_reason))));
+        // 任务失败原因进崩溃 breadcrumb：崩溃若发生在后续执行中，
+        // 报告里能看到最近的失败任务与原因。
+        AddExecutionBreadcrumb(e.task_id, e.failure_reason);
         break;
     case Type::DagCompleted:
         finishExecution();

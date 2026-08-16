@@ -194,7 +194,7 @@ python scripts/run_graph_studio.py -t         # 运行编辑器自带的 ctest �
 
 无头 UI 测试：`python scripts/run_ui_tests.py`。
 
-崩溃上报（可选）使用 sentry-native + Crashpad；构建需先运行 `python scripts/fetch_sentry.py`，运行时读取 `SENTRY_DSN` 环境变量。没有 DSN 时是干净的 no-op，可安全在本地运行。
+崩溃上报（可选，桌面端）使用 sentry-native + Crashpad；构建需先运行 `python scripts/fetch_sentry.py`，运行时读取 `SENTRY_DSN` 环境变量（或发布包编译期嵌入）。没有 DSN 时是干净的 no-op，可安全在本地运行；sentry-native 未拉取时同样照常构建。崩溃报告自动附带最近 WARN+ 日志 breadcrumb 与当前图上下文。本地端到端验证（无需真实 Sentry 项目）：`python scripts/verify_crash_reporting.py`。CI 发布按 secrets 条件启用（`SENTRY_DSN`/`SENTRY_AUTH_TOKEN` 等），且每次 Release 归档三平台调试符号资产；方案详见 [dev-docs/crash-reporting.md](dev-docs/crash-reporting.md)。
 
 ## 测试
 

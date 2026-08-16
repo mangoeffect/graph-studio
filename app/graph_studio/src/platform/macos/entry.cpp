@@ -9,9 +9,7 @@
 #include "view/MainWindow.h"
 #include "PluginBootstrap.h"
 #include "GpuBootstrap.h"
-#ifdef GRAPH_STUDIO_HAS_SENTRY
 #include "CrashReporter.h"
-#endif
 
 #include <cstring>
 #include <cstdlib>
@@ -22,13 +20,11 @@ using namespace graph_studio;
 int main(int argc, char* argv[])
 {
 #ifndef __EMSCRIPTEN__
-#ifdef GRAPH_STUDIO_HAS_SENTRY
     // 启动崩溃上报（Sentry + crashpad）。在最早期调用以覆盖启动期间崩溃；
-    // SENTRY_DSN 未设置时为 no-op，不影响运行。
+    // 未构建 sentry（third_party 缺失）或 SENTRY_DSN 未设置时为 no-op。
     InitCrashReporting();
-#endif
 
-    // --test-crash：人为触发 SIGSEGV，验证 crashpad minidump 能上报。
+    // --test-crash：人为触发真实崩溃，验证 crashpad minidump 能上报。
     // 用法：SENTRY_DSN=... graph_studio --test-crash
     bool test_crash = false;
     for (int i = 1; i < argc; ++i) {
@@ -50,11 +46,7 @@ int main(int argc, char* argv[])
 
 #ifndef __EMSCRIPTEN__
     if (test_crash)
-#ifdef GRAPH_STUDIO_HAS_SENTRY
         TriggerTestCrash();
-#else
-        std::abort();
-#endif
 #endif
 
     QIcon appIcon;
@@ -87,9 +79,7 @@ int main(int argc, char* argv[])
 
     ShutdownGpuBackend();
 #ifndef __EMSCRIPTEN__
-#ifdef GRAPH_STUDIO_HAS_SENTRY
     ShutdownCrashReporting();
-#endif
 #endif
     return ret;
 }

@@ -7,6 +7,8 @@
 #include <mutex>
 #include <filesystem>
 #include <sstream>
+#include <utility>
+#include <vector>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -136,10 +138,31 @@ namespace {
             sink_ = {};
         }
 
+        LogSinkHandle add_extra_sink(LogSink sink) {
+            if (!sink) return 0;
+            std::lock_guard<std::mutex> lock(mutex_);
+            // 句柄从 1 起；0 保留为"无效"。
+            ++next_handle_;
+            extra_sinks_.emplace_back(next_handle_, std::move(sink));
+            return next_handle_;
+        }
+
+        void remove_extra_sink(LogSinkHandle handle) {
+            if (handle == 0) return;
+            std::lock_guard<std::mutex> lock(mutex_);
+            for (auto it = extra_sinks_.begin(); it != extra_sinks_.end(); ++it) {
+                if (it->first == handle) {
+                    extra_sinks_.erase(it);
+                    return;
+                }
+            }
+        }
+
         void log(LogLevel level, const std::string& msg, const char* file, int line) {
             if (!is_enabled(level)) return;
 
             LogSink sink_copy;
+            std::vector<LogSink> extra_copies;
             LogEntry entry;
             {
                 std::lock_guard<std::mutex> lock(mutex_);
@@ -177,11 +200,19 @@ namespace {
                 entry.thread_id = std::move(thread_id);
 
                 sink_copy = sink_;
+                extra_copies.reserve(extra_sinks_.size());
+                for (const auto& kv : extra_sinks_) {
+                    extra_copies.push_back(kv.second);
+                }
             }
             // 锁外调用 sink：避免 sink 内部再调 tg_log 导致重入死锁。
             // 可能在任意线程触发，调用方需自行 marshal 回目标线程。
+            // 顺序：主槽（set_log_sink）先于附加观察者（add_log_sink，按注册序）。
             if (sink_copy) {
                 sink_copy(entry);
+            }
+            for (const auto& s : extra_copies) {
+                if (s) s(entry);
             }
         }
 
@@ -194,6 +225,9 @@ namespace {
         mutable std::mutex mutex_;
         LogLevel level_{LogLevel::INFO};
         LogSink sink_;
+        // 附加观察者 sink：<句柄, sink>，注册序即回调序。
+        std::vector<std::pair<LogSinkHandle, LogSink>> extra_sinks_;
+        LogSinkHandle next_handle_{0};
     };
 }
 
@@ -215,6 +249,14 @@ TG_EXPORT void set_log_sink(LogSink sink) {
 
 TG_EXPORT void clear_log_sink() {
     LoggerImpl::instance().clear_sink();
+}
+
+TG_EXPORT LogSinkHandle add_log_sink(LogSink sink) {
+    return LoggerImpl::instance().add_extra_sink(std::move(sink));
+}
+
+TG_EXPORT void remove_log_sink(LogSinkHandle handle) {
+    LoggerImpl::instance().remove_extra_sink(handle);
 }
 
 }

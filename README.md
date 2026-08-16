@@ -198,8 +198,12 @@ python scripts/run_graph_studio.py -t         # run the editor's own ctest suite
 
 Headless UI tests: `python scripts/run_ui_tests.py`.
 
-Crash reporting (optional) uses sentry-native + Crashpad; build requires `python scripts/fetch_sentry.py`, and a `SENTRY_DSN`
-environment variable at runtime. No DSN ⇒ clean no-op when running locally.
+Crash reporting (optional, desktop) uses sentry-native + Crashpad; build requires `python scripts/fetch_sentry.py`, and a `SENTRY_DSN`
+environment variable at runtime (or one embedded at compile time for release packages). No DSN ⇒ clean no-op when running locally;
+a missing sentry-native checkout also builds fine. Crash reports carry recent WARN+ log breadcrumbs and the current graph context.
+End-to-end local verification (no real Sentry project needed): `python scripts/verify_crash_reporting.py`. CI releases enable it
+conditionally via secrets (`SENTRY_DSN` / `SENTRY_AUTH_TOKEN`, …) and always archive per-platform debug symbols as Release assets;
+see [dev-docs/crash-reporting.md](dev-docs/crash-reporting.md).
 
 ## Tests
 

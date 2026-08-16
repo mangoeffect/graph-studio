@@ -90,9 +90,11 @@ set(GRAPH_STUDIO_SENTRY_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/third_party/sentry-nat
 set(GRAPH_STUDIO_HAS_SENTRY OFF)
 if(NOT EMSCRIPTEN AND EXISTS "${GRAPH_STUDIO_SENTRY_ROOT}/CMakeLists.txt")
     set(GRAPH_STUDIO_HAS_SENTRY ON)
-    list(APPEND PROJECT_SOURCES src/CrashReporter.cpp)
     add_compile_definitions(GRAPH_STUDIO_HAS_SENTRY)
 endif()
+# CrashReporter 始终编译：未启用 sentry（含全部 WASM 构建）时内部编译为
+# no-op stub，调用方（GraphViewModel 等）无需 #ifdef 分支。
+list(APPEND PROJECT_SOURCES src/CrashReporter.cpp)
 
 if(EMSCRIPTEN)
     # WASM：GpuImageViewer 依赖桌面 core profile（QOpenGLFunctions_3_3_Core），
@@ -150,10 +152,22 @@ endif()
 # 依赖 scripts/fetch_sentry.py 拉取；未拉取则跳过（无崩溃上报能力）。
 # ============================================================
 if(GRAPH_STUDIO_HAS_SENTRY)
-    # 崩溃元信息源：版本 + git 短哈希 + 环境（用于 Sentry release 分组）
-    set(GRAPH_STUDIO_SENTRY_VERSION "0.1.0")
+    # 崩溃元信息源：版本 + git 短哈希 + 环境（用于 Sentry release 分组）。
+    # 版本默认解析根 project() 的 VERSION（声明跨多行，需正则跨行匹配）；
+    # 发布脚本可用 -DGRAPH_STUDIO_SENTRY_VERSION 传完整渠道版本
+    # （如 0.1.0-beta.42），使 Sentry release 与 GitHub 发布 tag 一致。
+    set(_GS_PROJECT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../")
+    set(_GS_DEFAULT_SENTRY_VERSION "0.0.0")
+    file(READ "${_GS_PROJECT_ROOT}/CMakeLists.txt" _GS_ROOT_CMAKE)
+    string(REGEX MATCH
+           "task_graph[ \t\r\n]+VERSION[ \t\r\n]+([0-9][0-9A-Za-z._+-]*)"
+           _GS_VERSION_MATCH "${_GS_ROOT_CMAKE}")
+    if(CMAKE_MATCH_1)
+        set(_GS_DEFAULT_SENTRY_VERSION "${CMAKE_MATCH_1}")
+    endif()
+    set(GRAPH_STUDIO_SENTRY_VERSION "${_GS_DEFAULT_SENTRY_VERSION}" CACHE STRING
+        "Sentry release version（默认根 project VERSION；发布时传完整渠道版本）")
     set(GRAPH_STUDIO_GIT_HASH "unknown")
-    set(_GS_PROJECT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../..")
     execute_process(COMMAND git -C "${_GS_PROJECT_ROOT}" rev-parse --short HEAD
         OUTPUT_VARIABLE _GS_GIT_SHORT_HASH
         OUTPUT_STRIP_TRAILING_WHITESPACE
@@ -212,6 +226,15 @@ if(GRAPH_STUDIO_HAS_SENTRY)
                     "$<TARGET_FILE_DIR:graph_studio>/crashpad_handler.exe"
                 COMMENT "Copying crashpad_handler.exe next to executable"
             )
+        else()
+            # Linux：拷到可执行文件同目录。AppImage 打包时 package_linux.py
+            # 会把它带入 AppDir（linuxdeployqt 只收集动态依赖，不含该独立程序）。
+            add_custom_command(TARGET graph_studio POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "$<TARGET_FILE:crashpad_handler>"
+                    "$<TARGET_FILE_DIR:graph_studio>/crashpad_handler"
+                COMMENT "Copying crashpad_handler next to executable"
+            )
         endif()
     endif()
 endif()
@@ -251,6 +274,7 @@ qt_add_executable(test_graph_view_model
     include/viewmodel/GraphViewModel.h
     src/model/GraphModel.cpp
     src/viewmodel/GraphViewModel.cpp
+    src/CrashReporter.cpp
 )
 target_link_libraries(test_graph_view_model PRIVATE Qt6::Test Qt6::Gui task_graph ${OpenCV_LIBS})
 add_test(NAME test_graph_view_model COMMAND test_graph_view_model)
@@ -263,6 +287,7 @@ qt_add_executable(test_command_stack
     include/command/CommandStack.h
     src/model/GraphModel.cpp
     src/viewmodel/GraphViewModel.cpp
+    src/CrashReporter.cpp
     src/command/CommandStack.cpp
 )
 target_link_libraries(test_command_stack PRIVATE Qt6::Test Qt6::Gui task_graph ${OpenCV_LIBS})
@@ -276,6 +301,7 @@ qt_add_executable(test_integration
     include/command/CommandStack.h
     src/model/GraphModel.cpp
     src/viewmodel/GraphViewModel.cpp
+    src/CrashReporter.cpp
     src/command/CommandStack.cpp
 )
 target_link_libraries(test_integration PRIVATE Qt6::Test Qt6::Gui task_graph ${OpenCV_LIBS})
@@ -299,6 +325,7 @@ qt_add_executable(test_gui
     include/view/GpuImageViewer.h
     src/model/GraphModel.cpp
     src/viewmodel/GraphViewModel.cpp
+    src/CrashReporter.cpp
     src/command/CommandStack.cpp
     src/view/MainWindow.cpp
     src/view/GraphScene.cpp
@@ -311,6 +338,14 @@ qt_add_executable(test_gui
 )
 target_link_libraries(test_gui PRIVATE Qt6::Widgets Qt6::Test Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets task_graph ${OpenCV_LIBS})
 add_test(NAME test_gui COMMAND test_gui)
+
+# GraphViewModel 依赖 CrashReporter：测试目标需一并链接 sentry（拿到 sentry.h
+# 头文件路径；测试内未配置 DSN，sentry 保持 no-op，无需 crashpad_handler）。
+if(GRAPH_STUDIO_HAS_SENTRY)
+    foreach(_t test_graph_view_model test_command_stack test_integration test_gui)
+        target_link_libraries(${_t} PRIVATE sentry)
+    endforeach()
+endif()
 endif()
 
 # ============================================================

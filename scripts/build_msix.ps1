@@ -44,6 +44,21 @@
     the package for you). Off by default, producing a self-signed package that
     can be installed locally for testing.
 
+.PARAMETER SkipSentry
+    Build without the Sentry/Crashpad crash-reporting module (default: fetch
+    sentry-native via scripts\fetch_sentry.py and build it in; the app is a
+    clean no-op at runtime unless a DSN is configured).
+
+.PARAMETER SentryDsn
+    Embed the Sentry DSN at compile time so release packages report crashes
+    without any environment variable (a public client key — safe to ship).
+    Runtime SENTRY_DSN still takes precedence when set.
+
+.PARAMETER SentryRelease
+    Full channel version for the Sentry release string (e.g. 0.1.0-beta.42)
+    so crashes group per published GitHub tag; defaults to the root project
+    VERSION parsed by the app CMakeLists.
+
 .PARAMETER CertThumbprint
     Reuse an existing code-signing certificate (CurrentUser\My) by thumbprint.
 
@@ -78,6 +93,8 @@
     scripts\build_msix.ps1                            # build + self-signed test msix + upload
     scripts\build_msix.ps1 -SkipSign                  # unsigned msixupload for the Store
     scripts\build_msix.ps1 -Version 0.2.0 -SkipSign
+    scripts\build_msix.ps1 -SkipSentry                # build without crash reporting
+    scripts\build_msix.ps1 -SentryDsn <dsn> -SentryRelease 0.1.0-beta.42 -SkipSign
 .note
     Requires the Windows SDK tools (makeappx, makepri, signtool) — bundled with
     Visual Studio / Windows SDK installs. windeployqt comes with Qt.
@@ -91,6 +108,9 @@ param(
     [switch]$Clean,
     [switch]$SkipBuild,
     [switch]$SkipSign,
+    [switch]$SkipSentry,
+    [string]$SentryDsn = "",
+    [string]$SentryRelease = "",
     [string]$CertThumbprint = "",
     [string]$IdentityName = "GraphStudio",
     [string]$Publisher = "CN=GraphStudioDev",
@@ -171,8 +191,24 @@ foreach ($t in @(@("windeployqt", $Windeployqt), @("makeappx", $Makeappx),
 }
 
 # ---- 1) build ----
+$SentryDefines = @()
+if (-not $SkipBuild -and -not $SkipSentry) {
+    $SentryRoot = Join-Path $GsDir "third_party\sentry-native"
+    if (-not (Test-Path (Join-Path $SentryRoot "CMakeLists.txt"))) {
+        Write-Step "Fetching sentry-native (first run is slow)"
+        $Code = Invoke-Native "python" @((Join-Path $ScriptDir "fetch_sentry.py"))
+        if ($Code -ne 0) { Write-Fail "fetch_sentry.py failed"; exit $Code }
+    }
+    if ($SentryDsn) {
+        Write-Step "Embedding Sentry DSN"
+        $SentryDefines += "-DGRAPH_STUDIO_SENTRY_DSN=$SentryDsn"
+    }
+    if ($SentryRelease) {
+        $SentryDefines += "-DGRAPH_STUDIO_SENTRY_VERSION=$SentryRelease"
+    }
+}
 if (-not $SkipBuild) {
-    $Build = Build-GraphStudioStack -Env $Env -Config $Config -Jobs $Jobs -Clean:$Clean
+    $Build = Build-GraphStudioStack -Env $Env -Config $Config -Jobs $Jobs -Clean:$Clean -AppDefines $SentryDefines
 } else {
     $Build = @{
         RootDir  = $RootDir

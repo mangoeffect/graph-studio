@@ -36,10 +36,54 @@ env:
   PYTHONUTF8: '1'
 
 jobs:
+  # ------------------------------------------------------------------ 元信息
+  # 提前计算发布 tag / 标题 / 预发布标记（原先在 release job 内计算），让打包
+  # job 在构建期就能拿到完整渠道版本（tag 去掉前导 v），作为 Sentry release
+  # 传入 -DGRAPH_STUDIO_SENTRY_VERSION，使崩溃分组与最终 GitHub Release tag
+  # 严格一致。
+  meta:
+    name: Derive release metadata
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      name: ${{ steps.meta.outputs.name }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+      release: ${{ steps.meta.outputs.release }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Compute tag / name / prerelease
+        id: meta
+        shell: bash
+        run: |
+          base=$(awk '/^project\(task_graph/{f=1;next} f&&/VERSION/{print $2;exit}' CMakeLists.txt)
+          if [ -z "$base" ]; then echo "无法解析基准版本" >&2; exit 1; fi
+          case "${{ inputs.release_type }}" in
+            测试版) suffix="alpha";  pre="true";  title="GraphStudio 测试版 (Alpha)" ;;
+            预览版) suffix="beta";   pre="true";  title="GraphStudio 预览版 (Beta)" ;;
+            修复版) suffix="hotfix"; pre="true";  title="GraphStudio 修复版 (Hotfix)" ;;
+            正式版) suffix="stable"; pre="false"; title="GraphStudio 正式版 (Stable)" ;;
+            *) echo "未知 release_type: ${{ inputs.release_type }}" >&2; exit 1 ;;
+          esac
+          tag="v${base}-${suffix}.${{ github.run_number }}"
+          echo "tag=$tag"         >> "$GITHUB_OUTPUT"
+          echo "name=$title"      >> "$GITHUB_OUTPUT"
+          echo "prerelease=$pre"  >> "$GITHUB_OUTPUT"
+          echo "release=${tag#v}" >> "$GITHUB_OUTPUT"
+          echo "渠道 ${{ inputs.release_type }} -> tag=$tag prerelease=$pre"
+
   # ------------------------------------------------------------------ 打包矩阵
+  # Sentry 崩溃上报按 secrets 条件启用：配置了 SENTRY_DSN 才构建 sentry-native
+  # 并编译期嵌入 DSN（否则传 --no-sentry，与历史行为完全一致）；配置了
+  # SENTRY_AUTH_TOKEN 再额外把符号上传到 Sentry。符号 zip 始终归档为 Release
+  # 资产兜底，即使不上传 Sentry 也能离线符号化 minidump。
   package:
     name: Package (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    needs: meta
     strategy:
       fail-fast: false
       matrix:
@@ -50,6 +94,13 @@ jobs:
             artifact: win-msix
           - os: ubuntu-22.04
             artifact: linux-appimage
+
+    env:
+      # 供各步骤以 env.SENTRY_* 判空做条件分支（secrets 上下文不能直接进 if）
+      SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+      SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+      SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
 
     steps:
       # 主仓库是公有仓库；四个 plugin-* 子模块是私有仓库，GITHUB_TOKEN 拉不到，
@@ -80,6 +131,14 @@ jobs:
           echo "PKG_VERSION=$VER" >> "$GITHUB_ENV"
           echo "package version: $VER"
 
+      # sentry-native（含 crashpad 递归子模块）克隆很慢，按 fetch 脚本内容哈希
+      # 缓存；--no-sentry 构建时 restore miss 也无害。
+      - name: Cache sentry-native
+        uses: actions/cache@v4
+        with:
+          path: app/graph_studio/third_party/sentry-native
+          key: sentry-native-${{ hashFiles('scripts/fetch_sentry.py') }}
+
       # ---- macOS: macdeployqt + dylibbundler + create-dmg -> .dmg ----
       - name: Install macOS packaging tools
         if: runner.os == 'macOS'
@@ -90,8 +149,12 @@ jobs:
         if: runner.os == 'macOS'
         shell: bash
         run: |
+          sentry_args=(--no-sentry)
+          if [ -n "$SENTRY_DSN" ]; then
+            sentry_args=(--dsn "$SENTRY_DSN" --sentry-release "${{ needs.meta.outputs.release }}")
+          fi
           python scripts/package_macos.py \
-            --version "$PKG_VERSION" --no-sentry -c -j 3 \
+            --version "$PKG_VERSION" "${sentry_args[@]}" -c -j 3 \
             --out-dir dist/dmg
 
       # ---- Windows: windeployqt + makeappx -> .msix ----
@@ -101,18 +164,103 @@ jobs:
         run: |
           # -SkipSign：产出 Store 风格未签名包（正式上架时由 Partner Center 重签名）
           # 生成 dist/msix/graph_studio-<ver>_x64.msix
-          scripts\build_msix.ps1 -Version "$env:PKG_VERSION" -Config RelWithDebInfo -Clean -SkipSign
+          $sentryArgs = @("-SkipSentry")
+          if ($env:SENTRY_DSN) {
+            $sentryArgs = @("-SentryDsn", $env:SENTRY_DSN,
+                            "-SentryRelease", "${{ needs.meta.outputs.release }}")
+          }
+          scripts\build_msix.ps1 -Version "$env:PKG_VERSION" -Config RelWithDebInfo -Clean -SkipSign @sentryArgs
 
       # ---- Linux: linuxdeployqt + appimagetool -> .AppImage ----
       - name: Build + package Linux .AppImage
         if: runner.os == 'Linux'
         shell: bash
         run: |
+          sentry_args=(--no-sentry)
+          if [ -n "$SENTRY_DSN" ]; then
+            sentry_args=(--dsn "$SENTRY_DSN" --sentry-release "${{ needs.meta.outputs.release }}")
+          fi
           python scripts/package_linux.py \
-            --version "$PKG_VERSION" -c -j 3 \
+            --version "$PKG_VERSION" "${sentry_args[@]}" -c -j 3 \
             --out-dir dist/appimage
 
-      - name: Upload installer artifact
+      # ---- 符号归档（始终执行）：作为 Release 资产兜底，离线符号化 minidump 用 ----
+      # RelWithDebInfo(-O2 -g)：macOS 用 dsymutil 抽 dSYM（就地生成，Sentry 上传
+      # 步骤可直接复用）；Windows 收 PDB；Linux 用 objcopy 拆 .debug（不改随包二进制）。
+      # 均覆盖 graph_studio + task_graph 库 + subnode 插件（崩溃可能发生在任意 SO）。
+      - name: Archive debug symbols (macOS dSYM)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/symbols/dsyms
+          for bin in \
+            app/graph_studio/build/graph_studio.app/Contents/MacOS/graph_studio \
+            build/libtask_graph.dylib \
+            $(find build/submodules -maxdepth 3 -name '*.dylib' -type f | sort); do
+            [ -f "$bin" ] || continue
+            dsymutil "$bin" -o "${bin}.dSYM"
+          done
+          find app/graph_studio/build build -maxdepth 4 -name '*.dSYM' -type d \
+               -exec cp -R {} dist/symbols/dsyms/ \;
+          (cd dist/symbols/dsyms && zip -qry ../graphstudio-symbols-macos.zip .)
+
+      - name: Archive debug symbols (Windows PDB)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist/symbols | Out-Null
+          $paths = @(
+            "app/graph_studio/build/RelWithDebInfo/*.pdb",
+            "build/RelWithDebInfo/*.pdb",
+            "build/submodules/*/RelWithDebInfo/*.pdb"
+          ) | Where-Object { Get-Item $_ -ErrorAction SilentlyContinue }
+          if ($paths) {
+            Compress-Archive -Path $paths -DestinationPath dist/symbols/graphstudio-symbols-windows.zip -Force
+            Write-Output "archived: $paths"
+          } else {
+            Write-Output "::warning::no PDB found to archive"
+          }
+
+      - name: Archive debug symbols (Linux ELF)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/symbols/debug
+          bins="$(find app/graph_studio/build -maxdepth 1 -type f -name graph_studio)"
+          bins="$bins $(find build -maxdepth 1 -type f -name 'libtask_graph.so*')"
+          bins="$bins $(find build/submodules -maxdepth 3 -type f -name '*.so')"
+          for bin in $bins; do
+            objcopy --only-keep-debug "$bin" "dist/symbols/debug/$(basename "$bin").debug"
+          done
+          (cd dist/symbols/debug && zip -qry ../graphstudio-symbols-linux.zip .)
+
+      # ---- 符号上传（条件执行：配置了 SENTRY_DSN + SENTRY_AUTH_TOKEN）----
+      - name: Upload debug symbols to Sentry (macOS)
+        if: runner.os == 'macOS' && env.SENTRY_DSN != '' && env.SENTRY_AUTH_TOKEN != ''
+        shell: bash
+        run: |
+          brew install getsentry/tools/sentry-cli
+          python scripts/upload_sentry_symbols.py --gs-build-dir app/graph_studio/build
+
+      - name: Upload debug symbols to Sentry (Windows)
+        if: runner.os == 'Windows' && env.SENTRY_DSN != '' && env.SENTRY_AUTH_TOKEN != ''
+        shell: pwsh
+        run: |
+          choco install sentry-cli -y --no-progress
+          python scripts/upload_sentry_symbols.py --gs-build-dir app/graph_studio/build
+
+      - name: Upload debug symbols to Sentry (Linux)
+        if: runner.os == 'Linux' && env.SENTRY_DSN != '' && env.SENTRY_AUTH_TOKEN != ''
+        shell: bash
+        run: |
+          url=$(curl -fsSL https://api.github.com/repos/getsentry/sentry-cli/releases/latest \
+            | python3 -c "import json,sys; print([a['browser_download_url'] for a in json.load(sys.stdin)['assets'] if a['name']=='sentry-cli-Linux-x86_64'][0])")
+          curl -fsSL "$url" -o sentry-cli && chmod +x sentry-cli && sudo mv sentry-cli /usr/local/bin/
+          python scripts/upload_sentry_symbols.py --gs-build-dir app/graph_studio/build
+
+      - name: Upload installer + symbols artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
@@ -120,6 +268,7 @@ jobs:
             dist/dmg/*.dmg
             dist/msix/*.msix
             dist/appimage/*.AppImage
+            dist/symbols/*.zip
           if-no-files-found: error
           retention-days: 14
 
@@ -228,9 +377,10 @@ jobs:
           retention-days: 14
 
   # ------------------------------------------------------------------ 汇总发布
+  # tag / 标题 / 预发布标记来自 meta job（构建期已定），此处仅消费。
   release:
     name: Publish GitHub Release
-    needs: [package, wasm]
+    needs: [meta, package, wasm]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -238,24 +388,9 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Compute tag / name / prerelease
-        id: meta
+      - name: Report release metadata
         shell: bash
-        run: |
-          base=$(awk '/^project\(task_graph/{f=1;next} f&&/VERSION/{print $2;exit}' CMakeLists.txt)
-          if [ -z "$base" ]; then echo "无法解析基准版本" >&2; exit 1; fi
-          case "${{ inputs.release_type }}" in
-            测试版) suffix="alpha";  pre="true";  title="GraphStudio 测试版 (Alpha)" ;;
-            预览版) suffix="beta";   pre="true";  title="GraphStudio 预览版 (Beta)" ;;
-            修复版) suffix="hotfix"; pre="true";  title="GraphStudio 修复版 (Hotfix)" ;;
-            正式版) suffix="stable"; pre="false"; title="GraphStudio 正式版 (Stable)" ;;
-            *) echo "未知 release_type: ${{ inputs.release_type }}" >&2; exit 1 ;;
-          esac
-          tag="v${base}-${suffix}.${{ github.run_number }}"
-          echo "tag=$tag"        >> "$GITHUB_OUTPUT"
-          echo "name=$title"     >> "$GITHUB_OUTPUT"
-          echo "prerelease=$pre" >> "$GITHUB_OUTPUT"
-          echo "渠道 ${{ inputs.release_type }} -> tag=$tag prerelease=$pre"
+        run: echo "publishing ${{ needs.meta.outputs.tag }} (prerelease=${{ needs.meta.outputs.prerelease }})"
 
       - name: Download all installer artifacts
         uses: actions/download-artifact@v4
@@ -273,20 +408,23 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.meta.outputs.tag }}
-          name: ${{ steps.meta.outputs.name }}
-          prerelease: ${{ steps.meta.outputs.prerelease }}
+          tag_name: ${{ needs.meta.outputs.tag }}
+          name: ${{ needs.meta.outputs.name }}
+          prerelease: ${{ needs.meta.outputs.prerelease }}
           body: |
             ${{ inputs.notes }}
 
             **渠道**：${{ inputs.release_type }}
-            **版本标签**：${{ steps.meta.outputs.tag }}
+            **版本标签**：${{ needs.meta.outputs.tag }}
 
             ### 安装包
             - macOS：`.dmg`（拖入 Applications 安装）
             - Windows：`.msix`（需开发者模式或信任签名；正式上架由 Microsoft Store 重签名）
             - Linux：`.AppImage`（`chmod +x` 后直接运行）
             - Web：`GraphStudio-*-web.zip`（WASM 版，无需安装）——官网[在线体验](https://mangoeffect.github.io/graph-studio/web/)直接运行；zip 可解压到任意 HTTPS 静态托管自部署
+
+            ### 调试符号
+            - `graphstudio-symbols-*.zip`：对应平台调试符号（dSYM / PDB / ELF debug），用于离线符号化崩溃 minidump；配置 Sentry secrets 后线上符号化同样可用。
           generate_release_notes: true
           files: |
             assets/*.dmg

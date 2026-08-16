@@ -160,7 +160,10 @@ function Build-GraphStudioStack {
         [string]$Config = "Debug",
         [int]$Jobs = 8,
         [switch]$Clean,
-        [switch]$SkipApp
+        [switch]$SkipApp,
+        # Additional -D defines for the app (graph_studio) configure step only,
+        # e.g. Sentry: -DGRAPH_STUDIO_SENTRY_DSN=... / -DGRAPH_STUDIO_SENTRY_VERSION=...
+        [string[]]$AppDefines = @()
     )
     $RootDir  = $script:GsRoot
     $LibBuild = Join-Path $RootDir "build"
@@ -198,6 +201,7 @@ function Build-GraphStudioStack {
         if (-not $Env.DisableOpenCv -and $Env.OpenCvDir) {
             $GsArgs += "-DOpenCV_DIR=$(Join-Path $Env.OpenCvDir 'lib')"
         }
+        if ($AppDefines) { $GsArgs += $AppDefines }
         Write-Step "Configuring graph_studio"
         $Code = Invoke-Native $Env.Cmake $GsArgs
         if ($Code -ne 0) { exit $Code }

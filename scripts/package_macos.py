@@ -19,6 +19,7 @@
   python scripts/package_macos.py -j 8
   python scripts/package_macos.py --no-sentry             # 不构建崩溃上报
   python scripts/package_macos.py --dsn <sentry_dsn>      # 嵌入 Sentry DSN
+  python scripts/package_macos.py --sentry-release 0.1.0-beta.42
   python scripts/package_macos.py --skip-build            # 复用现有产物只打包
   python scripts/package_macos.py --out-dir dist/dmg
   python scripts/package_macos.py --qt <prefix>           # 指定 Qt6 前缀
@@ -37,25 +38,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from gs import console, deps, platform, repo_root, runner  # noqa: E402
 from gs import sdk, toolchain  # noqa: E402
+from gs import sentry as gs_sentry  # noqa: E402
 from gs.cmake import CMake  # noqa: E402
 
 APP_NAME = "graph_studio"
 
 
-def fetch_sentry_if_enabled(root: Path, enable: bool) -> int:
-    """启用 Sentry 时确保 sentry-native 已拉取（幂等）。"""
-    if not enable:
-        return 0
-    sentry_root = root / "app" / "graph_studio" / "third_party" / "sentry-native"
-    if (sentry_root / "CMakeLists.txt").is_file():
-        return 0
-    console.step("拉取 sentry-native（首次较慢）")
-    return runner.run([sys.executable, str(root / "scripts" / "fetch_sentry.py")])
-
-
 def build_stack(cm: CMake, root: Path, lib_build: Path, gs_dir: Path, gs_build: Path,
                 config: str, jobs: int, qt_prefix: Path, opencv_dir, sentry_dsn: str,
-                clean: bool) -> int:
+                sentry_release: str, clean: bool) -> int:
     """构建 task_graph 根库 + subnode 插件，再构建 graph_studio.app。返回退出码。"""
     if clean:
         for d in (lib_build, gs_build):
@@ -76,9 +67,9 @@ def build_stack(cm: CMake, root: Path, lib_build: Path, gs_dir: Path, gs_build: 
     app_defines = ["-DCMAKE_PREFIX_PATH={}".format(qt_prefix)] if qt_prefix else []
     if opencv_dir and (opencv_dir / "lib").is_dir():
         app_defines.append(f"-DOpenCV_DIR={opencv_dir / 'lib'}")
+    app_defines += gs_sentry.cmake_defines(dsn=sentry_dsn, release=sentry_release)
     if sentry_dsn:
         console.step(f"嵌入 Sentry DSN: {sentry_dsn}")
-        app_defines.append(f"-DGRAPH_STUDIO_SENTRY_DSN={sentry_dsn}")
     console.step("配置 graph_studio")
     if cm.configure(gs_dir, gs_build, defines=app_defines, build_type=config) != 0:
         return 1
@@ -248,6 +239,8 @@ def main() -> int:
                     help="构建配置（默认 RelWithDebInfo）")
     ap.add_argument("--no-sentry", action="store_true", help="不构建 Sentry 崩溃上报")
     ap.add_argument("--dsn", default="", help="嵌入的 Sentry DSN")
+    ap.add_argument("--sentry-release", default="",
+                    help="Sentry release 版本（默认取根 project VERSION；发布时传完整渠道版本如 0.1.0-beta.42）")
     ap.add_argument("--skip-build", action="store_true", help="跳过构建，复用现有 .app 打包")
     ap.add_argument("--out-dir", default="", help="输出目录（默认 dist/dmg）")
     ap.add_argument("--qt", default="", help="Qt6 前缀（含 lib/cmake/Qt6）")
@@ -286,11 +279,11 @@ def main() -> int:
     app_bundle = gs_build / f"{APP_NAME}.app"
 
     if not args.skip_build:
-        if fetch_sentry_if_enabled(root, not args.no_sentry) != 0:
+        if gs_sentry.ensure_fetched(root, not args.no_sentry) != 0:
             console.fail("拉取 sentry-native 失败")
             return 1
         code = build_stack(cm, root, lib_build, gs_dir, gs_build, args.config, jobs,
-                           qt_prefix, opencv_dir, dsn, args.clean)
+                           qt_prefix, opencv_dir, dsn, args.sentry_release, args.clean)
         if code != 0:
             return code
     elif not app_bundle.is_dir():
