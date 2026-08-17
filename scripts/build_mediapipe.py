@@ -362,6 +362,12 @@ def windows_bazel_env(mp_build: Path) -> dict:
             jdk = cands[-1]
     if jdk is None and os.environ.get("JAVA_HOME"):
         jdk = Path(os.environ["JAVA_HOME"])
+    if jdk is None:
+        # GitHub windows runner 只保证 JAVA_HOME_<ver>_X64 系列变量
+        for var in ("JAVA_HOME_21_X64", "JAVA_HOME_17_X64"):
+            if os.environ.get(var) and (Path(os.environ[var]) / "bin" / "java.exe").is_file():
+                jdk = Path(os.environ[var])
+                break
     path = env.get("PATH", os.environ.get("PATH", ""))
     if jdk:
         env["JAVA_HOME"] = str(jdk)

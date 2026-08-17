@@ -31,7 +31,8 @@ jobs:
   e2e:
     name: E2E installed (windows-2022)
     runs-on: windows-2022
-    timeout-minutes: 90
+    # 常规 <40min；MediaPipe 冷构建 miss 时可达 3h+（见 setup-build-deps）
+    timeout-minutes: 360
 
     steps:
       # 主仓库是公有仓库；四个 plugin-* 子模块是私有仓库，GITHUB_TOKEN 拉不到，
@@ -48,7 +49,8 @@ jobs:
 
       - name: Setup Qt6 + OpenCV + Vulkan SDK
         uses: ./.github/actions/setup-build-deps
-        timeout-minutes: 25
+        # 上限需容纳 MediaPipe 冷构建（缓存 miss 时约 1.5~3h）
+        timeout-minutes: 300
 
       - name: Install E2E python deps
         shell: pwsh

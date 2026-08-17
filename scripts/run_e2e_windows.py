@@ -118,6 +118,13 @@ def main() -> int:
 
     set_dpi_awareness()
 
+    # MediaPipe 模型：files 场景的图资产（_stage_copy 从 submodule 树复制）与
+    # build_msix 触发的 cmake configure（file(COPY) 进构建树）都要求模型已就位。
+    # download_models 幂等（已存在即跳过）。缺模型时 mediapipe 场景只会被记
+    # skip，而它们现在是 required——所以必须先下载。
+    from run_all_submodules_test import download_models
+    download_models(repo_root())
+
     msix_path = Path(args.msix) if args.msix else build_msix(args)
     report = Report(repo_root() / "dist" / "e2e")
     fixtures = make_fixtures(report.run_dir / "fixtures")

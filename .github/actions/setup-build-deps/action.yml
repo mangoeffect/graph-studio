@@ -7,13 +7,17 @@ inputs:
     required: false
     default: '6.8.3'
   opencv-version-win:
-    description: OpenCV version for the Windows runner (official vc14_vc15 build)
+    description: OpenCV version for the Windows runner (official vc14_vc15 build). Pinned to 4.10.0 — the MediaPipe vision.dll binds opencv_world<ver>0.dll and MSIX copies opencv DLLs from the same C:\opencv; keep them in sync.
     required: false
-    default: '4.11.0'
+    default: '4.10.0'
   vulkan-version-win:
     description: LunarG Vulkan SDK version for the Windows runner (compile coverage for the Vulkan backend)
     required: false
     default: '1.4.304.1'
+  mediapipe-win:
+    description: Restore (or cold-build) the MediaPipe C API prebuilt at build/mediapipe/install (Windows only). Disable for jobs that don't need real mediapipe plugins.
+    required: false
+    default: 'true'
 
 runs:
   using: composite
@@ -176,3 +180,28 @@ runs:
         # deps.find_opencv() 读 OPENCV_DIR 并检查 lib 子目录；脚本随后传 -DOpenCV_DIR=<dir>\lib
         Add-Content -Path $env:GITHUB_ENV -Value "OPENCV_DIR=$vcPath"
         Add-Content -Path $env:GITHUB_PATH -Value "$vcPath\bin"
+
+    # ---- MediaPipe C API 预构建（Windows）----
+    # install/ 约 11MB（vision.dll + vision.lib + 头文件）；冷构建为全量 bazel
+    # （~3600 action，4 核 runner 约 1.5~3h），仅在缓存 miss 时发生。
+    # 依赖上方 OpenCV 步骤（C:\opencv 必须就位）。bazel 输出基（C:\bzl，20GB+）
+    # 刻意不缓存：超出 GH 10GB/repo 配额，且 key 变化后命中价值低。
+    - name: Cache MediaPipe prebuilt (Windows)
+      if: runner.os == 'Windows' && inputs.mediapipe-win == 'true'
+      id: mediapipe-cache
+      uses: actions/cache@v4
+      with:
+        path: build/mediapipe/install
+        # opencv 版本进 key：vision.dll 的导入表绑定 opencv_world<ver>0.dll，
+        # OpenCV 升级必须连带重建；hashFiles 覆盖 MP_VERSION 与全部补丁/flag。
+        # 刻意不设 restore-keys：版本错配的旧 DLL 比冷构建更危险。
+        key: mediapipe-win-${{ inputs.opencv-version-win }}-${{ hashFiles('scripts/build_mediapipe.py') }}
+
+    - name: Build MediaPipe C API (cold cache)
+      if: runner.os == 'Windows' && inputs.mediapipe-win == 'true'
+         && steps.mediapipe-cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        # composite 步骤不支持 timeout-minutes，靠 job 级默认 360min 兜底。
+        # JDK 走脚本内探测（tools/jdk 缺失时用 JAVA_HOME_21_X64/17_X64）。
+        python scripts/build_mediapipe.py --bazel-user-root C:/bzl

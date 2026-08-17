@@ -10,8 +10,8 @@
 
 执行分类:
   - 默认要求 Run 后 0 failed；
-  - mediapipe 图（安装包为 stub 构建，模型链路必然失败）与 GPU 未初始化时的
-    gpu 图 → allow-fail：执行完成即通过，附注实际 ok/failed。
+  - GPU 未初始化时的 gpu 图 → allow-fail：执行完成即通过，附注实际 ok/failed
+    （mediapipe 图自打包内置 vision.dll 后与普通图同标准，不再 allow-fail）。
 
 拖拽子集: read_image / read_image_unicode（中文资产名）/ filter_cascade，
 经 WM_DROPFILES 走与 Explorer 拖放相同的 dropEvent 路径；unicode 图额外执行，
@@ -151,8 +151,9 @@ def run(pkg, report, fixtures, ctx) -> None:
             artifacts: list[str] = []
             try:
                 graph_copy = _stage_copy(e, report)
-                allow_fail = ("mediapipe" in str(e["path"]).lower()
-                              or ("gpu" in e["module"].lower() and not gpu_ok))
+                # mediapipe 图已转正（包内真实 vision.dll）；仅无 GPU 时的 gpu 图
+                # 保留 allow-fail。
+                allow_fail = ("gpu" in e["module"].lower() and not gpu_ok)
 
                 s.new_graph()
                 s.menu_open_file(graph_copy)

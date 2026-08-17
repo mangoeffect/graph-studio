@@ -58,9 +58,10 @@ jobs:
 
       - name: Setup Qt6 + OpenCV
         uses: ./.github/actions/setup-build-deps
-        # composite action 内部步骤不支持 timeout-minutes，在此兜底：
-        # Windows 的 Vulkan SDK 下载+安装通常 <10min，悬挂时快速失败。
-        timeout-minutes: 25
+        # composite action 内部步骤不支持 timeout-minutes，在此兜底。
+        # 上限需容纳 MediaPipe 冷构建（缓存 miss 时全量 bazel，约 1.5~3h；
+        # Vulkan SDK 下载+安装 <10min，常规命中缓存时整个步骤 <15min）。
+        timeout-minutes: 300
 
       - name: Configure + build GraphStudio stack (RelWithDebInfo)
         shell: bash

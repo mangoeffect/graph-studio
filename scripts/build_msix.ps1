@@ -303,12 +303,25 @@ if ($pluginDirs) {
     New-Item -ItemType Directory -Force -Path (Join-Path $Staging "PlugIns") | Out-Null
     foreach ($dir in $pluginDirs) {
         foreach ($dll in (Get-ChildItem $dir -Filter "*.dll")) {
+            # vision.dll 是 mediapipe_vision.dll 的依赖而非插件：其依赖解析走
+            # loader 标准搜索（exe 目录优先），拷到包根（见下方）；进 PlugIns
+            # 是 10MB 死重且永远加载不到。
+            if ($dll.Name -eq "vision.dll") { continue }
             Copy-Item $dll.FullName (Join-Path $Staging "PlugIns\$($dll.Name)") -Force
         }
     }
 } else {
     Write-Fail "No submodule plugin DLLs found under $($Build.LibBuild)\submodules\<name>\$Config\."
     exit 1
+}
+
+# MediaPipe vision.dll -> 包根（exe 同级）。PlugIns\ 里的 mediapipe_vision.dll
+# 依赖它，而 loader 对依赖的搜索顺序是 exe 目录 → system → PATH，不搜索 PlugIns
+# 自身。install 缺失（stub 构建，如最小化 CI）时跳过，不阻断打包。
+$mpVision = Join-Path $Build.LibBuild "mediapipe\install\bin\vision.dll"
+if (Test-Path $mpVision) {
+    Copy-Item $mpVision (Join-Path $Staging "vision.dll") -Force
+    Write-Step "Bundled MediaPipe vision.dll -> $Staging\vision.dll"
 }
 
 # order matters for windeployqt: run on the exe in the staging tree

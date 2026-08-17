@@ -58,17 +58,23 @@ jobs:
 
       - name: Setup Qt6 + OpenCV
         uses: ./.github/actions/setup-build-deps
-        # composite action 内部步骤不支持 timeout-minutes，在此兜底：
-        # Windows 的 Vulkan SDK 下载+安装通常 <10min，悬挂时快速失败。
-        timeout-minutes: 25
+        # composite action 内部步骤不支持 timeout-minutes，在此兜底。
+        # 上限需容纳 MediaPipe 冷构建（缓存 miss 时全量 bazel，约 1.5~3h；
+        # Vulkan SDK 下载+安装 <10min，常规命中缓存时整个步骤 <15min）。
+        timeout-minutes: 300
 
       - name: Run all tests (framework + submodules + UI)
         shell: bash
         run: |
-          python scripts/run_all_test.py -j 3 -v --config Debug
+          # Windows：下载 MediaPipe 模型（~35MB，GCS）让 test_mediapipe_* 真实执行；
+          # 下载必须先于 cmake configure（configure 期 file(COPY) 把模型进构建树）。
+          # macOS/Linux 无预构建 dylib/.a，mediapipe 仍为 stub，下载无意义。
+          EXTRA=""
+          if [ "$RUNNER_OS" = "Windows" ]; then EXTRA="--download-models"; fi
+          python scripts/run_all_test.py -j 3 -v --config Debug $EXTRA
 
       - name: Show test summary on failure
         if: failure()
         shell: bash
         run: |
-          echo "::notice::run_all_test 阶段汇总见上方日志；若子模块/GPU/mediapipe 阶段被跳过属预期。"
+          echo "::notice::run_all_test 阶段汇总见上方日志；若 GPU/Metal 阶段被跳过属预期（无 GPU runner）。mediapipe 在 Windows 应真实执行（非跳过）。"
