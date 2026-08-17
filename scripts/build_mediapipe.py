@@ -759,6 +759,9 @@ def main() -> int:
                 "--copt=/utf-8", "--host_copt=/utf-8",
                 "--conlyopt=/std:c11", "--host_conlyopt=/std:c11",
                 "--conlyopt=/experimental:c11atomics", "--host_conlyopt=/experimental:c11atomics",
+                # 依赖 tarball（如 TensorFlow ~500MB）从 github.com 匿名下载，
+                # 会被限流 429；bazel 仓库级下载重试（CI 实测需要）。
+                "--experimental_repository_downloader_retries=5",
             ]
             env.update(windows_bazel_env(mp_build))
             if args.bazel_user_root:
