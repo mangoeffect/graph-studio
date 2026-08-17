@@ -67,14 +67,17 @@ bool PluginLoader::load(const std::string& path) {
         return false;
     }
 
-    RegisterPluginFunc reg_func = 
+    RegisterPluginFunc reg_func =
         reinterpret_cast<RegisterPluginFunc>(dlsym(handle, "register_plugin"));
-    
-    UnregisterPluginFunc unreg_func = 
+
+    UnregisterPluginFunc unreg_func =
         reinterpret_cast<UnregisterPluginFunc>(dlsym(handle, "unregister_plugin"));
 
     if (!reg_func) {
-        dlclose(handle);
+        // 非插件 DLL（例如与插件同目录的依赖库 vision.dll）：保持驻留、
+        // 有意不 FreeLibrary。POSIX 侧 dlopen 带 RTLD_NODELETE，dlclose 本就
+        // 不真正卸载；Windows 上 FreeLibrary 会执行第三方静态析构
+        // （protobuf/abseil/tflite），实测导致进程级堆损坏与后续加载失败。
         return false;
     }
 

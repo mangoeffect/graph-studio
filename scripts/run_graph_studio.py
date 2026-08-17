@@ -142,6 +142,11 @@ def run() -> int:
             platform.prepend_env_path(lib_env, qt_prefix / "bin")
         if opencv_dir and not args.disable_opencv:
             platform.prepend_env_path(lib_env, opencv_dir / "bin")
+        # MediaPipe vision.dll：GraphStudio exe 不在插件目录，依赖 DLL 需进
+        # PATH（loader 标准搜索顺序：exe 目录 → system → PATH）
+        mp_bin = lib_build / "mediapipe" / "install" / "bin"
+        if mp_bin.is_dir():
+            platform.prepend_env_path(lib_env, mp_bin)
 
     plugin_dirs = sdk.plugin_build_dirs(lib_build, args.config)
     if plugin_dirs:

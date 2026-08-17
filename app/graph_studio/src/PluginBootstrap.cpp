@@ -22,7 +22,11 @@ task_graph::PluginLoader& sharedLoader() {
 // 收集目录下的插件文件（*.dylib / *.so / *.dll）。
 // 多配置生成器（MSVC 的 Debug/Release）会把产物放到 <plugin>/<Config>/ 子目录，
 // 因此顶层为空时再扫一级子目录，兼容 macOS/Linux 的顶层直出布局。
-static QStringList collectPluginFiles(const QDir& dir) {
+// preferConfig：当前 exe 所在的构建配置目录名（Debug/RelWithDebInfo/...）。
+// 有匹配子目录时只收集该配置——Debug 与 RelWithDebInfo 产物混装进同一进程会
+// 跨 CRT 配置传递堆对象（堆损坏），且异配置 DLL 初始化失败后还会毒化加载器，
+// 导致后续本可正常加载的插件全部 LoadLibrary 失败。
+static QStringList collectPluginFiles(const QDir& dir, const QString& preferConfig = QString()) {
     QStringList files;
     if (!dir.exists()) return files;
     const QStringList filters{"*.dylib", "*.so", "*.dll"};
@@ -30,7 +34,16 @@ static QStringList collectPluginFiles(const QDir& dir) {
         files.append(info.absoluteFilePath());
     }
     if (files.isEmpty()) {
-        for (const auto& sub : dir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot)) {
+        const auto allSubs = dir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot);
+        QFileInfoList subs = allSubs;
+        if (!preferConfig.isEmpty()) {
+            QFileInfoList sameConfig;
+            for (const auto& sub : allSubs) {
+                if (sub.fileName() == preferConfig) sameConfig.append(sub);
+            }
+            if (!sameConfig.isEmpty()) subs = sameConfig;
+        }
+        for (const auto& sub : subs) {
             // 跳过备份/历史目录（如切换 Config 后遗留的 RelWithDebInfo.bak）：
             // 其中是另一 CRT 配置（release）的产物，误装入 debug 进程会跨 CRT
             // 传递堆对象 → 堆损坏崩溃。仅扫正式的 <Config> 子目录。
@@ -108,13 +121,15 @@ PluginLoadResult LoadBuiltinPlugins()
     }
 
     // 2) 开发期路径：<root>/build/submodules/*
+    //    只收集与 exe 同构建配置的插件产物（见 collectPluginFiles）。
+    const QString exeConfig = QDir(QCoreApplication::applicationDirPath()).dirName();
     const QString root = deduceRepoRoot();
     if (!root.isEmpty()) {
         const QDir submodsDir(root + "/build/submodules");
         if (submodsDir.exists()) {
             for (const auto& sub : submodsDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
                 QDir subDir(submodsDir.absoluteFilePath(sub));
-                for (const auto& f : collectPluginFiles(subDir)) addCandidate(f);
+                for (const auto& f : collectPluginFiles(subDir, exeConfig)) addCandidate(f);
             }
         }
     }
