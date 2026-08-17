@@ -572,10 +572,14 @@ def patch_vision_build(mp_src: Path) -> None:
     print(f"merged {len(merged)} exported symbols ({len(expected - existing)} new)")
 
     if "exported_symbols_list" not in s:
+        # BUILD 文件里必须用正斜杠：Windows 的原生反斜杠路径会被 bazel 的
+        # BUILD 解析器当成非法转义序列（\g/\m → "invalid escape sequence"）。
+        export_arg = str(mp_src / "mediapipe" / "tasks" / "c" / "vision"
+                         / "exported_symbols.txt").replace("\\", "/")
         s = s.replace(
             '"-Wl,-install_name,libvision.dylib",',
             f'"-Wl,-install_name,libvision.dylib",\n'
-            f'        "-Wl,-exported_symbols_list,{mp_src}/mediapipe/tasks/c/vision/exported_symbols.txt",')
+            f'        "-Wl,-exported_symbols_list,{export_arg}",')
         if '"data = ["' not in s:
             s = s.replace(
                 "    linkshared = True,\n    tags = [",
