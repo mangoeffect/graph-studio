@@ -401,6 +401,149 @@ def ensure_bazelisk_windows(mp_build: Path) -> Optional[Path]:
     return exe
 
 
+# ---- protobuf MSVC 补丁（Windows）----
+# protobuf 6.31.1 的 json/internal/untyped_message.{h,cc} 在 UntypedMessage 类体内
+# 持有递归 std::variant 的 flat_hash_map 成员——类自身不完整时实例化 variant，
+# MSVC（14.36 本机 + 14.44 runner 均触发）直接 C2139/C2079/C2338。修法：MSVC 下
+# 经 unique_ptr 持有，把递归 variant 的实例化推迟到类体之外（类体处类型已完整）。
+# 交付方式：bazel fetch 物化 external/protobuf~ 后原地打补丁再 build。
+# （--override_repository 方案不可行：重建的仓库丢失 Bzlmod repo mapping，
+#   protobuf 的 @zlib 依赖断链 → gzip_stream.h 找不到 zlib.h。）
+
+PROTOBUF_MSVC_MARKER = "MSVC recursive-variant defer (patched by build_mediapipe.py)"
+PROTOBUF_H = "src/google/protobuf/json/internal/untyped_message.h"
+PROTOBUF_CC = "src/google/protobuf/json/internal/untyped_message.cc"
+PROTOBUF_IO_BUILD = "src/google/protobuf/io/BUILD.bazel"
+
+
+def _protobuf_msvc_hunks(eol: str):
+    """[(relpath, old, new, count)]，count=0 表示全部替换。行尾随目标文件自适应。"""
+
+    def E(s: str) -> str:
+        return s.replace("\n", eol)
+
+    find_count = E("  size_t Count(int32_t field_number) const {\n"
+                   "    auto it = fields_.find(field_number);\n"
+                   "    if (it == fields_.end()) {")
+    find_count_new = E("  size_t Count(int32_t field_number) const {\n"
+                       "#ifdef _MSC_VER\n"
+                       "    auto it = fields_->find(field_number);\n"
+                       "    if (it == fields_->end()) {\n"
+                       "#else\n"
+                       "    auto it = fields_.find(field_number);\n"
+                       "    if (it == fields_.end()) {\n"
+                       "#endif")
+    find_get = E("  absl::Span<const T> Get(int32_t field_number) const {\n"
+                 "    auto it = fields_.find(field_number);\n"
+                 "    if (it == fields_.end()) {")
+    find_get_new = E("  absl::Span<const T> Get(int32_t field_number) const {\n"
+                     "#ifdef _MSC_VER\n"
+                     "    auto it = fields_->find(field_number);\n"
+                     "    if (it == fields_->end()) {\n"
+                     "#else\n"
+                     "    auto it = fields_.find(field_number);\n"
+                     "    if (it == fields_.end()) {\n"
+                     "#endif")
+    ctor = E("  explicit UntypedMessage(const ResolverPool::Message* desc) : desc_(desc) {}")
+    ctor_new = E("#ifdef _MSC_VER\n"
+                 "  explicit UntypedMessage(const ResolverPool::Message* desc)\n"
+                 "      : desc_(desc),\n"
+                 "        fields_(std::make_unique<absl::flat_hash_map<int32_t, Value>>()) {}\n"
+                 "#else\n"
+                 "  explicit UntypedMessage(const ResolverPool::Message* desc) : desc_(desc) {}\n"
+                 "#endif")
+    member = E("  absl::flat_hash_map<int32_t, Value> fields_;")
+    member_new = E("#ifdef _MSC_VER\n"
+                   f"  // {PROTOBUF_MSVC_MARKER}:\n"
+                   "  // hold the map by unique_ptr so the recursive std::variant is\n"
+                   "  // instantiated outside the class body (C2079/C2139 otherwise).\n"
+                   "  std::unique_ptr<absl::flat_hash_map<int32_t, Value>> fields_;\n"
+                   "#else\n"
+                   "  absl::flat_hash_map<int32_t, Value> fields_;\n"
+                   "#endif")
+    cc_old = E("  auto emplace_result = fields_.try_emplace(number, std::forward<T>(value));")
+    cc_new = E("#ifdef _MSC_VER\n"
+               "  auto emplace_result = fields_->try_emplace(number, std::forward<T>(value));\n"
+               "#else\n"
+               + cc_old + "\n"
+               "#endif")
+
+    # io/BUILD.bazel：MSVC 分支不给 @zlib 依赖，但 gzip_stream.h 无条件
+    # #include <zlib.h> 且类成员用 z_stream —— 一律走 zlib 路径（BCR zlib 在
+    # MSVC 下可编）。旧解析图里 config_msvc 不匹配、误打误撞走了 default 分支，
+    # rules_cc 升级后 config_msvc 命中才暴露。
+    copts_old = E('    copts = COPTS + select({\n'
+                  '        "//build_defs:config_msvc": [],\n'
+                  '        "//conditions:default": ["-DHAVE_ZLIB"],\n'
+                  '    }),')
+    copts_new = E('    copts = COPTS + ["-DHAVE_ZLIB"],')
+    deps_old = E('    ] + select({\n'
+                 '        "//build_defs:config_msvc": [],\n'
+                 '        "//conditions:default": ["@zlib"],\n'
+                 '    }),')
+    deps_new = E('    ] + ["@zlib"],')
+
+    return [
+        (PROTOBUF_H, find_count, find_count_new, 1),
+        (PROTOBUF_H, find_get, find_get_new, 1),
+        (PROTOBUF_H, ctor, ctor_new, 1),
+        (PROTOBUF_H, member, member_new, 1),
+        (PROTOBUF_CC, cc_old, cc_new, 1),
+        (PROTOBUF_IO_BUILD, copts_old, copts_new, 0),
+        (PROTOBUF_IO_BUILD, deps_old, deps_new, 0),
+    ]
+
+
+def patch_protobuf_msvc(pb_dir: Path) -> bool:
+    """对已物化的 protobuf 源码树原地打 MSVC 补丁（逐块幂等）。"""
+    header = pb_dir / PROTOBUF_H
+    t = _read(header)
+    if t is None:
+        console.fail(f"未找到 {header}（fetch 未物化？）")
+        return False
+    eol = "\r\n" if "\r\n" in t else "\n"
+    patched = False
+    for rel, old, new, count in _protobuf_msvc_hunks(eol):
+        f = pb_dir / rel
+        s = _read(f) or ""
+        if new in s:
+            continue  # 该块已打过
+        if old not in s:
+            console.fail(f"protobuf 补丁锚点未命中（版本变化？）: {rel}: {old[:60]!r}")
+            return False
+        s = s.replace(old, new) if count == 0 else s.replace(old, new, count)
+        _write(f, s)
+        patched = True
+    if patched:
+        print(f"patched protobuf MSVC (recursive-variant defer + zlib always-on): {pb_dir}")
+    return True
+
+
+def prefetch_and_patch_protobuf(bazel_cmd, startup_flags, config_flags, build_flags,
+                                override_args, mp_src, env, mp_targets) -> bool:
+    """bazel fetch 物化 external/（含 protobuf~），再原地打补丁。
+
+    fetch 与后续 build 的 flags 保持一致（同一 override 集合），避免仓库集
+    差异触发 protobuf~ 重新物化、抹掉补丁。
+    """
+    console.step("bazel fetch（物化 external/ 以便打 protobuf 补丁）")
+    # -c opt 必须带上：windows_opencv 的 select 在 fastbuild 下无匹配分支
+    fetch_cmd = (bazel_cmd + startup_flags + ["fetch", "-c", "opt"]
+                 + config_flags + build_flags + override_args + mp_targets)
+    code = subprocess.run(fetch_cmd, cwd=str(mp_src), env=env).returncode
+    if code != 0:
+        console.warn(f"bazel fetch 失败 (exit {code})，跳过 protobuf 补丁")
+        return False
+    r = subprocess.run(bazel_cmd + startup_flags + ["info", "output_base"],
+                       cwd=str(mp_src), env=env, capture_output=True, text=True, check=False)
+    out_base = r.stdout.strip()
+    pb_dir = Path(out_base) / "external" / "protobuf~"
+    if not pb_dir.is_dir():
+        console.warn(f"external/protobuf~ 不存在（{pb_dir}）")
+        return False
+    return patch_protobuf_msvc(pb_dir)
+
+
 # ---- rules_swift Windows stub（v1.0.0 Bzlmod 迁移的副作用）----
 
 # v1.0.0 把 Apple rules 迁到 MODULE.bazel 后，rules_swift 的自动配置仓库
@@ -768,6 +911,13 @@ def main() -> int:
                 build_flags.append(f"--repository_cache={args.bazel_user_root}/repository_cache")
         # --output_user_root 是启动选项，必须位于子命令（build/info）之前
         startup_flags = [f"--output_user_root={args.bazel_user_root}"] if args.bazel_user_root else []
+        if platform.is_windows():
+            # protobuf MSVC 补丁依赖 fetch 物化的 external/（flags 与 build 完全
+            # 一致，避免仓库集差异触发 protobuf~ 重新物化抹掉补丁）
+            if not prefetch_and_patch_protobuf(bazel_cmd, startup_flags, config_flags,
+                                               build_flags, override_args, mp_src,
+                                               env, mp_targets):
+                return 1
         cmd = bazel_cmd + startup_flags + ["build", "-c", "opt", "--jobs", str(jobs)] + config_flags + build_flags + override_args + mp_targets
         code = subprocess.run(cmd, cwd=str(mp_src), env=env).returncode
         if code != 0:
