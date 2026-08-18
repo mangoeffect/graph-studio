@@ -173,21 +173,30 @@ jobs:
           # 为 Release 资产。走 Microsoft Store 上架需另行本地 -SkipSign 出未签名
           # msixupload（Partner Center 会重签名，不接受外部签名包）。
           # 生成 dist/msix/graph_studio-<ver>_x64.msix + GraphStudioDev.cer
-          $signArgs = @()
+          $pfxPath = $null
           if ($env:MSIX_CERT_PFX) {
             if (-not $env:MSIX_CERT_PASSWORD) {
               throw "MSIX_CERT_PFX is set but MSIX_CERT_PASSWORD is missing; cannot sign."
             }
             $pfxPath = Join-Path $env:RUNNER_TEMP "msix-codesign.pfx"
             [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String(($env:MSIX_CERT_PFX -replace '\s', '')))
-            $signArgs = @("-CertPfx", $pfxPath, "-CertPfxPassword", $env:MSIX_CERT_PASSWORD)
           }
-          $sentryArgs = @("-SkipSentry")
+          # 注意：必须用 hashtable splat。此前用数组 splat（@signArgs @sentryArgs），
+          # PowerShell 数组 splat 只按位置绑定、不解析 "-SentryDsn" 这类参数名——
+          # 仅配置 SENTRY_DSN（无签名证书）时 "-SentryDsn" 落到 $Jobs 位置，
+          # 脚本内 [int]$Jobs 转换直接失败。
+          $splat = @{ Version = "$env:PKG_VERSION"; Config = "RelWithDebInfo"; Clean = $true }
+          if ($pfxPath) {
+            $splat.CertPfx = $pfxPath
+            $splat.CertPfxPassword = $env:MSIX_CERT_PASSWORD
+          }
           if ($env:SENTRY_DSN) {
-            $sentryArgs = @("-SentryDsn", $env:SENTRY_DSN,
-                            "-SentryRelease", "${{ needs.meta.outputs.release }}")
+            $splat.SentryDsn = $env:SENTRY_DSN
+            $splat.SentryRelease = "${{ needs.meta.outputs.release }}"
+          } else {
+            $splat.SkipSentry = $true
           }
-          scripts\build_msix.ps1 -Version "$env:PKG_VERSION" -Config RelWithDebInfo -Clean @signArgs @sentryArgs
+          scripts\build_msix.ps1 @splat
 
       # ---- Linux: linuxdeployqt + appimagetool -> .AppImage ----
       - name: Build + package Linux .AppImage
