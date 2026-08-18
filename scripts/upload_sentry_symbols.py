@@ -98,22 +98,22 @@ def upload_macos(app_build: Path, lib_build: Path) -> int:
 def upload_windows(app_build: Path, lib_build: Path) -> int:
     console.step("上传 Windows PDB 到 Sentry")
     code = runner.run(["sentry-cli", "debug-files", "upload", "-t", "pdb"]
-                      + sentry_cli_args() + ["--include", str(app_build)])
+                      + sentry_cli_args() + [str(app_build)])
     if code != 0:
         return code
     return runner.run(["sentry-cli", "debug-files", "upload", "-t", "pdb"]
-                      + sentry_cli_args() + ["--include", str(lib_build)])
+                      + sentry_cli_args() + [str(lib_build)])
 
 
 def upload_linux(app_build: Path, lib_build: Path) -> int:
     """Linux ELF 调试信息上传（补齐原 .sh 缺失的分支）。"""
     console.step("上传 Linux ELF 调试信息到 Sentry")
     code = runner.run(["sentry-cli", "debug-files", "upload", "-t", "elf"]
-                      + sentry_cli_args() + ["--include", str(app_build)])
+                      + sentry_cli_args() + [str(app_build)])
     if code != 0:
         return code
     return runner.run(["sentry-cli", "debug-files", "upload", "-t", "elf"]
-                      + sentry_cli_args() + ["--include", str(lib_build)])
+                      + sentry_cli_args() + [str(lib_build)])
 
 
 def main() -> int:
