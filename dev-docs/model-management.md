@@ -51,7 +51,13 @@ std::string path = task_graph::find_model("face_landmarker.task");  // 空串=�
 | Linux AppImage | AppRun `export GRAPH_STUDIO_MODELS_DIR=$appdir/usr/share/graph_studio/models` |
 | macOS .app | `Contents/Resources/models`（ModelBootstrap 的第 3 候选目录） |
 | Windows MSIX | `<exe 目录>\models`（第 2 候选目录） |
-| mediapipe 测试 driver | `tests/mp_model_finder.hpp`（`<base_dir>/models/<name>`） |
+| mediapipe 测试 driver | `tests/mp_model_finder.hpp`（`<base_dir>/../models/<name>`） |
+
+测试图资产布局与源码树一致：graph 在 `tests/graphs/`、模型/图片在 `tests/models/`，
+图内以 `../models/xxx.jpg` 引用 —— 源码树里的 graph 可直接在 GraphStudio 打开运行
+（模型名走 finder，dev 启动脚本注入 `GRAPH_STUDIO_MODELS_DIR`）；构建树把 models
+拷到 `<bin>/models`（`<bin>/graphs` 的同级），driver 的软跳过检查与 finder 同样指向
+`../models`。
 
 ModelBootstrap 的查找目录候选（按序）：
 
