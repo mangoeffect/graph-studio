@@ -9,6 +9,7 @@
 #include "view/MainWindow.h"
 #include "PluginBootstrap.h"
 #include "GpuBootstrap.h"
+#include "ModelBootstrap.h"
 #include "CrashReporter.h"
 
 #include <cstring>
@@ -71,12 +72,18 @@ int main(int argc, char* argv[])
     // fail-open：init 失败仅记 WARN，非 GPU 节点仍可执行。
     InitGpuBackend();
 
+    // 安装全局 ModelFinder：任务参数里只填模型名，这里从 models 目录
+    //（env / 打包布局）解析出文件路径。fail-open：无 models 目录时名称
+    // 回退图相对路径。需在 QApplication 之后（依赖 applicationDirPath）。
+    InitModelFinder();
+
     MainWindow window(vm);
 
     window.show();
 
     int ret = app.exec();
 
+    ShutdownModelFinder();
     ShutdownGpuBackend();
 #ifndef __EMSCRIPTEN__
     ShutdownCrashReporting();

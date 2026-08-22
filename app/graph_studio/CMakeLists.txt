@@ -62,6 +62,7 @@ set(PROJECT_HEADERS
     include/view/ProfilePanel.h
     include/view/GpuImageViewer.h
     include/GpuBootstrap.h
+    include/ModelBootstrap.h
     include/CrashReporter.h
 )
 
@@ -69,6 +70,7 @@ set(PROJECT_SOURCES
     src/platform/macos/entry.cpp
     src/PluginBootstrap.cpp
     src/GpuBootstrap.cpp
+    src/ModelBootstrap.cpp
     src/model/GraphModel.cpp
     src/viewmodel/GraphViewModel.cpp
     src/command/CommandStack.cpp

@@ -7,8 +7,9 @@
   3) 构建 graph_studio.app。
   4) macdeployqt 把 Qt 框架/插件打入 .app 并修正 rpath。
   5) 把 subnode 插件 .dylib 拷进 Contents/PlugIns/。
-  6) dylibbundler 收集 OpenCV 等非系统动态库进 Contents/Frameworks/ 并修正 install name。
-  7) create-dmg 生成最终 .dmg（带 Applications 快捷方式）。
+  6) MediaPipe 模型文件拷进 Contents/Resources/models/（ModelFinder 查找布局）。
+  7) dylibbundler 收集 OpenCV 等非系统动态库进 Contents/Frameworks/ 并修正 install name。
+  8) create-dmg 生成最终 .dmg（带 Applications 快捷方式）。
 
 需要 macOS + Homebrew 工具：`brew install dylibbundler create-dmg`。
 
@@ -39,6 +40,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from gs import console, deps, platform, repo_root, runner  # noqa: E402
 from gs import sdk, toolchain  # noqa: E402
 from gs import sentry as gs_sentry  # noqa: E402
+from gs import models as gs_models  # noqa: E402
 from gs.cmake import CMake  # noqa: E402
 
 APP_NAME = "graph_studio"
@@ -242,6 +244,8 @@ def main() -> int:
     ap.add_argument("--sentry-release", default="",
                     help="Sentry release 版本（默认取根 project VERSION；发布时传完整渠道版本如 0.1.0-beta.42）")
     ap.add_argument("--skip-build", action="store_true", help="跳过构建，复用现有 .app 打包")
+    ap.add_argument("--skip-models", action="store_true",
+                    help="不把 MediaPipe 模型文件打进包（默认自动下载并随包）")
     ap.add_argument("--out-dir", default="", help="输出目录（默认 dist/dmg）")
     ap.add_argument("--qt", default="", help="Qt6 前缀（含 lib/cmake/Qt6）")
     ap.add_argument("--opencv-dir", default="", help="OpenCV 安装前缀（默认自动探测）")
@@ -297,6 +301,11 @@ def main() -> int:
     if run_deployqt(qt_prefix, app_bundle) != 0:
         return 1
     copy_plugins(app_bundle, lib_build, args.config)
+    # 模型随包：Contents/Resources/models（ModelBootstrap 的 macOS 查找布局）
+    if args.skip_models:
+        console.step("跳过模型随包（--skip-models）")
+    elif not gs_models.stage_models(app_bundle / "Contents" / "Resources" / "models"):
+        return 1
     # 依赖搜索路径：root build（libtask_graph.dylib）+ 各插件目录（libvision.dylib 等）
     search_dirs = [lib_build] + sdk.plugin_build_dirs(lib_build, args.config)
     if run_dylibbundler(app_bundle, search_dirs) != 0:

@@ -32,7 +32,8 @@ namespace task_graph {
 
 // SDK/插件 ABI 版本。插件在构建期捕获 tg_sdk_version()，宿主框架在
 // PluginLoader::load() 时校验一致性，不匹配的插件会被拒绝加载。
-inline constexpr uint32_t TG_SDK_VERSION = 1;
+// v2: 新增模型查找服务（set_model_finder / find_model）。
+inline constexpr uint32_t TG_SDK_VERSION = 2;
 
 enum class LogLevel {
     TRACE = 0,
@@ -93,6 +94,23 @@ TG_EXPORT void set_log_sink(LogSink sink);
 TG_EXPORT void clear_log_sink();
 TG_EXPORT LogSinkHandle add_log_sink(LogSink sink);
 TG_EXPORT void remove_log_sink(LogSinkHandle handle);
+
+// 模型查找回调：宿主在 SDK 初始化时安装（如 GraphStudio 的 InitModelFinder），
+// 任务侧只传模型名（如 "face_landmarker.task"），回调返回模型文件的绝对路径；
+// 返回空串表示未命中，任务回退到自身默认的路径解析（_source_dir 相对路径）。
+// 契约（与 LogSink 一致）：
+//  - 可能在任意线程被并发调用，宿主实现需自行保证线程安全；
+//  - 不得抛异常（WASM/mobile 为 -fno-exceptions 构建）；
+//  - 在内部互斥锁外调用，回调内可安全再调 tg_log；
+//  - 应当快速返回（on_init/execute 路径上逐任务调用），宿主可自行缓存。
+using ModelFinder = std::function<std::string(const std::string& name)>;
+
+// 安装/覆盖全局模型查找器（进程级单槽）。空 finder 等同清除。
+// 运行期也可安全调用（锁保护），对之后的查询生效。
+TG_EXPORT void set_model_finder(ModelFinder finder);
+TG_EXPORT void clear_model_finder();
+// 按名称查找模型：未安装查找器或未命中时返回空串（调用方自行回退）。
+TG_EXPORT std::string find_model(const std::string& name);
 
 enum class TaskStatus {
     PENDING,

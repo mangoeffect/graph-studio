@@ -5,7 +5,8 @@
   1) 构建 task_graph 根库 + subnode 插件（RelWithDebInfo + OpenCV）。
   2) 拉取 sentry-native（可选，构建含崩溃上报的发布版）。
   3) 构建 graph_studio 可执行文件。
-  4) 搭建 AppDir 布局（usr/bin/graph_studio + .desktop + 图标 + subnode 插件）。
+  4) 搭建 AppDir 布局（usr/bin/graph_studio + .desktop + 图标 + subnode 插件
+     + usr/share/graph_studio/models 模型随包）。
   5) linuxdeployqt 收集 Qt/OpenCV 等依赖进 AppDir/usr/lib 并修正 rpath。
   6) 用自定义 AppRun 包一层，注入 TASK_GRAPH_PLUGINS_PATH（PluginBootstrap 从此加载 subnode 插件）。
   7) appimagetool 把 AppDir 打包成 .AppImage。
@@ -42,6 +43,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from gs import console, deps, platform, repo_root, runner  # noqa: E402
 from gs import sdk, toolchain  # noqa: E402
 from gs import sentry as gs_sentry  # noqa: E402
+from gs import models as gs_models  # noqa: E402
 from gs.cmake import CMake  # noqa: E402
 
 APP_NAME = "graph_studio"
@@ -62,11 +64,13 @@ Categories=Development;
 """
 
 APPRUN_TEMPLATE = """#!/usr/bin/env bash
-# AppImage 入口：注入 subnode 插件路径与库搜索路径后启动 graph_studio。
-# linuxdeployqt 已为各二进制设置 rpath，这里仅补充 PluginBootstrap 需要的环境变量。
+# AppImage 入口：注入 subnode 插件路径 / 模型目录 / 库搜索路径后启动 graph_studio。
+# linuxdeployqt 已为各二进制设置 rpath，这里仅补充 PluginBootstrap / ModelBootstrap
+# 需要的环境变量。
 self="$(readlink -f "$0")"
 appdir="$(dirname "$self")"
 export TASK_GRAPH_PLUGINS_PATH="${{appdir}}/usr/plugins${{TASK_GRAPH_PLUGINS_PATH:+:${{TASK_GRAPH_PLUGINS_PATH}}}}"
+export GRAPH_STUDIO_MODELS_DIR="${{appdir}}/usr/share/graph_studio/models"
 export LD_LIBRARY_PATH="${{appdir}}/usr/lib${{LD_LIBRARY_PATH:+:${{LD_LIBRARY_PATH}}}}"
 exec "${{appdir}}/usr/bin/{exe}" "$@"
 """
@@ -137,8 +141,8 @@ def ensure_appimagetool(name: str, url: str, explicit: str, tools_dir: Path) -> 
 
 
 def stage_appdir(appdir: Path, gs_build: Path, lib_build: Path, resources: Path,
-                 config: str) -> int:
-    """搭建 AppDir：bin + plugins + desktop + 图标。"""
+                 config: str, skip_models: bool = False) -> int:
+    """搭建 AppDir：bin + plugins + 模型 + desktop + 图标。"""
     console.step(f"搭建 AppDir: {appdir}")
     (appdir / "usr" / "bin").mkdir(parents=True, exist_ok=True)
     (appdir / "usr" / "lib").mkdir(parents=True, exist_ok=True)
@@ -166,6 +170,13 @@ def stage_appdir(appdir: Path, gs_build: Path, lib_build: Path, resources: Path,
                 shutil.copy2(p, appdir / "usr" / "plugins" / p.name)
                 count += 1
     console.step(f"拷贝 subnode 插件 -> usr/plugins/（{count} 个）")
+
+    # 模型随包：usr/share/graph_studio/models，AppRun 注入
+    # GRAPH_STUDIO_MODELS_DIR 指向该目录（ModelBootstrap 优先读 env）
+    if skip_models:
+        console.step("跳过模型随包（--skip-models）")
+    elif not gs_models.stage_models(appdir / "usr" / "share" / "graph_studio" / "models"):
+        return 1
 
     # .desktop 文件（linuxdeployqt 据此定位 Exec/Icon）
     (appdir / "graph_studio.desktop").write_text(
@@ -221,6 +232,8 @@ def main() -> int:
                     choices=["Debug", "Release", "RelWithDebInfo", "MinSizeRel"],
                     help="构建配置（默认 RelWithDebInfo）")
     ap.add_argument("--skip-build", action="store_true", help="跳过构建，复用现有 graph_studio 打包")
+    ap.add_argument("--skip-models", action="store_true",
+                    help="不把 MediaPipe 模型文件打进包（默认自动下载并随包）")
     ap.add_argument("--no-sentry", action="store_true", help="不构建 Sentry 崩溃上报")
     ap.add_argument("--dsn", default="", help="嵌入的 Sentry DSN（默认不嵌入，运行时读 SENTRY_DSN 环境变量）")
     ap.add_argument("--sentry-release", default="",
@@ -278,7 +291,8 @@ def main() -> int:
     appdir = out_dir / "AppDir"
     if appdir.exists():
         shutil.rmtree(appdir)
-    if stage_appdir(appdir, gs_build, lib_build, resources, args.config) != 0:
+    if stage_appdir(appdir, gs_build, lib_build, resources, args.config,
+                    skip_models=args.skip_models) != 0:
         return 1
 
     linuxdeployqt = ensure_appimagetool("linuxdeployqt", LINUXDEPLOYQT_URL,

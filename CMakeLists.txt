@@ -128,6 +128,7 @@ add_library(task_graph ${TASK_GRAPH_LIB_TYPE}
     src/plugin_registry.cpp
     src/dag_serializer.cpp
     src/logger.cpp
+    src/model_finder.cpp
     src/data_types.cpp
     src/gpu_image_ops.cpp
     src/gpu_kernel_library.cpp
@@ -267,6 +268,7 @@ add_tg_test(test_task_params)
 add_tg_test(test_profiler)
 add_tg_test(test_type_registry)
 add_tg_test(test_logger)
+add_tg_test(test_model_finder)
 
 add_tg_test(test_plugin)
 

@@ -153,6 +153,13 @@ def run() -> int:
         os.environ["TASK_GRAPH_PLUGINS_PATH"] = os.pathsep.join(str(p) for p in plugin_dirs)
         console.step(f"TASK_GRAPH_PLUGINS_PATH: {os.environ['TASK_GRAPH_PLUGINS_PATH']}")
 
+    # dev 模式模型目录：下载过测试模型（scripts/download_mediapipe_models.py）
+    # 时，让图里只填模型名即可解析（打包布局由 ModelBootstrap 自行推断）。
+    dev_models = repo_root() / "submodules" / "mediapipe" / "mediapipe_vision" / "tests" / "models"
+    if dev_models.is_dir():
+        os.environ["GRAPH_STUDIO_MODELS_DIR"] = str(dev_models)
+        console.step(f"GRAPH_STUDIO_MODELS_DIR: {os.environ['GRAPH_STUDIO_MODELS_DIR']}")
+
     # ---- 运行单元测试 ----
     if args.test:
         console.step("运行 GraphStudio 单元测试")

@@ -52,6 +52,12 @@
     sentry-native via scripts\fetch_sentry.py and build it in; the app is a
     clean no-op at runtime unless a DSN is configured).
 
+.PARAMETER SkipModels
+    Do not bundle the MediaPipe model files into models\ next to the exe.
+    By default the script downloads any missing models (idempotent) and
+    bundles them — task params reference models by NAME and ModelBootstrap
+    resolves them from <exe dir>\models.
+
 .PARAMETER SentryDsn
     Embed the Sentry DSN at compile time so release packages report crashes
     without any environment variable (a public client key — safe to ship).
@@ -123,6 +129,7 @@ param(
     [switch]$SkipBuild,
     [switch]$SkipSign,
     [switch]$SkipSentry,
+    [switch]$SkipModels,
     [string]$SentryDsn = "",
     [string]$SentryRelease = "",
     [string]$CertThumbprint = "",
@@ -322,6 +329,30 @@ $mpVision = Join-Path $Build.LibBuild "mediapipe\install\bin\vision.dll"
 if (Test-Path $mpVision) {
     Copy-Item $mpVision (Join-Path $Staging "vision.dll") -Force
     Write-Step "Bundled MediaPipe vision.dll -> $Staging\vision.dll"
+}
+
+# MediaPipe 模型文件 -> models\（exe 同级）。任务参数里只填模型名，
+# ModelBootstrap（<exe 目录>/models 布局）从这里查找。缺模型先跑下载脚本
+#（幂等、已存在即跳过）；下载失败则打包失败，-SkipModels 可跳过随包。
+if ($SkipModels) {
+    Write-Step "Skipping bundled models (-SkipModels)"
+} else {
+    $Code = Invoke-Native "python" @((Join-Path $ScriptDir "download_mediapipe_models.py"))
+    if ($Code -ne 0) {
+        Write-Fail "Model download failed (network?). Retry, or pass -SkipModels."
+        exit $Code
+    }
+    $ModelsSrc = Join-Path $RootDir "submodules\mediapipe\mediapipe_vision\tests\models"
+    $ModelsDst = Join-Path $Staging "models"
+    New-Item -ItemType Directory -Force -Path $ModelsDst | Out-Null
+    $ModelFiles = @(Get-ChildItem -File $ModelsSrc -ErrorAction SilentlyContinue |
+                    Where-Object { $_.Extension -in @(".task", ".tflite") })
+    if ($ModelFiles.Count -eq 0) {
+        Write-Fail "No model files found under: $ModelsSrc"
+        exit 1
+    }
+    $ModelFiles | ForEach-Object { Copy-Item $_.FullName (Join-Path $ModelsDst $_.Name) -Force }
+    Write-Step "Bundled model files -> $ModelsDst ($($ModelFiles.Count) files)"
 }
 
 # order matters for windeployqt: run on the exe in the staging tree

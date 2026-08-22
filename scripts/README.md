@@ -26,6 +26,8 @@ python scripts/package_linux.py --version 0.1.0      # -> dist/appimage/graph_st
 
 > Windows 打包仍是 `scripts\build_msix.ps1`（windeployqt + makeappx → 签名 `.msix`）。三端打包在 GitHub CI（`.github/workflows/release.yml`）中编排为手动触发的发布流水线，支持 测试版/预览版/修复版/正式版 四种渠道。
 >
+> 三端打包默认把 10 个 MediaPipe 模型文件（`.task`/`.tflite`，约百 MB）随包打进各自 models 目录（MSIX `<exe>\models`、macOS `Contents/Resources/models`、Linux `usr/share/graph_studio/models`），缺模型时自动运行 `download_mediapipe_models.py`（幂等）补齐；下载失败打包报错。图/任务参数里只填模型名即可（ModelFinder 机制，见 `dev-docs/model-management.md`）。对包体敏感可 `--skip-models`（MSIX 为 `-SkipModels`）跳过随包。
+>
 > CI 用 `MSIX_CERT_PFX` / `MSIX_CERT_PASSWORD` secrets 里的固定证书给 `.msix` 签名，并把发布者公钥 `GraphStudioDev.cer` 一并附到 Release（未配置 secrets 时退化为按次自签名）。证书由 `scripts\generate_msix_cert.ps1` 一次性生成（5 年有效期，产出的 `.pfx.b64` 与密码文件直接喂给 `gh secret set`）；终端用户首次安装前需将 `.cer` 导入 `本地计算机\受信任人`，此后所有版本通用。上架 Microsoft Store 时仍需本地 `-SkipSign` 出未签名包由 Partner Center 重签名。
 
 > 历史的 `*.sh` / `*.ps1` 同名文件已退化为 **thin shim**：只做 `exec python3 <name>.py "$@"` / `& python <name>.py @args` 转发，下个版本删除。在没装 Python 的极少数环境下，仍可直接调用 cmake（macOS/Linux：`cmake -S . -B build && cmake --build build`；Windows VS 生成器：`cmake -S . -B build` 然后 `cmake --build build --config Debug`）。
