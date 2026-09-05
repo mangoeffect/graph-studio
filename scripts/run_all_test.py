@@ -30,6 +30,7 @@ import argparse
 import os
 import re
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -116,6 +117,10 @@ def main() -> int:
                     help="额外构建 SDK + demo 插件，激活 test_plugin_abi")
     ap.add_argument("--download-models", action="store_true",
                     help="运行前先下载 MediaPipe 模型（mediapipe 测试需要）")
+    ap.add_argument("--mnn", action="store_true",
+                    help="构建/复用 MNN 引擎并以 -DTASK_GRAPH_ENABLE_MNN=ON 配置"
+                         "（产物 build/mnn/install，配合 CI actions/cache；"
+                         "Windows 构建失败仅告警降级 stub，不阻塞）")
     args = ap.parse_args()
 
     root = repo_root()
@@ -168,6 +173,23 @@ def main() -> int:
     # ---- 模型下载（可选）----
     if args.download_models:
         download_models(root)
+
+    # ---- MNN 引擎（可选）----
+    if args.mnn and not args.no_build:
+        console.step("构建/复用 MNN 引擎（build_mnn.py，幂等）")
+        code = subprocess.run(
+            [sys.executable, str(root / "scripts" / "build_mnn.py"),
+             "-j", str(jobs)],
+            cwd=str(root),
+        ).returncode
+        if code != 0:
+            if platform.is_windows():
+                console.warn("MNN 构建失败（MSVC 风险点）；继续以 stub 降级，不阻塞")
+            else:
+                console.fail("MNN 构建失败")
+                return 1
+    if args.mnn:
+        root_defines += ["-DTASK_GRAPH_ENABLE_MNN=ON"]
 
     # ---- 根构建（一次性）----
     # 框架/子模块阶段需要完整根树；UI 阶段也需要 libtask_graph。

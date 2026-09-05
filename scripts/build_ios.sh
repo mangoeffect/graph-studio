@@ -113,6 +113,15 @@ else
     echo "${C_BOLD}==> 跳过 Metal GPU 子模块${C_RESET}"
 fi
 
+# MNN 推理引擎预编译库（TASK_GRAPH_ENABLE_MNN 默认 ON，CMake 自动探测
+# build_ios/mnn/install；缺失时核心库以 stub 编译，任务 execute 报错降级）。
+MNN_LIB="${ROOT_DIR}/build_ios/mnn/install/lib/libMNN.a"
+if [[ ! -f "${MNN_LIB}" ]]; then
+    echo "${C_BOLD}==> 构建 MNN iOS 静态库（build_mnn.py --platform ios）${C_RESET}"
+    python3 "${SCRIPT_DIR}/build_mnn.py" --platform ios -j "${JOBS}" \
+        || echo "${C_RED}==> MNN iOS 构建失败，task_graph 以 stub 降级（仅影响 MNN 任务）${C_RESET}" >&2
+fi
+
 # 清理
 if [[ "${CLEAN}" -eq 1 ]]; then
     echo "${C_BOLD}==> 清理 iOS 构建目录${C_RESET}"
@@ -181,6 +190,11 @@ merge_static_libs() {
         for oc_lib in "${oc_dir}"/libopencv_*.a; do
             [[ -f "${oc_lib}" ]] && libs+=("${oc_lib}")
         done
+    fi
+
+    # MNN 推理引擎静态库（如果存在）——并入后 libtask_graph_full.a 对 MNN 自包含
+    if [[ -f "${ROOT_DIR}/build_ios/mnn/install/lib/libMNN.a" ]]; then
+        libs+=("${ROOT_DIR}/build_ios/mnn/install/lib/libMNN.a")
     fi
 
     echo "${C_BOLD}==> 合并静态库 -> ${output##*/} (${#libs[@]} 个库)${C_RESET}"

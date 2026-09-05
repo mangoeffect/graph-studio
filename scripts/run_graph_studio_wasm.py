@@ -92,6 +92,20 @@ def main() -> int:
             return 1
         emcmake = emsdk.find_emcmake(emsdk_root)
 
+        # 0) MNN WASM 引擎（TASK_GRAPH_ENABLE_MNN 默认 ON，核心库自动探测
+        # build_wasm/mnn/install；缺失时 stub 降级，仅影响 MNN 任务）
+        mnn_lib = root / "build_wasm" / "mnn" / "install" / "lib" / "libMNN.a"
+        if not mnn_lib.is_file():
+            console.step("构建 MNN WASM 静态库（build_mnn.py --platform wasm）")
+            code = runner.check(
+                [sys.executable, str(root / "scripts" / "build_mnn.py"),
+                 "--platform", "wasm", "-j", str(jobs),
+                 "--emsdk-root", str(emsdk_root)],
+                cwd=str(root), what="构建 MNN WASM",
+            )
+            if code != 0 or not mnn_lib.is_file():
+                console.warn("MNN WASM 构建失败，task_graph 以 stub 降级（仅影响 MNN 任务）")
+
         # 1) 构建 libtask_graph.a（多线程：-pthread）
         # 若 OpenCV WASM 静态库已构建，则核心库也开 OpenCV。
         lib_defines = [

@@ -88,6 +88,53 @@ endif()
 
 option(TASK_GRAPH_ENABLE_OPENCV "Enable OpenCV support for image conversion" ON)
 
+# MNN 推理引擎（Alibaba MNN，直接编入核心库；非子模块插件）。
+# 依赖 scripts/build_mnn.py 产出的预编译静态库（install/lib/libMNN.a）：
+#   python scripts/build_mnn.py            # 本机桌面平台
+# 找到库时定义 TASK_GRAPH_MNN_AVAILABLE（真实推理）；默认开启但未找到库时
+# 任务照常注册（图可反序列化/编辑），execute 返回 FAILED 并给出可读错误。
+option(TASK_GRAPH_ENABLE_MNN "Enable Alibaba MNN inference engine tasks" ON)
+if(TASK_GRAPH_ENABLE_MNN)
+    # 预编译库候选目录（对齐 OpenCV 预编译目录约定，build_mnn.py --platform 产出）
+    if(TASK_GRAPH_IOS AND EXISTS "${CMAKE_SOURCE_DIR}/build_ios/mnn/install/include/MNN/Interpreter.hpp")
+        set(MNN_INSTALL "${CMAKE_SOURCE_DIR}/build_ios/mnn/install")
+    elseif(TASK_GRAPH_ANDROID)
+        # build_mnn.py 按 ABI 分目录安装（install/<abi>/），优先当前 ABI
+        if(EXISTS "${CMAKE_SOURCE_DIR}/build_android/mnn/install/${ANDROID_ABI}/include/MNN/Interpreter.hpp")
+            set(MNN_INSTALL "${CMAKE_SOURCE_DIR}/build_android/mnn/install/${ANDROID_ABI}")
+        elseif(EXISTS "${CMAKE_SOURCE_DIR}/build_android/mnn/install/include/MNN/Interpreter.hpp")
+            set(MNN_INSTALL "${CMAKE_SOURCE_DIR}/build_android/mnn/install")
+        endif()
+    elseif(EMSCRIPTEN AND EXISTS "${CMAKE_SOURCE_DIR}/build_wasm/mnn/install/include/MNN/Interpreter.hpp")
+        set(MNN_INSTALL "${CMAKE_SOURCE_DIR}/build_wasm/mnn/install")
+    elseif(EXISTS "${CMAKE_SOURCE_DIR}/build/mnn/install/include/MNN/Interpreter.hpp")
+        set(MNN_INSTALL "${CMAKE_SOURCE_DIR}/build/mnn/install")
+    endif()
+
+    if(MNN_INSTALL)
+        if(MSVC)
+            set(MNN_LIB_PATH "${MNN_INSTALL}/lib/MNN.lib")
+        else()
+            set(MNN_LIB_PATH "${MNN_INSTALL}/lib/libMNN.a")
+        endif()
+        if(EXISTS "${MNN_LIB_PATH}")
+            message(STATUS "MNN inference enabled: ${MNN_LIB_PATH}")
+            add_library(mnn_engine STATIC IMPORTED)
+            set_target_properties(mnn_engine PROPERTIES
+                IMPORTED_LOCATION "${MNN_LIB_PATH}"
+                INTERFACE_INCLUDE_DIRECTORIES "${MNN_INSTALL}/include")
+            set(TASK_GRAPH_MNN_AVAILABLE ON)
+        else()
+            message(WARNING "TASK_GRAPH_ENABLE_MNN=ON but MNN static lib not found "
+                            "(expected ${MNN_INSTALL}/lib); building stub — run scripts/build_mnn.py")
+        endif()
+    else()
+        message(WARNING "TASK_GRAPH_ENABLE_MNN=ON but no MNN install found "
+                        "(candidates: build{,_ios,_android,_wasm}/mnn/install); building stub — "
+                        "run scripts/build_mnn.py")
+    endif()
+endif()
+
 # 桌面平台默认把 submodules/ 内置插件一起构建进同一棵构建树（供 scripts/run_tests.py
 # 与 GraphStudio 开发工作流使用）。关闭后主仓库完全独立编译，插件改为运行时 dlopen：
 #   cmake -S . -B build -DTASK_GRAPH_BUILD_SUBMODULES=OFF
@@ -168,6 +215,43 @@ if(TASK_GRAPH_ENABLE_VULKAN)
     target_sources(task_graph PRIVATE
         src/gpu_backends/vulkan_backend.cpp
     )
+endif()
+
+# MNN 推理任务（直接编入核心库；stub/真实实现由 TASK_GRAPH_MNN_AVAILABLE 决定）
+if(TASK_GRAPH_ENABLE_MNN)
+    target_sources(task_graph PRIVATE
+        src/mnn/mnn_engine.cpp
+        src/mnn/mnn_inference.cpp
+        src/mnn/mnn_registry.cpp
+    )
+    if(TASK_GRAPH_MNN_AVAILABLE)
+        if(MSVC)
+            # MNN 只构建 Release（/MD）；MSVC Debug（/MDd）链它 = LNK2038 运行库
+            # 不匹配（同 shaderc 先例）。Debug 配置退化为 stub，测试门控同步收窄。
+            target_link_libraries(task_graph PRIVATE
+                "$<$<NOT:$<CONFIG:Debug>>:mnn_engine>")
+            target_compile_definitions(task_graph PRIVATE
+                "$<$<NOT:$<CONFIG:Debug>>:TASK_GRAPH_MNN_AVAILABLE>")
+        else()
+            target_link_libraries(task_graph PRIVATE mnn_engine)
+            target_compile_definitions(task_graph PRIVATE TASK_GRAPH_MNN_AVAILABLE)
+        endif()
+        if(APPLE)
+            # MNN 静态库自身不携带框架依赖（照 MNN.podspec 清单；Metal 后端用）
+            find_library(MNN_METAL_FW Metal)
+            find_library(MNN_COREVIDEO_FW CoreVideo)
+            find_library(MNN_COREFOUNDATION_FW CoreFoundation)
+            find_library(MNN_FOUNDATION_FW Foundation)
+            find_library(MNN_ACCELERATE_FW Accelerate)
+            target_link_libraries(task_graph PUBLIC
+                ${MNN_METAL_FW}
+                ${MNN_COREVIDEO_FW}
+                ${MNN_COREFOUNDATION_FW}
+                ${MNN_FOUNDATION_FW}
+                ${MNN_ACCELERATE_FW}
+            )
+        endif()
+    endif()
 endif()
 
 target_include_directories(task_graph
@@ -295,6 +379,18 @@ if(TASK_GRAPH_ENABLE_OPENCV)
     gtest_discover_tests(test_opencv_convert
         DISCOVERY_MODE PRE_TEST
         TEST_PREFIX "test_opencv_convert."
+    )
+endif()
+
+# MNN 推理：仅在引擎真实编入时构建（模型缺失时用例内部软跳过，
+# 对齐 mediapipe 子节点惯例）。MSVC 多配置生成器在配置期无法区分 Debug——
+# 而 MNN 只有 Release 可链（/MD vs /MDd），Debug 下是 stub，测试会失败，
+# 故 VS 生成器不注册本测试（单配置 Ninja 的 CMAKE_BUILD_TYPE 可判）。
+if(TASK_GRAPH_ENABLE_MNN AND TASK_GRAPH_MNN_AVAILABLE
+        AND NOT (MSVC AND CMAKE_CONFIGURATION_TYPES))
+    add_tg_test(test_mnn_inference)
+    target_compile_definitions(test_mnn_inference PRIVATE
+        TG_TEST_MNN_MODELS_DIR="${CMAKE_SOURCE_DIR}/tests/models/mnn"
     )
 endif()
 

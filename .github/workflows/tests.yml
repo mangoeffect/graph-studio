@@ -63,15 +63,32 @@ jobs:
         # Vulkan SDK 下载+安装 <10min，常规命中缓存时整个步骤 <15min）。
         timeout-minutes: 300
 
+      # MNN 推理引擎（外置源码构建，产物约 7~15MB）。缓存命中时跳过；
+      # macOS/Linux 全量三端进 ctest，Windows 见下（Release-only 链接）。
+      - name: Restore MNN engine cache
+        uses: actions/cache@v4
+        with:
+          path: build/mnn/install
+          key: mnn-engine-${{ runner.os }}-${{ hashFiles('scripts/build_mnn.py') }}
+
+      # Windows 的 Ninja 需要 cl.exe 在 PATH（vcvars），只影响后续 MNN 构建，
+      # 主构建走 VS 生成器不受影响。
+      - name: Setup MSVC env (Windows, for MNN Ninja build)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
       - name: Run all tests (framework + submodules + UI)
         shell: bash
         run: |
           # Windows：下载 MediaPipe 模型（~35MB，GCS）让 test_mediapipe_* 真实执行；
           # 下载必须先于 cmake configure（configure 期 file(COPY) 把模型进构建树）。
           # macOS/Linux 无预构建 dylib/.a，mediapipe 仍为 stub，下载无意义。
+          # --mnn：构建/复用 MNN 引擎（macOS/Linux Debug 测试真实执行；
+          # Windows Debug 与 MNN Release 运行库不匹配（/MDd vs /MD，同 shaderc），
+          # run_all_test 内部构建失败仅告警、测试侧按配置门控，不阻塞。
           EXTRA=""
           if [ "$RUNNER_OS" = "Windows" ]; then EXTRA="--download-models"; fi
-          python scripts/run_all_test.py -j 3 -v --config Debug $EXTRA
+          python scripts/run_all_test.py -j 3 -v --config Debug $EXTRA --mnn
 
       - name: Show test summary on failure
         if: failure()

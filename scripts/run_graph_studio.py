@@ -35,8 +35,8 @@ from gs.cmake import CMake  # noqa: E402
 
 
 def build_stack(cm: CMake, root: Path, lib_build: Path, gs_dir: Path, gs_build: Path,
-                config: str, jobs: int, qt_prefix: Path, opencv_dir, disable_opencv: bool,
-                clean: bool, skip_app: bool = False) -> int:
+                config: str, jobs: int, qt_prefix, opencv_dir, disable_opencv: bool,
+                clean: bool, skip_app: bool = False, with_mnn: bool = False) -> int:
     """构建 task_graph 根库 + subnode 插件，再把 task_graph.lib 镜像上来（Windows quirk），
     然后构建 graph_studio。返回退出码。"""
     if clean and gs_build.exists():
@@ -57,6 +57,8 @@ def build_stack(cm: CMake, root: Path, lib_build: Path, gs_dir: Path, gs_build: 
             defines.append("-DTASK_GRAPH_ENABLE_VULKAN=ON")
         if opencv_dir:
             defines.append(f"-DOpenCV_DIR={opencv_dir / 'lib'}")
+    if with_mnn:
+        defines.append("-DTASK_GRAPH_ENABLE_MNN=ON")
     if cm.configure(root, lib_build, defines=defines, build_type=config) != 0:
         return 1
     if cm.build(lib_build, config=config, jobs=jobs, what="构建 task_graph 库 + subnode 插件") != 0:
@@ -103,6 +105,9 @@ def run() -> int:
                     choices=["Debug", "Release", "RelWithDebInfo", "MinSizeRel"],
                     help="构建配置（默认 Debug）")
     ap.add_argument("--disable-opencv", action="store_true", help="关闭 OpenCV 依赖")
+    ap.add_argument("--mnn", action="store_true",
+                    help="启用 MNN 推理（预期 build*/mnn/install 已由 build_mnn.py 产出，"
+                         "缺失时 stub 降级）")
     ap.add_argument("--opencv-dir", default="", help="OpenCV 安装前缀（默认自动探测）")
     ap.add_argument("--cmake", default="", help="cmake 可执行文件路径")
     args = ap.parse_args()
@@ -127,7 +132,8 @@ def run() -> int:
 
     if not args.no_build:
         code = build_stack(cm, root, lib_build, gs_dir, gs_build, args.config, jobs,
-                           qt_prefix, opencv_dir, args.disable_opencv, args.clean)
+                           qt_prefix, opencv_dir, args.disable_opencv, args.clean,
+                           with_mnn=args.mnn)
         if code != 0:
             return code
     elif not gs_build.is_dir():

@@ -649,6 +649,7 @@ QString GraphViewModel::classifyTask(const QString& type)
     if (type.startsWith("color_grade_")) return QStringLiteral("Color Grading");
     if (type.startsWith("gpu_"))   return QStringLiteral("GPU");
     if (type.startsWith("mp_"))    return QStringLiteral("MediaPipe");
+    if (type.startsWith("mnn_"))   return QStringLiteral("MNN");
     if (type == QStringLiteral("js_script")) return QStringLiteral("Scripting");
 
     // 宽松启发式兜底

@@ -380,6 +380,24 @@ jobs:
             python3 scripts/build_opencv_wasm.py -j 4
           fi
 
+      # MNN WASM 引擎（run_graph_studio_wasm.py 也会按需构建，这里缓存 +
+      # 提前构建让失败尽早暴露；失败不阻塞——核心库以 stub 降级）
+      - name: Cache MNN WASM install
+        uses: actions/cache@v4
+        with:
+          path: build_wasm/mnn/install
+          key: mnn-wasm-${{ hashFiles('scripts/build_mnn.py') }}
+
+      - name: Build MNN WASM (on cache miss)
+        shell: bash
+        continue-on-error: true
+        run: |
+          if [ -f build_wasm/mnn/install/lib/libMNN.a ]; then
+            echo "MNN WASM cached, skip build"
+          else
+            python3 scripts/build_mnn.py --platform wasm -j 4
+          fi
+
       - name: Build GraphStudio WASM
         shell: bash
         run: python3 scripts/run_graph_studio_wasm.py --build-only -j 4

@@ -33,7 +33,7 @@ from typing import List
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from gs import android, console, platform, repo_root, toolchain  # noqa: E402
+from gs import android, console, platform, repo_root, runner, toolchain  # noqa: E402
 from gs.cmake import CMake  # noqa: E402
 
 OPENCV_INSTALL_REL = "build_android/opencv/install"
@@ -41,7 +41,7 @@ SUBMODULE_TARGETS = ["image_filtering", "image_reader"]
 
 
 def merge_static_libs(build_dir: Path, dist_dir: Path, llvm_ar: Path, opencv_available: bool,
-                      root: Path) -> int:
+                      root: Path, abi: str = "") -> int:
     """用 llvm-ar MRI 脚本合并核心 + 子模块 + OpenCV 静态库为单个 libtask_graph.a。"""
     output = dist_dir / "libtask_graph.a"
     dist_dir.mkdir(parents=True, exist_ok=True)
@@ -51,6 +51,13 @@ def merge_static_libs(build_dir: Path, dist_dir: Path, llvm_ar: Path, opencv_ava
         lib = build_dir / f"lib{sub}.a"
         if lib.is_file():
             libs.append(lib)
+
+    # MNN 推理引擎（build_mnn.py --platform android 按 ABI 分目录安装）——
+    # 并入后 libtask_graph.a 对 MNN 自包含
+    if abi:
+        mnn_lib = root / "build_android" / "mnn" / "install" / abi / "lib" / "libMNN.a"
+        if mnn_lib.is_file():
+            libs.append(mnn_lib)
 
     if opencv_available:
         oc_dir = root / OPENCV_INSTALL_REL / "lib"
@@ -114,7 +121,7 @@ def build_abi(abi: str, root: Path, cmake: CMake, toolchain_file: Path, api_leve
             continue
         cmake.build(build_dir, target=sub, jobs=jobs, what=f"构建子模块 {sub}")
 
-    return merge_static_libs(build_dir, dist_dir, llvm_ar, opencv_available, root)
+    return merge_static_libs(build_dir, dist_dir, llvm_ar, opencv_available, root, abi)
 
 
 def main() -> int:
@@ -163,6 +170,21 @@ def main() -> int:
         console.step("清理 Android 构建目录")
         shutil.rmtree(root / "build_android", ignore_errors=True)
         shutil.rmtree(root / "dist" / "android", ignore_errors=True)
+
+    # MNN 推理引擎预编译库（TASK_GRAPH_ENABLE_MNN 默认 ON，CMake 按 ANDROID_ABI
+    # 探测 build_android/mnn/install/<abi>/；缺失时核心库以 stub 编译降级）。
+    android_abis = [args.abi] + (["x86_64"] if args.also_x86_64 else [])
+    for abi in android_abis:
+        mnn_lib = root / "build_android" / "mnn" / "install" / abi / "lib" / "libMNN.a"
+        if not mnn_lib.is_file():
+            console.step(f"构建 MNN Android 静态库（{abi}，build_mnn.py）")
+            code = runner.check(
+                [sys.executable, str(root / "scripts" / "build_mnn.py"),
+                 "--platform", "android", "--abis", abi, "-j", str(jobs)],
+                cwd=str(root), what=f"构建 MNN ({abi})",
+            )
+            if code != 0 or not mnn_lib.is_file():
+                console.warn(f"MNN Android ({abi}) 构建失败，task_graph 以 stub 降级（仅影响 MNN 任务）")
 
     code = build_abi(args.abi, root, cm, toolchain_file, args.api, jobs, opencv_available, llvm_ar)
     if code != 0:

@@ -418,4 +418,12 @@ if(EMSCRIPTEN)
         # 源码里这两个入口已用 #ifndef __EMSCRIPTEN__ 守卫（WASM 静态链接下
         # 仅靠 constructor 注册，PluginBootstrap 不做 dlopen）。
     endif()
+
+    # MNN 推理引擎：libtask_graph.a 含 MNN 任务代码（ENABLE_MNN 默认 ON），
+    # 但 libMNN.a 是独立预编译静态库（scripts/build_mnn.py --platform wasm），
+    # 需一并链入。缺库时核心库为 stub（无 MNN 符号引用），条件跳过。
+    if(EXISTS "${TASK_GRAPH_ROOT}/build_wasm/mnn/install/lib/libMNN.a")
+        target_link_libraries(graph_studio PRIVATE
+            "${TASK_GRAPH_ROOT}/build_wasm/mnn/install/lib/libMNN.a")
+    endif()
 endif()

@@ -2,10 +2,13 @@ build/
 dist/
 build_win
 build_wasm/
+build_android/
+build_ios/
 build_coretest
 submodules/*
 /AGENTS.md
 /.zcode
+/.mimosa
 /.trae
 .DS_Store
 app/graph_studio/build/
@@ -22,3 +25,6 @@ docs/resources/_gen/
 docs/.hugo_build.lock
 docs/data/releases.json
 /profile_trace.json
+
+# MNN 测试模型（scripts/download_mnn_models.py 下载/转换，不入库）
+tests/models/

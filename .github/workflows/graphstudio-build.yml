@@ -63,10 +63,27 @@ jobs:
         # Vulkan SDK 下载+安装 <10min，常规命中缓存时整个步骤 <15min）。
         timeout-minutes: 300
 
+      # MNN 推理引擎（外置源码构建）。缓存命中时跳过；Windows 失败不阻塞
+      # （应用以 stub 降级——MSVC Debug/Release 运行库不匹配由门控处理）。
+      - name: Restore MNN engine cache
+        uses: actions/cache@v4
+        with:
+          path: build/mnn/install
+          key: mnn-engine-${{ runner.os }}-${{ hashFiles('scripts/build_mnn.py') }}
+
+      - name: Setup MSVC env (Windows, for MNN Ninja build)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Build MNN engine
+        shell: bash
+        continue-on-error: ${{ runner.os == 'Windows' }}
+        run: python scripts/build_mnn.py -j 3
+
       - name: Configure + build GraphStudio stack (RelWithDebInfo)
         shell: bash
         run: |
-          python scripts/run_graph_studio.py --build-only --config RelWithDebInfo -j 3
+          python scripts/run_graph_studio.py --build-only --config RelWithDebInfo -j 3 --mnn
 
       - name: Verify build artifact exists
         shell: bash

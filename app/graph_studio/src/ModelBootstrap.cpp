@@ -16,8 +16,8 @@ namespace {
 namespace fs = std::filesystem;
 
 // 模型名可能带或不带扩展名（"face_landmarker" / "face_landmarker.task"），
-// 依次尝试这三个后缀。
-const char* const kModelSuffixes[] = {"", ".task", ".tflite"};
+// 依次尝试这些后缀。
+const char* const kModelSuffixes[] = {"", ".task", ".tflite", ".mnn"};
 
 // Init 时一次性收集的查找目录快照，回调按值捕获，查询期无 getenv/IO 目录探测。
 std::vector<fs::path> collect_model_dirs() {

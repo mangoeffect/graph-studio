@@ -28,6 +28,14 @@ TG_REGISTER_TYPE(cv::Mat,      "cv::Mat");
 }  // namespace task_graph
 namespace task_graph::detail {
 TypeRegistry& TypeRegistry::instance() {
+#ifdef TASK_GRAPH_MNN_AVAILABLE
+    // 强制拉入 src/mnn/mnn_registry.cpp：STATIC 核心库下，无外部引用的
+    // 注册 TU（TG_REGISTER_TYPE / TG_PLUGIN_AUTOREG 初始化器）会被链接器
+    // 裁剪。本函数是全库必经路径，借它建立引用（同上方 force-link 注释）。
+    // 块作用域 extern 声明落在最近外层命名空间 = task_graph::detail。
+    extern void pull_mnn_tasks();
+    pull_mnn_tasks();
+#endif
     static TypeRegistry r;
     return r;
 }
