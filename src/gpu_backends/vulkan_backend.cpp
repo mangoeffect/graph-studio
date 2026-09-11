@@ -316,6 +316,13 @@ void VulkanGpuBackend::shutdown() {
         }
     }
     renderPassCache_.clear();
+    // P1：销毁渲染 fence（此时 device 还活着；在飞批次应由上层先 wait）
+    if (renderFence_ != VK_NULL_HANDLE) {
+        vkDestroyFence(device_, renderFence_, nullptr);
+        renderFence_ = VK_NULL_HANDLE;
+    }
+    pendingSets_.clear();
+    renderBatch_ = VK_NULL_HANDLE;
     for (auto& [key, fb] : framebufferCache_) {
         if (fb != VK_NULL_HANDLE) {
             vkDestroyFramebuffer(device_, fb, nullptr);

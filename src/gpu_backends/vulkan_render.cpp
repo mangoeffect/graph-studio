@@ -7,7 +7,9 @@
 //   - 管线：shaderc 运行时编译 GLSL vert/frag（与 compute 同一 TASK_GRAPH_VULKAN_COMPUTE
 //     门槛）+ 经典 VkRenderPass/VkFramebuffer（兼容性优于 dynamic rendering 的
 //     Vulkan 1.3 门槛）；VkRenderPass 按（格式, loadOp）缓存，管线按 name 缓存。
-//   - pass：立即模式，end_render_pass 提交并 vkQueueWaitIdle（与 compute 同步语义一致）。
+//   - pass：立即模式 + P1 批处理提交——begin..end 只录制到批 cmd buffer，
+//     wait_render_idle 统一 end+submit+fence 等待；上传/下载/拷贝路径
+//     隐式先 wait（读渲染结果前排空批次）。
 //
 // 锁协议：renderMutex_ 串行化全部 render 入口；立即模式 pass 从 begin 持有到
 // end（跨调用）。触及 commandPool_/queue_ 时嵌套加 gpuMutex_（锁序恒为
@@ -215,6 +217,7 @@ void VulkanGpuBackend::free_texture(uintptr_t texture) {
 }
 
 bool VulkanGpuBackend::upload_texture(uintptr_t texture, const uint8_t* data, size_t size) {
+    wait_render_idle();  // P1：排空在飞渲染批次（递归锁，锁序一致）
     std::lock_guard render_lock(renderMutex_);
     std::lock_guard<std::mutex> gpu_lock(gpuMutex_);
     if (device_ == VK_NULL_HANDLE || !data) {
@@ -267,6 +270,7 @@ bool VulkanGpuBackend::upload_texture(uintptr_t texture, const uint8_t* data, si
 }
 
 bool VulkanGpuBackend::download_texture(uintptr_t texture, uint8_t* data, size_t size) {
+    wait_render_idle();  // P1：排空在飞渲染批次（递归锁，锁序一致）
     std::lock_guard render_lock(renderMutex_);
     std::lock_guard<std::mutex> gpu_lock(gpuMutex_);
     if (device_ == VK_NULL_HANDLE || !data) {
@@ -318,6 +322,7 @@ bool VulkanGpuBackend::download_texture(uintptr_t texture, uint8_t* data, size_t
 }
 
 bool VulkanGpuBackend::copy_buffer_to_texture(uintptr_t buffer, size_t size, uintptr_t texture) {
+    wait_render_idle();  // P1：排空在飞渲染批次（递归锁，锁序一致）
     std::lock_guard render_lock(renderMutex_);
     std::lock_guard<std::mutex> gpu_lock(gpuMutex_);
     if (device_ == VK_NULL_HANDLE) {
@@ -355,6 +360,7 @@ bool VulkanGpuBackend::copy_buffer_to_texture(uintptr_t buffer, size_t size, uin
 }
 
 bool VulkanGpuBackend::copy_texture_to_buffer(uintptr_t texture, uintptr_t buffer, size_t size) {
+    wait_render_idle();  // P1：排空在飞渲染批次（递归锁，锁序一致）
     std::lock_guard render_lock(renderMutex_);
     std::lock_guard<std::mutex> gpu_lock(gpuMutex_);
     if (device_ == VK_NULL_HANDLE) {
@@ -734,22 +740,25 @@ bool VulkanGpuBackend::begin_render_pass(const GpuRenderPassDesc& desc) {
 
     {
         std::lock_guard<std::mutex> gpu_lock(gpuMutex_);
-        VkCommandBufferAllocateInfo alloc{};
-        alloc.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-        alloc.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        alloc.commandPool = commandPool_;
-        alloc.commandBufferCount = 1;
-        if (vkAllocateCommandBuffers(device_, &alloc, &activePass_.cmd) != VK_SUCCESS) {
-            // fb 留在缓存中（对象仍有效），仅放弃本次 pass
-            activePass_.cmd = VK_NULL_HANDLE;
-            renderMutex_.unlock();
-            return false;
+        // P1 批处理：连续 pass 复用同一打开的 cmd buffer（同 buffer 内 barrier
+        // 天然有序，跨 pass 读写同纹理的 hazard 无需 semaphore）；首 pass 分配
+        if (renderBatch_ == VK_NULL_HANDLE) {
+            VkCommandBufferAllocateInfo alloc{};
+            alloc.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+            alloc.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+            alloc.commandPool = commandPool_;
+            alloc.commandBufferCount = 1;
+            if (vkAllocateCommandBuffers(device_, &alloc, &renderBatch_) != VK_SUCCESS) {
+                // fb 留在缓存中（对象仍有效），仅放弃本次 pass
+                renderMutex_.unlock();
+                return false;
+            }
+            VkCommandBufferBeginInfo begin{};
+            begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+            begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+            vkBeginCommandBuffer(renderBatch_, &begin);
         }
-
-        VkCommandBufferBeginInfo begin{};
-        begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-        vkBeginCommandBuffer(activePass_.cmd, &begin);
+        activePass_.cmd = renderBatch_;
     }
 
     // 目标纹理 -> COLOR_ATTACHMENT_OPTIMAL（renderpass 的 initialLayout 约定）
@@ -855,7 +864,8 @@ bool VulkanGpuBackend::end_render_pass() {
 
     vkCmdEndRenderPass(activePass_.cmd);
     // 目标纹理：COLOR_ATTACHMENT -> SHADER_READ_ONLY（后续 pass 采样 / 拷贝到
-    // buffer 都要求采样布局；barrier 必须记录在本 cmd buffer 提交前）
+    // buffer 都要求采样布局；barrier 记录在同一 cmd buffer 内，与本批提交的
+    // 写入天然有序）
     if (activePass_.target) {
         barrier(activePass_.cmd, activePass_.target->image,
                 VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
@@ -863,29 +873,62 @@ bool VulkanGpuBackend::end_render_pass() {
         activePass_.target->layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     }
 
+    // P1 批处理：end 只结束本 pass 的录制，提交与等待延迟到 wait_render_idle。
+    // descriptor set 不能立即释放（提交还在路上）——攒到 pendingSets_。
+    pendingSets_.insert(pendingSets_.end(),
+                        activePass_.usedSets.begin(), activePass_.usedSets.end());
+    activePass_ = ActiveRenderPass{};
+    renderMutex_.unlock();
+    return true;
+}
+
+bool VulkanGpuBackend::wait_render_idle() {
+    std::lock_guard render_lock(renderMutex_);  // 递归锁：调用方可能已持有
+    if (renderBatch_ == VK_NULL_HANDLE) {
+        return true;  // 无在飞渲染工作
+    }
+    if (activePass_.cmd != VK_NULL_HANDLE) {
+        return false;  // pass 未 end（违反 begin..end 契约）
+    }
+
     bool ok = true;
     {
         std::lock_guard<std::mutex> gpu_lock(gpuMutex_);
-        vkEndCommandBuffer(activePass_.cmd);
-        VkSubmitInfo submit{};
-        submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        submit.commandBufferCount = 1;
-        submit.pCommandBuffers = &activePass_.cmd;
-        ok = vkQueueSubmit(queue_, 1, &submit, VK_NULL_HANDLE) == VK_SUCCESS;
+        ok = vkEndCommandBuffer(renderBatch_) == VK_SUCCESS;
         if (ok) {
-            vkQueueWaitIdle(queue_);
+            if (renderFence_ == VK_NULL_HANDLE) {
+                VkFenceCreateInfo fenceInfo{};
+                fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+                if (vkCreateFence(device_, &fenceInfo, nullptr, &renderFence_) != VK_SUCCESS) {
+                    renderFence_ = VK_NULL_HANDLE;
+                    ok = false;
+                }
+            }
         }
+        if (ok) {
+            vkResetFences(device_, 1, &renderFence_);
+            VkSubmitInfo submit{};
+            submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+            submit.commandBufferCount = 1;
+            submit.pCommandBuffers = &renderBatch_;
+            ok = vkQueueSubmit(queue_, 1, &submit, renderFence_) == VK_SUCCESS;
+        }
+        if (ok) {
+            vkWaitForFences(device_, 1, &renderFence_, VK_TRUE, UINT64_MAX);
+        } else {
+            // 提交失败也要收场：放弃整批录制
+            vkResetCommandBuffer(renderBatch_, 0);
+        }
+        vkFreeCommandBuffers(device_, commandPool_, 1, &renderBatch_);
+        renderBatch_ = VK_NULL_HANDLE;
     }
 
-    // framebuffer 留在缓存（P3.3），不随 pass 销毁
-    if (!activePass_.usedSets.empty()) {
+    if (!pendingSets_.empty()) {
         vkFreeDescriptorSets(device_, renderDescriptorPool_,
-                             (uint32_t)activePass_.usedSets.size(),
-                             activePass_.usedSets.data());
+                             (uint32_t)pendingSets_.size(),
+                             pendingSets_.data());
+        pendingSets_.clear();
     }
-    vkFreeCommandBuffers(device_, commandPool_, 1, &activePass_.cmd);
-    activePass_ = ActiveRenderPass{};
-    renderMutex_.unlock();
     return ok;
 }
 

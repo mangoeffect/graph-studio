@@ -72,6 +72,7 @@ public:
     bool begin_render_pass(const GpuRenderPassDesc& desc) override;
     bool render_draw(const GpuDrawCall& draw) override;
     bool end_render_pass() override;
+    bool wait_render_idle() override;
 
 private:
     uint32_t find_memory_type(uint32_t typeFilter, VkMemoryPropertyFlags properties);
@@ -128,8 +129,10 @@ private:
     // 纹理销毁时逐出（free_texture 内），shutdown 统一销毁。
     std::map<std::pair<VulkanTexture*, VkRenderPass>, VkFramebuffer> framebufferCache_;
 
-    // 立即模式 pass 的当前状态（begin 到 end 之间有效）。
-    // usedSets：本 pass 内 draw 分配的 descriptor set，end 时统一释放。
+    // 立即模式 pass 的当前状态。P1 批处理录制：begin..end 只往同一个打开的
+    // cmd buffer 里录（同 buffer 内 barrier 天然有序），end 不提交；
+    // wait_render_idle 统一 end+submit+fence 等待，并释放整批 usedSets/cmd。
+    // usedSets：本 pass 内 draw 分配的 descriptor set，wait 时统一释放。
     // target：begin 时记录的目标纹理（end 收尾 barrier 转回 SHADER_READ_ONLY）。
     struct ActiveRenderPass {
         VkCommandBuffer cmd{VK_NULL_HANDLE};
@@ -140,6 +143,14 @@ private:
         VulkanTexture* target{nullptr};
         std::vector<VkDescriptorSet> usedSets;
     } activePass_;
+
+    // P1：批处理渲染录制缓冲——连续 pass 的 begin..end 都录进它，
+    // wait_render_idle 时 end+submit+fence 等待，然后释放并置空
+    VkCommandBuffer renderBatch_{VK_NULL_HANDLE};
+    // P1：批内已结束 pass 的 descriptor set（cmd buffer 提交并等完才能释放）
+    std::vector<VkDescriptorSet> pendingSets_;
+    // P1：渲染提交的唯一 fence（wait_render_idle 用；懒创建，shutdown 销毁）
+    VkFence renderFence_{VK_NULL_HANDLE};
 
     struct KernelEntry {
         std::string name;  // release_kernel 反查 kernelHandles_ 清理用

@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include <task_graph/data_types.hpp>
 #include <task_graph/gpu_render_ops.hpp>
@@ -114,7 +114,8 @@ public:
     virtual void release_render_pipeline(uintptr_t pipeline) { (void)pipeline; }
 
     // 立即模式 pass 录制：begin（打开目标纹理）-> render_draw（全屏三角形）->
-    // end（提交并等待完成，与 compute dispatch 的同步语义一致）。
+    // end（结束本 pass 录制）。P1 起连续 pass 批处理在同一提交里，真正的
+    // 提交与 CPU-GPU 同步发生在 wait_render_idle。
     virtual bool begin_render_pass(const GpuRenderPassDesc& desc) {
         (void)desc;
         return false;
@@ -126,6 +127,10 @@ public:
     }
 
     virtual bool end_render_pass() { return false; }
+
+    // 等待全部在飞渲染工作完成（提交批处理中的 pass 并阻塞至 GPU 执行完）。
+    // 需要读到渲染结果的上传/下载/拷贝路径应先调用本方法。
+    virtual bool wait_render_idle() { return true; }
 };
 
 using GpuBackendPtr = std::shared_ptr<IGpuImageBackend>;

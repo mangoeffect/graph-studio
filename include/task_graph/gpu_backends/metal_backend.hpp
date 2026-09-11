@@ -46,6 +46,7 @@ public:
     bool begin_render_pass(const GpuRenderPassDesc& desc) override;
     bool render_draw(const GpuDrawCall& draw) override;
     bool end_render_pass() override;
+    bool wait_render_idle() override;
 
     std::string get_backend_name() const override { return "metal"; }
     bool is_available() const override;

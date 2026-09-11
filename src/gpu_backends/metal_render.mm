@@ -9,8 +9,9 @@
 //     SIGSEGV（macOS 26 / M 系芯片）。
 //   - 管线：newLibraryWithSource 编译 MSL（vertex+fragment），按 name 缓存
 //     MTLRenderPipelineState；颜色附件格式取 desc.target_format。
-//   - pass：立即模式 MTLRenderCommandEncoder；end_render_pass 提交并
-//     waitUntilCompleted（与 compute dispatch 的同步语义一致）。
+//   - pass：立即模式 MTLRenderCommandEncoder + P1 批处理提交——连续 pass 录进
+//     同一 pending cmd buffer（同 buffer 内有序，免 fence），wait_render_idle
+//     统一 commit+waitUntilCompleted；上传/下载/拷贝路径隐式先 wait。
 // 线程安全：与 compute 共用 commandQueue_，所有方法套 @synchronized(cache)。
 #include <task_graph/gpu_backends/metal_backend.hpp>
 #include <task_graph/data_types.hpp>
@@ -122,6 +123,7 @@ void MetalGpuBackend::free_texture(uintptr_t texture) {
 }
 
 bool MetalGpuBackend::upload_texture(uintptr_t texture, const uint8_t* data, size_t size) {
+    wait_render_idle();  // P1：排空在飞渲染批次再搬运
     @autoreleasepool {
         if (!is_available()) {
             return false;
@@ -148,6 +150,7 @@ bool MetalGpuBackend::upload_texture(uintptr_t texture, const uint8_t* data, siz
 }
 
 bool MetalGpuBackend::download_texture(uintptr_t texture, uint8_t* data, size_t size) {
+    wait_render_idle();  // P1：排空在飞渲染批次再搬运
     @autoreleasepool {
         if (!is_available()) {
             return false;
@@ -175,6 +178,7 @@ bool MetalGpuBackend::download_texture(uintptr_t texture, uint8_t* data, size_t 
 }
 
 bool MetalGpuBackend::copy_buffer_to_texture(uintptr_t buffer, size_t size, uintptr_t texture) {
+    wait_render_idle();  // P1：排空在飞渲染批次再搬运
     @autoreleasepool {
         if (!is_available()) {
             return false;
@@ -193,6 +197,7 @@ bool MetalGpuBackend::copy_buffer_to_texture(uintptr_t buffer, size_t size, uint
 }
 
 bool MetalGpuBackend::copy_texture_to_buffer(uintptr_t texture, uintptr_t buffer, size_t size) {
+    wait_render_idle();  // P1：排空在飞渲染批次再搬运
     @autoreleasepool {
         if (!is_available()) {
             return false;
@@ -339,16 +344,19 @@ bool MetalGpuBackend::begin_render_pass(const GpuRenderPassDesc& desc) {
                 MTLClearColorMake(desc.clear_color[0], desc.clear_color[1],
                                   desc.clear_color[2], desc.clear_color[3]);
 
-            id<MTLCommandBuffer> cmd = [impl_->commandQueue_ commandBuffer];
-            if (!cmd) return false;
-            id<MTLRenderCommandEncoder> enc = [cmd renderCommandEncoderWithDescriptor:d];
+            // P1 批处理：cmd buffer 只在批首创建；连续 pass 共享同一 pending
+            // buffer，各 pass 一个 encoder（同 buffer 内有序）
+            if (impl_->renderCmd_ == nil) {
+                impl_->renderCmd_ = [impl_->commandQueue_ commandBuffer];
+                if (!impl_->renderCmd_) return false;
+            }
+            id<MTLRenderCommandEncoder> enc = [impl_->renderCmd_ renderCommandEncoderWithDescriptor:d];
             if (!enc) return false;
 
             MTLViewport vp = {0.0, 0.0, (double)target.width, (double)target.height,
                               0.0, 1.0};
             [enc setViewport:vp];
 
-            impl_->renderCmd_ = cmd;
             impl_->renderEncoder_ = enc;
         }
         return true;
@@ -396,10 +404,30 @@ bool MetalGpuBackend::end_render_pass() {
             if (impl_->renderEncoder_ == nil || impl_->renderCmd_ == nil) {
                 return false;
             }
+            // P1 批处理：只结束本 pass 的 encoder，cmd buffer 保持 pending——
+            // 连续 pass 录进同一 buffer（同 buffer 内 encoder 天然 GPU 有序，
+            // 跨 pass 读写同纹理无需 fence）。提交与等待延迟到 wait_render_idle。
             [impl_->renderEncoder_ endEncoding];
+            impl_->renderEncoder_ = nil;
+        }
+        return true;
+    }
+}
+
+bool MetalGpuBackend::wait_render_idle() {
+    @autoreleasepool {
+        if (!is_available()) {
+            return false;
+        }
+        @synchronized(impl_->renderPipelineCache_) {
+            if (impl_->renderCmd_ == nil) {
+                return true;  // 无在飞渲染工作
+            }
+            if (impl_->renderEncoder_ != nil) {
+                return false;  // pass 未 end（违反 begin..end 契约）
+            }
             [impl_->renderCmd_ commit];
             [impl_->renderCmd_ waitUntilCompleted];
-            impl_->renderEncoder_ = nil;
             impl_->renderCmd_ = nil;
         }
         return true;
