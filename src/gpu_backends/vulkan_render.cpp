@@ -1,4 +1,4 @@
-﻿// Vulkan 渲染能力（离屏 render-to-texture）：VulkanGpuBackend 的 render 段实现。
+// Vulkan 渲染能力（离屏 render-to-texture）：VulkanGpuBackend 的 render 段实现。
 //
 // 模型（与 gpu_render_ops.hpp 的接口契约一致）：
 //   - 纹理：VkImage（OPTIMAL tiling，COLOR_ATTACHMENT|SAMPLED|TRANSFER usage）+
@@ -199,6 +199,15 @@ void VulkanGpuBackend::free_texture(uintptr_t texture) {
         return;
     }
     VulkanTexture* tex = (VulkanTexture*)texture;
+    // 逐出该纹理的 framebuffer 缓存（P3.3），再销毁纹理资源
+    for (auto it = framebufferCache_.begin(); it != framebufferCache_.end();) {
+        if (it->first.first == tex) {
+            vkDestroyFramebuffer(device_, it->second, nullptr);
+            it = framebufferCache_.erase(it);
+        } else {
+            ++it;
+        }
+    }
     vkDestroyImageView(device_, tex->view, nullptr);
     vkDestroyImage(device_, tex->image, nullptr);
     vkFreeMemory(device_, tex->memory, nullptr);
@@ -389,6 +398,13 @@ uintptr_t VulkanGpuBackend::create_sampler(const GpuSamplerDesc& desc) {
     if (device_ == VK_NULL_HANDLE) {
         return 0;
     }
+    // 按（filter, addressMode）组合缓存：采样器是不可变对象，draw 热路径
+    // 每 pass 创建/销毁纯属浪费；缓存持有所有权，free_sampler 为 no-op。
+    const uint32_t key = (desc.linear ? 1u : 0u) | (desc.clamp_to_edge ? 2u : 0u);
+    auto it = samplerCache_.find(key);
+    if (it != samplerCache_.end()) {
+        return (uintptr_t)it->second;
+    }
     VkSamplerCreateInfo info{};
     info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
     info.magFilter = desc.linear ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
@@ -403,15 +419,13 @@ uintptr_t VulkanGpuBackend::create_sampler(const GpuSamplerDesc& desc) {
     if (vkCreateSampler(device_, &info, nullptr, &sampler) != VK_SUCCESS) {
         return 0;
     }
+    samplerCache_[key] = sampler;
     return (uintptr_t)sampler;
 }
 
 void VulkanGpuBackend::free_sampler(uintptr_t sampler) {
-    std::lock_guard render_lock(renderMutex_);
-    if (sampler == 0 || device_ == VK_NULL_HANDLE) {
-        return;
-    }
-    vkDestroySampler(device_, (VkSampler)sampler, nullptr);
+    // 缓存持有所有权：句柄归 samplerCache_，shutdown 统一销毁。此处 no-op。
+    (void)sampler;
 }
 
 // ---- 管线 ----
@@ -696,18 +710,26 @@ bool VulkanGpuBackend::begin_render_pass(const GpuRenderPassDesc& desc) {
         return false;
     }
 
-    VkFramebufferCreateInfo fbInfo{};
-    fbInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-    fbInfo.renderPass = rp;
-    fbInfo.attachmentCount = 1;
-    fbInfo.pAttachments = &target->view;
-    fbInfo.width = target->width;
-    fbInfo.height = target->height;
-    fbInfo.layers = 1;
+    // framebuffer 按（纹理, renderPass）缓存（P3.3）：begin 建 end 毁改为复用
     VkFramebuffer fb = VK_NULL_HANDLE;
-    if (vkCreateFramebuffer(device_, &fbInfo, nullptr, &fb) != VK_SUCCESS) {
-        renderMutex_.unlock();
-        return false;
+    const auto fbKey = std::make_pair(target, rp);
+    auto fbIt = framebufferCache_.find(fbKey);
+    if (fbIt != framebufferCache_.end()) {
+        fb = fbIt->second;
+    } else {
+        VkFramebufferCreateInfo fbInfo{};
+        fbInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        fbInfo.renderPass = rp;
+        fbInfo.attachmentCount = 1;
+        fbInfo.pAttachments = &target->view;
+        fbInfo.width = target->width;
+        fbInfo.height = target->height;
+        fbInfo.layers = 1;
+        if (vkCreateFramebuffer(device_, &fbInfo, nullptr, &fb) != VK_SUCCESS) {
+            renderMutex_.unlock();
+            return false;
+        }
+        framebufferCache_[fbKey] = fb;
     }
 
     {
@@ -718,7 +740,7 @@ bool VulkanGpuBackend::begin_render_pass(const GpuRenderPassDesc& desc) {
         alloc.commandPool = commandPool_;
         alloc.commandBufferCount = 1;
         if (vkAllocateCommandBuffers(device_, &alloc, &activePass_.cmd) != VK_SUCCESS) {
-            vkDestroyFramebuffer(device_, fb, nullptr);
+            // fb 留在缓存中（对象仍有效），仅放弃本次 pass
             activePass_.cmd = VK_NULL_HANDLE;
             renderMutex_.unlock();
             return false;
@@ -855,7 +877,7 @@ bool VulkanGpuBackend::end_render_pass() {
         }
     }
 
-    vkDestroyFramebuffer(device_, activePass_.framebuffer, nullptr);
+    // framebuffer 留在缓存（P3.3），不随 pass 销毁
     if (!activePass_.usedSets.empty()) {
         vkFreeDescriptorSets(device_, renderDescriptorPool_,
                              (uint32_t)activePass_.usedSets.size(),

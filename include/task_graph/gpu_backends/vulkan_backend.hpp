@@ -1,12 +1,14 @@
-﻿#pragma once
+#pragma once
 
 #include <task_graph/gpu_image_ops.hpp>
 #include <vulkan/vulkan.h>
 
 #include <functional>
+#include <map>
 #include <mutex>
 #include <string>
 #include <unordered_map>
+#include <utility>
 
 namespace task_graph {
 
@@ -116,6 +118,15 @@ private:
     // VkRenderPass 按（格式, loadOp）缓存：管线兼容性只看附件格式，clear/load
     // 两种变体各留一份；begin/end 复用。
     std::unordered_map<uint64_t, VkRenderPass> renderPassCache_;
+
+    // 采样器按（filter, addressMode）组合缓存（键 = linear | clamp<<1）：
+    // draw 热路径每 pass create/free 的开销全免；缓存持有所有权，
+    // free_sampler 对缓存句柄是 no-op，shutdown 统一销毁。
+    std::unordered_map<uint32_t, VkSampler> samplerCache_;
+
+    // framebuffer 按（目标纹理, renderPass）缓存：begin 建 end 毁改为复用，
+    // 纹理销毁时逐出（free_texture 内），shutdown 统一销毁。
+    std::map<std::pair<VulkanTexture*, VkRenderPass>, VkFramebuffer> framebufferCache_;
 
     // 立即模式 pass 的当前状态（begin 到 end 之间有效）。
     // usedSets：本 pass 内 draw 分配的 descriptor set，end 时统一释放。

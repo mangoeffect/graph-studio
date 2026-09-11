@@ -215,27 +215,35 @@ uintptr_t MetalGpuBackend::create_sampler(const GpuSamplerDesc& desc) {
         if (!is_available()) {
             return 0;
         }
-        MTLSamplerDescriptor* d = [[MTLSamplerDescriptor alloc] init];
-        d.minFilter = desc.linear ? MTLSamplerMinMagFilterLinear : MTLSamplerMinMagFilterNearest;
-        d.magFilter = d.minFilter;
-        d.sAddressMode = desc.clamp_to_edge ? MTLSamplerAddressModeClampToEdge
-                                            : MTLSamplerAddressModeRepeat;
-        d.tAddressMode = d.sAddressMode;
-        id<MTLSamplerState> s = [impl_->device_ newSamplerStateWithDescriptor:d];
-        if (!s) {
-            return 0;
+        // 按（filter, addressMode）组合缓存：采样器不可变，draw 热路径每 pass
+        // 创建/销毁纯属浪费；缓存持有所有权（返回的句柄不再额外 retain），
+        // free_sampler 为 no-op，shutdown（samplerCache_ = nil）统一释放。
+        NSNumber* key = @( (desc.linear ? 1 : 0) | (desc.clamp_to_edge ? 2 : 0) );
+        @synchronized(impl_->samplerCache_) {
+            id<MTLSamplerState> cached = impl_->samplerCache_[key];
+            if (cached) {
+                return (uintptr_t)cached;
+            }
+            MTLSamplerDescriptor* d = [[MTLSamplerDescriptor alloc] init];
+            d.minFilter = desc.linear ? MTLSamplerMinMagFilterLinear
+                                      : MTLSamplerMinMagFilterNearest;
+            d.magFilter = d.minFilter;
+            d.sAddressMode = desc.clamp_to_edge ? MTLSamplerAddressModeClampToEdge
+                                                : MTLSamplerAddressModeRepeat;
+            d.tAddressMode = d.sAddressMode;
+            id<MTLSamplerState> s = [impl_->device_ newSamplerStateWithDescriptor:d];
+            if (!s) {
+                return 0;
+            }
+            impl_->samplerCache_[key] = s;
+            return (uintptr_t)s;
         }
-        return (uintptr_t)CFBridgingRetain(s);
     }
 }
 
 void MetalGpuBackend::free_sampler(uintptr_t sampler) {
-    @autoreleasepool {
-        if (sampler == 0) {
-            return;
-        }
-        CFBridgingRelease((CFTypeRef)sampler);
-    }
+    // 缓存持有所有权：句柄归 samplerCache_，shutdown 统一释放。此处 no-op。
+    (void)sampler;
 }
 
 uintptr_t MetalGpuBackend::compile_render_pipeline(const GpuRenderPipelineDesc& desc) {

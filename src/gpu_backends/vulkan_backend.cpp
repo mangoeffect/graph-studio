@@ -1,4 +1,4 @@
-﻿#include <task_graph/gpu_backends/vulkan_backend.hpp>
+#include <task_graph/gpu_backends/vulkan_backend.hpp>
 #include <task_graph/data_types.hpp>
 #include <cstring>
 #include <cstdlib>
@@ -316,6 +316,18 @@ void VulkanGpuBackend::shutdown() {
         }
     }
     renderPassCache_.clear();
+    for (auto& [key, fb] : framebufferCache_) {
+        if (fb != VK_NULL_HANDLE) {
+            vkDestroyFramebuffer(device_, fb, nullptr);
+        }
+    }
+    framebufferCache_.clear();
+    for (auto& [key, sampler] : samplerCache_) {
+        if (sampler != VK_NULL_HANDLE) {
+            vkDestroySampler(device_, sampler, nullptr);
+        }
+    }
+    samplerCache_.clear();
     if (renderDescriptorPool_ != VK_NULL_HANDLE) {
         vkDestroyDescriptorPool(device_, renderDescriptorPool_, nullptr);
         renderDescriptorPool_ = VK_NULL_HANDLE;

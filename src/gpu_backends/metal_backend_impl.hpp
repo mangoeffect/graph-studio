@@ -13,6 +13,9 @@ public:
     NSMutableDictionary<NSString*, id<MTLComputePipelineState>>* kernelCache_ = nil;
     // render（见 metal_render.mm）：管线缓存 + 立即模式 pass 的当前 encoder 状态
     NSMutableDictionary<NSString*, id<MTLRenderPipelineState>>* renderPipelineCache_ = nil;
+    // 采样器缓存（键 = linear | clamp<<1 的 NSNumber）：缓存持有所有权，
+    // free_sampler 为 no-op，shutdown 统一释放
+    NSMutableDictionary<NSNumber*, id<MTLSamplerState>>* samplerCache_ = nil;
     id<MTLCommandBuffer> renderCmd_ = nil;
     id<MTLRenderCommandEncoder> renderEncoder_ = nil;
 };

@@ -31,6 +31,7 @@ bool MetalGpuBackend::init() {
         impl_->commandQueue_ = [impl_->device_ newCommandQueue];
         impl_->kernelCache_ = [NSMutableDictionary dictionary];
         impl_->renderPipelineCache_ = [NSMutableDictionary dictionary];
+        impl_->samplerCache_ = [NSMutableDictionary dictionary];
         return impl_->commandQueue_ != nil;
     }
 }
@@ -44,6 +45,7 @@ void MetalGpuBackend::shutdown() {
             impl_->device_ = nil;
             impl_->kernelCache_ = nil;
             impl_->renderPipelineCache_ = nil;
+            impl_->samplerCache_ = nil;
         }
     }
 }
