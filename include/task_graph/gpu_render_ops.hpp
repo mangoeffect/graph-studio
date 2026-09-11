@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 // GPU 渲染（离屏 render-to-texture）能力的描述类型与 Image 侧辅助函数。
 //
@@ -100,5 +100,12 @@ bool ensure_texture(Image& image);
 // texture->buffer 拷贝。ensure_gpu 内部也会调用本逻辑（compute 链消费 render
 // 输出时不经 CPU）。
 bool ensure_gpu_buffer(Image& image);
+
+// pack_gpu_buffer_to_rgba(image)：GPU-resident 非 RGBA 布局 buffer（GRAY/RGB/
+// BGR/BGRA，UINT8）经 compute kernel 在 GPU 侧 swizzle/pad 成 RGBA buffer，
+// 就地改写 image（channels=4、RGBA、gpu_handle 换新）——render 链消费 compute
+// 链输出的非 RGBA buffer 时免去 CPU 往返。已是 RGBA/纹理驻留时为 no-op true；
+// 后端无 compute 能力（或失败）返回 false，调用方回退 CPU 路径。
+bool pack_gpu_buffer_to_rgba(Image& image);
 
 }  // namespace task_graph
