@@ -1,4 +1,4 @@
-﻿#include <task_graph/data_types.hpp>
+#include <task_graph/data_types.hpp>
 #include <task_graph/gpu_image_ops.hpp>
 
 #ifdef TASK_GRAPH_ENABLE_OPENCV
@@ -36,6 +36,9 @@ TypeRegistry& TypeRegistry::instance() {
     extern void pull_mnn_tasks();
     pull_mnn_tasks();
 #endif
+    // 同上：强制拉入 src/sdk.cpp 的 io_input/io_output 内置任务注册。
+    extern void pull_sdk_tasks();
+    pull_sdk_tasks();
     static TypeRegistry r;
     return r;
 }

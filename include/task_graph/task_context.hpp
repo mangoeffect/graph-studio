@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include <plugin_api.hpp>
 #include <mutex>
@@ -129,13 +129,20 @@ public:
         return std::any_cast<T>(it->second);
     }
 
+    // 无类型端口读取（不做 any_cast）：边界节点（io_output 等）转发任意
+    // 负载用。端口不存在返回 nullptr。
+    const std::any* input_any(const std::string& port_name) const {
+        auto it = inputs_by_port_.find(port_name);
+        if (it == inputs_by_port_.end()) return nullptr;
+        return &it->second;
+    }
+
     // 零拷贝只读版本：返回指向内部 any 的 const 指针，避免拷贝大型负载
     template <typename T>
     std::optional<const T*> input_ptr(const std::string& port_name) const {
         auto it = inputs_by_port_.find(port_name);
         if (it == inputs_by_port_.end() || !it->second.has_value()) {
-            return std::nullopt;
-        }
+            return std::nullopt;        }
         if (it->second.type() != typeid(T)) {
             return std::nullopt;
         }

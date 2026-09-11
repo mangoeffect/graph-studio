@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include <task_graph/compiler.hpp>
 #include <task_graph/thread_pool.hpp>
@@ -50,6 +50,12 @@ struct ExecutorConfig {
 
     // 是否启用内置 ProfileCollector 采集（通过 profiler() 只读访问）
     bool enable_profiling{false};
+
+    // 执行期全局黑板初值：每个 task 启动前由 executor 复制进其 TaskContext
+    // （任务侧 ctx.get_value(key) 读取）。宿主（如 TaskGraphSdk）通过
+    // set_context_values 在两次执行之间整体替换快照——执行中读取的永远是
+    // 某个不可变快照，无数据竞争；修改下次执行生效。
+    std::shared_ptr<const std::unordered_map<std::string, std::any>> context_values;
 };
 
 class DAGExecutor {
@@ -68,9 +74,16 @@ public:
     // 获取内置 ProfileCollector（始终可用；enable_profiling=true 时才会采集数据）
     const ProfileCollector& profiler() const { return profiler_; }
 
+    // 替换执行期全局上下文快照（线程安全；只影响尚未构造的 TaskContext，
+    // 对在途执行中的任务不生效——同一 run 内视图一致）。
+    void set_context_values(
+        std::shared_ptr<const std::unordered_map<std::string, std::any>> values);
+
 private:
     void run(const DAG& dag);
     void process_task(const DAG& dag, const ExecutionPlan& plan, const TaskId& task_id);
+    // 把 context_values 快照灌入 TaskContext（无则空操作）。
+    void seed_context_values(TaskContext& ctx) const;
 
     // 流式模式（视频等时序源）：检测 IStreamSource 并在 run() 入口提前派发。
     // 返回 true 表示已处理（stream 模式），run() 直接返回；false 表示无源，
@@ -100,6 +113,11 @@ private:
 
     ExecutorConfig config_;
     ProfileCollector profiler_;
+
+    // context_values 快照（与 config_.context_values 分离，运行期可整体替换；
+    // 互斥量保护 shared_ptr 本身的读写，快照内容不可变）。
+    mutable std::mutex values_mutex_;
+    std::shared_ptr<const std::unordered_map<std::string, std::any>> context_values_;
 };
 
 using DAGExecutorPtr = std::shared_ptr<DAGExecutor>;

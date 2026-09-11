@@ -1,4 +1,4 @@
-﻿#include <task_graph/executor.hpp>
+#include <task_graph/executor.hpp>
 #include <task_graph/compiler.hpp>
 #include <task_graph/thread_pool.hpp>
 #include <task_graph/task_context.hpp>
@@ -16,10 +16,30 @@ namespace task_graph {
 
 DAGExecutor::DAGExecutor(ExecutorConfig config)
     : thread_pool_(std::make_shared<ThreadPool>(config.thread_pool_size)),
-      config_(std::move(config)) {}
+      config_(std::move(config)) {
+    context_values_ = config_.context_values;
+}
 
 DAGExecutor::~DAGExecutor() {
     cancel();
+}
+
+void DAGExecutor::set_context_values(
+    std::shared_ptr<const std::unordered_map<std::string, std::any>> values) {
+    std::lock_guard<std::mutex> lock(values_mutex_);
+    context_values_ = std::move(values);
+}
+
+void DAGExecutor::seed_context_values(TaskContext& ctx) const {
+    std::shared_ptr<const std::unordered_map<std::string, std::any>> snapshot;
+    {
+        std::lock_guard<std::mutex> lock(values_mutex_);
+        snapshot = context_values_;
+    }
+    if (!snapshot) return;
+    for (const auto& kv : *snapshot) {
+        ctx.set_value(kv.first, kv.second);
+    }
 }
 
 // 触发统一执行事件：喂给 ProfileCollector（如启用）和用户 callback
@@ -254,6 +274,7 @@ TaskResult DAGExecutor::execute_one(const DAG& dag, const TaskId& tid) {
     emit_event(ExecutionEvent::Type::TaskStarted, tid, task->type());
     auto exec_start = std::chrono::steady_clock::now();
     TaskContext task_ctx(task->config().params, deps, input_results, std::move(inputs_by_port));
+    seed_context_values(task_ctx);
     TaskResult result = task->execute(task_ctx);
     result.duration = std::chrono::duration_cast<std::chrono::nanoseconds>(
         std::chrono::steady_clock::now() - exec_start);
@@ -347,6 +368,7 @@ void DAGExecutor::run_stream(const DAG& dag, NodePtr src, IStreamSource* stream_
     }
     while (!failed && !cancelled_) {
         TaskContext src_ctx(src->config().params, {}, {}, {});
+        seed_context_values(src_ctx);
         emit_event(ExecutionEvent::Type::TaskStarted, src->id(), src->type());
         auto fstart = std::chrono::steady_clock::now();
         TaskResult fr = stream_src->next_frame(src_ctx);
@@ -612,6 +634,7 @@ void DAGExecutor::run(const DAG& dag) {
 
                 TaskContext task_ctx(task->config().params, deps, input_results,
                                      std::move(inputs_by_port));
+                seed_context_values(task_ctx);
                 TaskResult result = task->execute(task_ctx);
 
                 auto exec_duration = std::chrono::steady_clock::now() - exec_start;
