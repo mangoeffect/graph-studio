@@ -1,5 +1,6 @@
 #include <task_graph/gpu_backends/metal_backend.hpp>
 #include <task_graph/data_types.hpp>
+#include "metal_backend_impl.hpp"
 #include <cstring>
 #include <cstdio>
 #include <memory>
@@ -7,13 +8,6 @@
 #import <Metal/Metal.h>
 
 namespace task_graph {
-
-class MetalGpuBackendImpl {
-public:
-    id<MTLDevice> device_ = nil;
-    id<MTLCommandQueue> commandQueue_ = nil;
-    NSMutableDictionary<NSString*, id<MTLComputePipelineState>>* kernelCache_ = nil;
-};
 
 MetalGpuBackend::MetalGpuBackend()
     : impl_(new MetalGpuBackendImpl()) {
@@ -36,6 +30,7 @@ bool MetalGpuBackend::init() {
         }
         impl_->commandQueue_ = [impl_->device_ newCommandQueue];
         impl_->kernelCache_ = [NSMutableDictionary dictionary];
+        impl_->renderPipelineCache_ = [NSMutableDictionary dictionary];
         return impl_->commandQueue_ != nil;
     }
 }
@@ -43,9 +38,12 @@ bool MetalGpuBackend::init() {
 void MetalGpuBackend::shutdown() {
     @autoreleasepool {
         if (impl_) {
+            impl_->renderEncoder_ = nil;
+            impl_->renderCmd_ = nil;
             impl_->commandQueue_ = nil;
             impl_->device_ = nil;
             impl_->kernelCache_ = nil;
+            impl_->renderPipelineCache_ = nil;
         }
     }
 }

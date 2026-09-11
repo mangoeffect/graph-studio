@@ -1,5 +1,6 @@
 ﻿#include <task_graph/gpu_image_ops.hpp>
 #include <task_graph/gpu_buffer.hpp>
+#include <task_graph/gpu_texture.hpp>
 #include <mutex>
 #include <stdexcept>
 
@@ -99,6 +100,24 @@ bool to_cpu(Image& image) {
         return false;
     }
 
+    // 纹理驻留（render 链输出且未转过 buffer）：走纹理下载路径。
+    if (image.gpu_texture && image.gpu_handle == 0) {
+        const GpuTextureDesc& desc = image.gpu_texture->desc();
+        size_t totalBytes = static_cast<size_t>(desc.width) * desc.height *
+                            gpu_texture_format_bytes(desc.format);
+        if (!image.data) {
+            image.data = std::make_shared<std::vector<uint8_t>>(totalBytes);
+        }
+        if (image.data->size() != totalBytes) {
+            image.data->resize(totalBytes);
+        }
+        if (!backend->download_texture(image.gpu_texture->handle(), image.ptr(), totalBytes)) {
+            return false;
+        }
+        image.location = MemoryLocation::BOTH;
+        return true;
+    }
+
     if (backend->download_to_cpu(image)) {
         image.location = MemoryLocation::BOTH;
         return true;
@@ -116,6 +135,10 @@ bool ensure_cpu(Image& image) {
 
 bool ensure_gpu(Image& image) {
     if (image.is_on_gpu()) {
+        // GPU 驻留但只有纹理（render 链输出）：转为 compute 链可用的 buffer。
+        if (image.gpu_handle == 0 && image.gpu_texture) {
+            return ensure_gpu_buffer(image);
+        }
         return true;
     }
     return to_gpu(image);

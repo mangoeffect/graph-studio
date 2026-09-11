@@ -119,6 +119,22 @@
       ]
     },
     {
+      "name": "render_task",
+      "url": "./submodules/render/render_task",
+      "ref": "main",
+      "type": "local",
+      "tasks": [
+        "render_pass",
+        "render_pipeline",
+        "render_gradient",
+        "render_passthrough",
+        "render_mix",
+        "render_gauss_h",
+        "render_gauss_v",
+        "render_threshold"
+      ]
+    },
+    {
       "name": "js_task",
       "url": "./submodules/scripting/js_task",
       "ref": "main",

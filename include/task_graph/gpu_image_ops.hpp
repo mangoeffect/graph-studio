@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include <task_graph/data_types.hpp>
+#include <task_graph/gpu_render_ops.hpp>
 #include <cstddef>
 #include <memory>
 #include <string>
@@ -58,6 +59,73 @@ public:
     // 后端接受的 kernel 源码语言："msl"（Metal）或 "glsl"（Vulkan compute）。
     // run_gpu_op 据此从 GpuImageOp 选取 kernel_source / kernel_source_glsl。
     virtual std::string kernel_language() const { return "msl"; }
+
+    // ===== Render 能力（默认实现 = 不支持；描述类型见 gpu_render_ops.hpp）=====
+    // 离屏渲染到纹理。句柄语义与 buffer 一致：后端私有 opaque 句柄，0 表示失败。
+    // 纹理生命周期由调用方管理（GpuTexture RAII 回调 free_texture）。
+
+    virtual bool supports_render() const { return false; }
+
+    // 创建纹理（render target + sampled usage），0 表示失败。
+    virtual uintptr_t create_texture(const GpuTextureDesc& desc) {
+        (void)desc;
+        return 0;
+    }
+
+    virtual void free_texture(uintptr_t texture) { (void)texture; }
+
+    // CPU 字节 <-> 纹理（按纹理尺寸紧密 RGBA 行布局搬运，size 为字节数）。
+    virtual bool upload_texture(uintptr_t texture, const uint8_t* data, size_t size) {
+        (void)texture; (void)data; (void)size;
+        return false;
+    }
+
+    virtual bool download_texture(uintptr_t texture, uint8_t* data, size_t size) {
+        (void)texture; (void)data; (void)size;
+        return false;
+    }
+
+    // GPU 侧 buffer <-> 纹理（compute 链与 render 链互转，不经 CPU）。
+    // buffer 为 allocate_gpu_memory 返回的句柄，size 为 buffer 字节数。
+    virtual bool copy_buffer_to_texture(uintptr_t buffer, size_t size, uintptr_t texture) {
+        (void)buffer; (void)size; (void)texture;
+        return false;
+    }
+
+    virtual bool copy_texture_to_buffer(uintptr_t texture, uintptr_t buffer, size_t size) {
+        (void)texture; (void)buffer; (void)size;
+        return false;
+    }
+
+    // 采样器（0 = 失败）
+    virtual uintptr_t create_sampler(const GpuSamplerDesc& desc) {
+        (void)desc;
+        return 0;
+    }
+
+    virtual void free_sampler(uintptr_t sampler) { (void)sampler; }
+
+    // 编译渲染管线（按 desc.name 缓存，0 = 失败）。
+    virtual uintptr_t compile_render_pipeline(const GpuRenderPipelineDesc& desc) {
+        (void)desc;
+        return 0;
+    }
+
+    virtual void release_render_pipeline(uintptr_t pipeline) { (void)pipeline; }
+
+    // 立即模式 pass 录制：begin（打开目标纹理）-> render_draw（全屏三角形）->
+    // end（提交并等待完成，与 compute dispatch 的同步语义一致）。
+    virtual bool begin_render_pass(const GpuRenderPassDesc& desc) {
+        (void)desc;
+        return false;
+    }
+
+    virtual bool render_draw(const GpuDrawCall& draw) {
+        (void)draw;
+        return false;
+    }
+
+    virtual bool end_render_pass() { return false; }
 };
 
 using GpuBackendPtr = std::shared_ptr<IGpuImageBackend>;

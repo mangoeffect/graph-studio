@@ -114,9 +114,41 @@ bool VulkanGpuBackend::init() {
     appInfo.engineVersion = VK_MAKE_VERSION(0, 1, 0);
     appInfo.apiVersion = instanceApi;
 
+    // MoltenVK 等"可移植性驱动"（portability driver）必须启用
+    // VK_KHR_portability_enumeration 实例扩展 + 对应 flag 才会被枚举——
+    // macOS 无原生 Vulkan 实现时 MoltenVK 是唯一路径，不开就是 "Found no
+    // drivers"。扩展不存在（Linux/Windows 原生驱动）时跳过，零影响。
+    uint32_t extCount = 0;
+    vkEnumerateInstanceExtensionProperties(nullptr, &extCount, nullptr);
+    std::vector<VkExtensionProperties> availableExts(extCount);
+    vkEnumerateInstanceExtensionProperties(nullptr, &extCount, availableExts.data());
+    bool hasPortabilityEnum = false;
+    for (const auto& e : availableExts) {
+#ifdef VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME
+        if (std::strcmp(e.extensionName, VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME) == 0) {
+            hasPortabilityEnum = true;
+            break;
+        }
+#endif
+    }
+    const char* portabilityExtName =
+#ifdef VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME
+        VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME;
+#else
+        "VK_KHR_portability_enumeration";
+#endif
+
     VkInstanceCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
     createInfo.pApplicationInfo = &appInfo;
+    if (hasPortabilityEnum) {
+        createInfo.enabledExtensionCount = 1;
+        createInfo.ppEnabledExtensionNames = &portabilityExtName;
+        // VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR 是 enum 常量而非
+        // 宏，#ifdef 探测不到（实测踩坑）；spec 固定值为 0x1，远古头
+        //（< 1.3.239，无此常量）用数值兜底。
+        createInfo.flags |= 0x00000001u;
+    }
 
     if (vkCreateInstance(&createInfo, nullptr, &instance_) != VK_SUCCESS) {
         return false;
@@ -134,34 +166,41 @@ bool VulkanGpuBackend::init() {
     vkEnumeratePhysicalDevices(instance_, &deviceCount, devices.data());
     physicalDevice_ = devices[0]; // Use first available device
 
-    // 优先选择 compute 队列（compute 队列必支持 transfer），找不到再退回
-    // graphics/transfer（此时仅支持 buffer 上传/下载，不支持 compute dispatch）
+    // 队列族选择：优先 GRAPHICS|COMPUTE 通用族（渲染需要 graphics；现实中
+    // graphics 族都带 compute），其次 compute-only（无渲染能力），最后
+    // graphics/transfer（仅 buffer 搬运）。graphicsCapable_ 决定渲染是否可用。
     uint32_t queueFamilyCount = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice_, &queueFamilyCount, nullptr);
     std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
     vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice_, &queueFamilyCount, queueFamilies.data());
 
-    bool found = false;
-    for (uint32_t i = 0; i < queueFamilyCount; i++) {
-        if (queueFamilies[i].queueFlags & VK_QUEUE_COMPUTE_BIT) {
-            queueFamilyIndex_ = i;
-            found = true;
-            break;
-        }
-    }
-    if (!found) {
+    auto find_family = [&](VkQueueFlags required, VkQueueFlags forbidden) -> int {
         for (uint32_t i = 0; i < queueFamilyCount; i++) {
-            if (queueFamilies[i].queueFlags & (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_TRANSFER_BIT)) {
-                queueFamilyIndex_ = i;
-                found = true;
-                break;
+            VkQueueFlags f = queueFamilies[i].queueFlags;
+            if ((f & required) == required && (f & forbidden) == 0) {
+                return (int)i;
             }
         }
+        return -1;
+    };
+
+    int family = find_family(VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT, 0);
+    if (family < 0) {
+        family = find_family(VK_QUEUE_COMPUTE_BIT, VK_QUEUE_GRAPHICS_BIT);
     }
-    if (!found) {
+    if (family < 0) {
+        family = find_family(VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_TRANSFER_BIT, 0);
+    }
+    if (family < 0) {
+        family = find_family(VK_QUEUE_COMPUTE_BIT, 0);
+    }
+    if (family < 0) {
         shutdown();
         return false;
     }
+    queueFamilyIndex_ = (uint32_t)family;
+    graphicsCapable_ =
+        (queueFamilies[queueFamilyIndex_].queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0;
 
     // GLSL kernel 的 SSBO 用 uint8_t：需要 Vulkan 1.2 的
     // storageBuffer8BitAccess + shaderInt8（查询结构体链，支持才启用）。
@@ -234,6 +273,26 @@ bool VulkanGpuBackend::init() {
             computeCapable_ = true;
         }
     }
+
+    // render 基础设施：graphics 队列族 + combined image sampler descriptor pool。
+    // shaderc 由 TASK_GRAPH_VULKAN_COMPUTE 同一开关保证（渲染管线也用它编
+    // GLSL vert/frag）。渲染 pass 对象按需惰性创建并缓存（renderPassCache_）。
+    if (graphicsCapable_) {
+        VkDescriptorPoolSize samplerPool{};
+        samplerPool.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        samplerPool.descriptorCount = 64;
+
+        VkDescriptorPoolCreateInfo renderPoolInfo{};
+        renderPoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        renderPoolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+        renderPoolInfo.maxSets = 32;
+        renderPoolInfo.poolSizeCount = 1;
+        renderPoolInfo.pPoolSizes = &samplerPool;
+
+        if (vkCreateDescriptorPool(device_, &renderPoolInfo, nullptr, &renderDescriptorPool_) == VK_SUCCESS) {
+            renderCapable_ = true;
+        }
+    }
 #else
     (void)has8Bit;
 #endif
@@ -247,6 +306,22 @@ void VulkanGpuBackend::shutdown() {
         destroy_kernel_unlocked(kernels_.begin()->first);
     }
     kernelHandles_.clear();
+    while (!renderPipelines_.empty()) {
+        destroy_render_pipeline_unlocked(renderPipelines_.begin()->first);
+    }
+    renderPipelineHandles_.clear();
+    for (auto& [key, rp] : renderPassCache_) {
+        if (rp != VK_NULL_HANDLE) {
+            vkDestroyRenderPass(device_, rp, nullptr);
+        }
+    }
+    renderPassCache_.clear();
+    if (renderDescriptorPool_ != VK_NULL_HANDLE) {
+        vkDestroyDescriptorPool(device_, renderDescriptorPool_, nullptr);
+        renderDescriptorPool_ = VK_NULL_HANDLE;
+    }
+    renderCapable_ = false;
+    graphicsCapable_ = false;
     if (descriptorPool_ != VK_NULL_HANDLE) {
         vkDestroyDescriptorPool(device_, descriptorPool_, nullptr);
         descriptorPool_ = VK_NULL_HANDLE;

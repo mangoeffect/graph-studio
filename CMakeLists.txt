@@ -178,6 +178,7 @@ add_library(task_graph ${TASK_GRAPH_LIB_TYPE}
     src/model_finder.cpp
     src/data_types.cpp
     src/gpu_image_ops.cpp
+    src/gpu_render_ops.cpp
     src/gpu_kernel_library.cpp
     src/gpu_image_task.cpp
     src/task_manager.cpp
@@ -197,8 +198,12 @@ endif()
 if(TASK_GRAPH_ENABLE_METAL AND APPLE)
     target_sources(task_graph PRIVATE
         src/gpu_backends/metal_backend.mm
+        src/gpu_backends/metal_render.mm
     )
     set_source_files_properties(src/gpu_backends/metal_backend.mm PROPERTIES
+        COMPILE_FLAGS "-fobjc-arc"
+    )
+    set_source_files_properties(src/gpu_backends/metal_render.mm PROPERTIES
         COMPILE_FLAGS "-fobjc-arc"
     )
     find_library(METAL_FRAMEWORK Metal)
@@ -214,6 +219,7 @@ endif()
 if(TASK_GRAPH_ENABLE_VULKAN)
     target_sources(task_graph PRIVATE
         src/gpu_backends/vulkan_backend.cpp
+        src/gpu_backends/vulkan_render.cpp
     )
 endif()
 

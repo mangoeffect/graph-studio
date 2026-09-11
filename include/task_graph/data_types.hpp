@@ -47,11 +47,16 @@ enum class MemoryLocation {
 };
 
 class GpuBuffer;
+class GpuTexture;
 
 struct Image {
     std::shared_ptr<std::vector<uint8_t>> data;
     uintptr_t gpu_handle{0};
     std::shared_ptr<GpuBuffer> gpu_buffer;
+    // 纹理驻留形态（render 链输出）：与 gpu_buffer 互斥——纹理句柄由 GpuTexture
+    // RAII 持有（gpu_handle 仍指 buffer 或为 0，不承载纹理句柄，避免与 compute
+    // 链把 gpu_handle 当 buffer 用的代码路径混淆）。
+    std::shared_ptr<GpuTexture> gpu_texture;
     int width{0};
     int height{0};
     int channels{0};
@@ -72,7 +77,7 @@ struct Image {
         if (location == MemoryLocation::CPU) {
             return data && width > 0 && height > 0 && channels > 0;
         }
-        return gpu_handle != 0 && width > 0 && height > 0 && channels > 0;
+        return (gpu_handle != 0 || gpu_texture) && width > 0 && height > 0 && channels > 0;
     }
 
     bool is_on_gpu() const {
