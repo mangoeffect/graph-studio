@@ -123,8 +123,8 @@
 
 | 场景 | P3 基线(2025-09,commit 8b101e2 后) | P1 后 | P2 后 |
 |---|---|---|---|
-| pipeline_2pass | 1.545 ms | 1.273 ms | — |
-| pipeline_16pass | 5.321 ms | **2.596 ms (2.05x)** | — |
-| chain_8nodes | 3.715 ms | 2.786 ms (1.33x) | — |
+| pipeline_2pass | 1.545 ms | 1.273 ms | 1.292 ms |
+| pipeline_16pass | 5.321 ms | **2.596 ms (2.05x)** | 2.571 ms |
+| chain_8nodes | 3.715 ms | 2.786 ms (1.33x) | 2.747 ms |
 
-(128px 图偏小,数据以同步/提交开销为主——正是 P1 要削减的部分;P2 落地后回填。)
+(128px 下 P2 的收益在内存/分配次数——pipeline_16pass 纹理分配从 16 次/执行降到 2 次——而非帧时间;Vulkan 侧一纹理一 vkAllocateMemory 的 suballocation(P2.2)暂缓,待 CI 有 Vulkan 矩阵位后再做,便于验证。)
