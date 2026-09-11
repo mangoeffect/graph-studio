@@ -207,7 +207,20 @@ public:
     static json array() { return json(array_t()); }
     static json object() { return json(object_t()); }
 
+    // 位置感知解析错误:dag_config 等消费方用 byte 换算 1-based 行列号。
+    class parse_error : public std::runtime_error {
+    public:
+        parse_error(const std::string& msg, size_t byte_pos)
+            : std::runtime_error(msg), byte(byte_pos) {}
+        size_t byte;  // 出错处的字节偏移(0-based)
+    };
+
 private:
+    [[noreturn]] static void fail(const std::string& s, size_t pos, const char* msg) {
+        (void)s;
+        throw parse_error(std::string(msg) + " at byte " + std::to_string(pos), pos);
+    }
+
     static json parse_value(const std::string& s, size_t& pos);
     static json parse_object(const std::string& s, size_t& pos);
     static json parse_array(const std::string& s, size_t& pos);
@@ -352,12 +365,12 @@ inline json json::parse_value(const std::string& s, size_t& pos) {
             break;
         }
     }
-    throw std::runtime_error("invalid JSON");
+    fail(s, pos, "invalid JSON");
 }
 
 inline json json::parse_object(const std::string& s, size_t& pos) {
     skip_ws(s, pos);
-    if (s[pos] != '{') throw std::runtime_error("expected '{'");
+    if (s[pos] != '{') fail(s, pos, "expected '{'");
     pos++;
 
     object_t obj;
@@ -367,11 +380,11 @@ inline json json::parse_object(const std::string& s, size_t& pos) {
 
     while (true) {
         skip_ws(s, pos);
-        if (s[pos] != '"') throw std::runtime_error("expected string key");
+        if (s[pos] != '"') fail(s, pos, "expected string key");
         std::string key = parse_string(s, pos);
         
         skip_ws(s, pos);
-        if (s[pos] != ':') throw std::runtime_error("expected ':'");
+        if (s[pos] != ':') fail(s, pos, "expected ':'");
         pos++;
         
         json value = parse_value(s, pos);
@@ -380,7 +393,7 @@ inline json json::parse_object(const std::string& s, size_t& pos) {
         skip_ws(s, pos);
         if (s[pos] == ',') { pos++; }
         else if (s[pos] == '}') { pos++; break; }
-        else { throw std::runtime_error("expected ',' or '}'"); }
+        else { fail(s, pos, "expected ',' or '}'"); }
     }
 
     return obj;
@@ -388,7 +401,7 @@ inline json json::parse_object(const std::string& s, size_t& pos) {
 
 inline json json::parse_array(const std::string& s, size_t& pos) {
     skip_ws(s, pos);
-    if (s[pos] != '[') throw std::runtime_error("expected '['");
+    if (s[pos] != '[') fail(s, pos, "expected '['");
     pos++;
 
     array_t arr;
@@ -403,7 +416,7 @@ inline json json::parse_array(const std::string& s, size_t& pos) {
         skip_ws(s, pos);
         if (s[pos] == ',') { pos++; }
         else if (s[pos] == ']') { pos++; break; }
-        else { throw std::runtime_error("expected ',' or ']'"); }
+        else { fail(s, pos, "expected ',' or ']'"); }
     }
 
     return arr;
@@ -411,14 +424,14 @@ inline json json::parse_array(const std::string& s, size_t& pos) {
 
 inline std::string json::parse_string(const std::string& s, size_t& pos) {
     skip_ws(s, pos);
-    if (s[pos] != '"') throw std::runtime_error("expected '\"'");
+    if (s[pos] != '"') fail(s, pos, "expected '\"'");
     pos++;
 
     std::string result;
     while (pos < s.size() && s[pos] != '"') {
         if (s[pos] == '\\') {
             pos++;
-            if (pos >= s.size()) throw std::runtime_error("invalid escape sequence");
+            if (pos >= s.size()) fail(s, pos, "invalid escape sequence");
             switch (s[pos]) {
                 case 'n': result += '\n'; break;
                 case 'r': result += '\r'; break;
@@ -432,7 +445,7 @@ inline std::string json::parse_string(const std::string& s, size_t& pos) {
         }
         pos++;
     }
-    if (pos >= s.size()) throw std::runtime_error("unclosed string");
+    if (pos >= s.size()) fail(s, pos, "unclosed string");
     pos++;
     return result;
 }
@@ -493,5 +506,44 @@ inline std::istream& operator>>(std::istream& is, json& j) {
     j = json::parse(s);
     return is;
 }
+
+// 深比较(scalar/object/array 递归;跨 value_t 类型即不等)。数字按精确
+// 类型比较(int 3 != double 3.0),与 get<T> 的严格类型语义一致。
+inline bool operator==(const json& a, const json& b) {
+    if (a.is_null() && b.is_null()) return true;
+    if (a.is_boolean() && b.is_boolean()) {
+        return a.get<bool>() == b.get<bool>();
+    }
+    if (a.is_number_integer() && b.is_number_integer()) {
+        return a.get<long long>() == b.get<long long>();
+    }
+    if (a.is_number_float() && b.is_number_float()) {
+        return a.get<double>() == b.get<double>();
+    }
+    if (a.is_string() && b.is_string()) {
+        return a.get<std::string>() == b.get<std::string>();
+    }
+    if (a.is_array() && b.is_array()) {
+        if (a.size() != b.size()) return false;
+        auto ia = a.begin(), ib = b.begin();
+        for (; ia != a.end(); ++ia, ++ib) {
+            if (!(*ia == *ib)) return false;
+        }
+        return true;
+    }
+    if (a.is_object() && b.is_object()) {
+        auto oa = a.get<json::object_t>();
+        auto ob = b.get<json::object_t>();
+        if (oa.size() != ob.size()) return false;
+        for (const auto& kv : oa) {
+            auto it = ob.find(kv.first);
+            if (it == ob.end() || !(kv.second == it->second)) return false;
+        }
+        return true;
+    }
+    return false;
+}
+
+inline bool operator!=(const json& a, const json& b) { return !(a == b); }
 
 }

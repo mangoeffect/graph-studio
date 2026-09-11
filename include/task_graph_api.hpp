@@ -25,6 +25,12 @@
 // ===== 序列化（DAGSerializer）=====
 #include <task_graph/dag_serializer.hpp>
 
+// ===== 只读 DAG JSON 配置加载（DagConfigLoader/DagConfig）=====
+#include <task_graph/dag_config.hpp>
+
+// ===== SDK 生命周期（TaskGraphSdk）=====
+#include <task_graph/sdk.hpp>
+
 // ===== 插件加载（PluginLoader/PluginInfo）=====
 #include <task_graph/plugin.hpp>
 

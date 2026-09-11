@@ -1,4 +1,4 @@
-﻿cmake_minimum_required(VERSION 3.18)
+cmake_minimum_required(VERSION 3.18)
 
 project(task_graph
     VERSION 0.1.0
@@ -174,6 +174,8 @@ add_library(task_graph ${TASK_GRAPH_LIB_TYPE}
     src/plugin.cpp
     src/plugin_registry.cpp
     src/dag_serializer.cpp
+    src/dag_config.cpp
+    src/sdk.cpp
     src/logger.cpp
     src/model_finder.cpp
     src/data_types.cpp
@@ -349,6 +351,8 @@ function(add_tg_test name)
 endfunction()
 
 add_tg_test(test_dag)
+add_tg_test(test_dag_config)
+add_tg_test(test_sdk)
 add_tg_test(test_ports)
 add_tg_test(test_params)
 add_tg_test(test_serializer)
