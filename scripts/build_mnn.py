@@ -198,6 +198,12 @@ def do_wasm(root: Path, src: Path, jobs: int, install_dir: Path,
         "-DMNN_KLEIDIAI=OFF",
         "-DMNN_SME2=OFF",
         "-DMNN_METAL=OFF",
+        # 消费方（libtask_graph.a -> graph_studio/tests）是 -pthread 的
+        # shared-memory 模块：wasm-ld 要求链入的每个 .o 都带 atomics/bulk-memory
+        # 特性，否则 "--shared-memory is disallowed by Interpreter.cpp.o"。
+        # -matomics/-mbulk-memory 只开代码生成特性，不引入线程。
+        "-DCMAKE_C_FLAGS=-matomics -mbulk-memory",
+        "-DCMAKE_CXX_FLAGS=-matomics -mbulk-memory",
     ]
     # 工具链钉死且旧 CMakeCache 会缓存错误工具链（如 PATH 上其它 emscripten
     # 的 sysroot），缓存不可跨工具链复用——每次清空重建

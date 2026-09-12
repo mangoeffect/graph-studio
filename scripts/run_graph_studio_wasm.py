@@ -68,7 +68,9 @@ def main() -> int:
 
     emsdk_root = emsdk.find_emsdk_root(args.emsdk_root or None)
     qt_wasm_root = Path(args.qt_wasm_root or os.environ.get("QT_WASM_ROOT", ""))
-    qt_host_root = Path(args.qt_host_root or os.environ.get("QT_HOST_ROOT", ""))
+    # QT_HOST_ROOT 为本仓库约定；QT_HOST_PATH 是 Qt 官方变量名，一并识别
+    qt_host_root = Path(args.qt_host_root or os.environ.get("QT_HOST_ROOT", "")
+                        or os.environ.get("QT_HOST_PATH", ""))
 
     if not emsdk_root:
         console.fail("找不到 emsdk。请安装 emsdk 并设 EMSDK_ROOT 环境变量。")
@@ -107,13 +109,16 @@ def main() -> int:
                 console.warn("MNN WASM 构建失败，task_graph 以 stub 降级（仅影响 MNN 任务）")
 
         # 1) 构建 libtask_graph.a（多线程：-pthread）
+        # -fexceptions：核心库 DAG API 按异常语义报错（dag.cpp throw），
+        # app 的 GraphModel 全程 try/catch 消费；wasm 默认禁异常会让 throw
+        # 直接 trap（浏览器白屏）。全链路（编译+链接）显式开启。
         # 若 OpenCV WASM 静态库已构建，则核心库也开 OpenCV。
         lib_defines = [
             f"-DCMAKE_TOOLCHAIN_FILE={emsdk_root}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake",
             "-DCMAKE_BUILD_TYPE=Release",
-            "-DCMAKE_CXX_FLAGS=-pthread",
+            "-DCMAKE_CXX_FLAGS=-pthread -fexceptions",
             "-DCMAKE_C_FLAGS=-pthread",
-            "-DCMAKE_EXE_LINKER_FLAGS=-pthread -sUSE_PTHREADS=1",
+            "-DCMAKE_EXE_LINKER_FLAGS=-pthread -sUSE_PTHREADS=1 -fexceptions",
         ]
         if (root / "build_wasm" / "opencv" / "install" / "lib" / "cmake" / "opencv4").is_dir():
             console.step("检测到 OpenCV WASM 库，核心库启用 OpenCV")
@@ -132,7 +137,12 @@ def main() -> int:
         # 2) 配置 + 构建 graph_studio WASM（用 qt-cmake）
         console.step("配置 graph_studio WASM")
         qt_args = [str(qt_cmake), "-S", str(root / "app" / "graph_studio"), "-B", str(gs_build),
-                   "-DCMAKE_BUILD_TYPE=Release", f"-DQT_HOST_PATH={qt_host_root}"]
+                   "-DCMAKE_BUILD_TYPE=Release", f"-DQT_HOST_PATH={qt_host_root}",
+                   # Qt 6.6 wasm 交叉编译要求显式 host cmake 包目录
+                   f"-DQT_HOST_PATH_CMAKE_DIR={qt_host_root}/lib/cmake",
+                   # 与核心库一致：app 侧 try/catch（GraphModel 等）需要异常表
+                   "-DCMAKE_CXX_FLAGS=-fexceptions",
+                   "-DCMAKE_EXE_LINKER_FLAGS=-fexceptions"]
         env = dict(os.environ, EMSDK=str(emsdk_root))
         code = runner.check(qt_args, env=env, what="配置 graph_studio WASM")
         if code != 0:
