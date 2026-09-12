@@ -121,6 +121,10 @@ def main() -> int:
                     help="构建/复用 MNN 引擎并以 -DTASK_GRAPH_ENABLE_MNN=ON 配置"
                          "（产物 build/mnn/install，配合 CI actions/cache；"
                          "Windows 构建失败仅告警降级 stub，不阻塞）")
+    ap.add_argument("--wgpu", action="store_true",
+                    help="下载/复用 wgpu-native 并以 -DTASK_GRAPH_ENABLE_WGPU=ON 配置"
+                         "（产物 build/wgpu/install，配合 CI actions/cache；"
+                         "下载失败仅告警跳过，不阻塞）")
     args = ap.parse_args()
 
     root = repo_root()
@@ -188,8 +192,15 @@ def main() -> int:
             else:
                 console.fail("MNN 构建失败")
                 return 1
-    if args.mnn:
-        root_defines += ["-DTASK_GRAPH_ENABLE_MNN=ON"]
+    # ---- wgpu-native（可选）----
+    if args.wgpu and not args.no_build:
+        console.step("下载/复用 wgpu-native（fetch_wgpu.py，幂等）")
+        code = subprocess.run(
+            [sys.executable, str(root / "scripts" / "fetch_wgpu.py")],
+            cwd=str(root),
+        ).returncode
+        if code != 0:
+            console.warn("wgpu-native 下载失败；wgpu 后端禁用，不阻塞")
 
     # ---- 根构建（一次性）----
     # 框架/子模块阶段需要完整根树；UI 阶段也需要 libtask_graph。
@@ -202,6 +213,16 @@ def main() -> int:
         root_defines.append("-DTASK_GRAPH_ENABLE_VULKAN=ON")
     if opencv_dir and (opencv_dir / "lib").is_dir():
         root_defines.append(f"-DOpenCV_DIR={opencv_dir / 'lib'}")
+    # 可选后端/引擎 defines 必须在基础定义之后追加（--mnn 的追加曾写在
+    # root_defines 定义之前 → NameError/被覆盖，顺手修复）
+    if args.mnn:
+        root_defines.append("-DTASK_GRAPH_ENABLE_MNN=ON")
+    if args.wgpu:
+        # CMake 侧探不到产物只 warn+跳过；这里同时探测产物决定是否传开关
+        if (root / "build" / "wgpu" / "install").is_dir():
+            root_defines.append("-DTASK_GRAPH_ENABLE_WGPU=ON")
+        else:
+            console.warn("build/wgpu/install 不存在，跳过 -DTASK_GRAPH_ENABLE_WGPU=ON")
 
     if not args.no_build:
         if need_root:
