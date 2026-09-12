@@ -71,6 +71,13 @@ jobs:
           path: build/mnn/install
           key: mnn-engine-${{ runner.os }}-${{ hashFiles('scripts/build_mnn.py') }}
 
+      # wgpu-native 预构建（钉版本 release zip，约 30~60MB）。缓存命中时跳过。
+      - name: Restore wgpu-native cache
+        uses: actions/cache@v4
+        with:
+          path: build/wgpu/install
+          key: wgpu-native-${{ runner.os }}-${{ hashFiles('scripts/fetch_wgpu.py') }}
+
       # Windows 的 Ninja 需要 cl.exe 在 PATH（vcvars），只影响后续 MNN 构建，
       # 主构建走 VS 生成器不受影响。
       - name: Setup MSVC env (Windows, for MNN Ninja build)
@@ -88,7 +95,17 @@ jobs:
           # run_all_test 内部构建失败仅告警、测试侧按配置门控，不阻塞。
           EXTRA=""
           if [ "$RUNNER_OS" = "Windows" ]; then EXTRA="--download-models"; fi
-          python scripts/run_all_test.py -j 3 -v --config Debug $EXTRA --mnn
+          python scripts/run_all_test.py -j 3 -v --config Debug $EXTRA --mnn --wgpu
+
+      # wgpu 统一后端的渲染分支（WGSL）：非阻塞附加项（首个里程碑只
+      # macOS/Linux 验证；compute 互操作图在 wgpu 下显式 SKIP 属预期）。
+      - name: wgpu backend render tests (non-blocking)
+        if: runner.os != 'Windows'
+        continue-on-error: true
+        shell: bash
+        run: |
+          cd build
+          TG_RENDER_TEST_FORCE_WGPU=1 ctest -R test_render_graph --output-on-failure
 
       - name: Show test summary on failure
         if: failure()

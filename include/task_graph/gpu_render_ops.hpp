@@ -62,6 +62,9 @@ struct GpuRenderPipelineDesc {
     std::string msl_fragment_name;
     std::string glsl_vertex_source;
     std::string glsl_fragment_source;
+    // wgpu 后端（WgpuGpuBackend）专用：WGSL 单源（vs_main + fs_main 入口），
+    // 见 wgpu_render.cpp 头注释的绑定布局契约；Metal/Vulkan 后端忽略本字段。
+    std::string wgsl_source;
     GpuTextureFormat target_format{GpuTextureFormat::RGBA8_UNORM};
     // 标准 alpha blend（src * srcAlpha + dst * (1 - srcAlpha)）
     bool enable_blend{false};

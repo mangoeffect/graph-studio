@@ -42,6 +42,9 @@ void GpuImageTaskBase::on_init() {
     if (!op) return;
 
     const std::string lang = backend->kernel_language();
+    if (lang != "msl" && lang != "glsl") {
+        return;  // WGSL 后端：无 compute kernel，预编译跳过（execute 时明确报错）
+    }
     const std::string& kernel_source =
         (lang == "glsl" && !op->kernel_source_glsl.empty()) ? op->kernel_source_glsl : op->kernel_source;
     if (kernel_source.empty()) return;
@@ -136,6 +139,15 @@ TaskResult GpuImageTaskBase::run_gpu_op(TaskContext& ctx, const std::string& op_
 
     // 按后端语言选择 kernel 源码（Metal 用 MSL，Vulkan 用 GLSL）
     const std::string lang = backend->kernel_language();
+    if (lang != "msl" && lang != "glsl") {
+        // wgpu 等 WGSL 后端：GpuKernelLibrary 暂无 WGSL kernel（12 个 compute
+        // op 的 WGSL 移植为独立任务）；明确报错而不是把 MSL/GLSL 硬喂给
+        // WGSL 编译器（后者只产生难懂的 validation error）
+        TG_LOG_ERROR(("gpu task '" + id() + "': op '" + op_name +
+                      "' has no WGSL kernel yet; use a Metal/Vulkan backend "
+                      "for compute ops (wgpu backend currently renders only)").c_str());
+        return TaskResult{.status = TaskStatus::FAILED};
+    }
     const std::string& kernel_source =
         (lang == "glsl" && !op->kernel_source_glsl.empty()) ? op->kernel_source_glsl : op->kernel_source;
     if (kernel_source.empty()) {

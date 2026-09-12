@@ -1,4 +1,4 @@
-﻿cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.20)
 project(graph_studio LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -8,6 +8,8 @@ set(TASK_GRAPH_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../)
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 include_directories(${TASK_GRAPH_ROOT}/include)
+# 消费者 API 头（dag_config.hpp/sdk.hpp 等）自 37d8edd 起位于 api/include
+include_directories(${TASK_GRAPH_ROOT}/api/include)
 
 # 根据是否为 WASM 编译选择对应的 task_graph 库目录
 if(EMSCRIPTEN)
@@ -136,6 +138,13 @@ target_link_libraries(graph_studio PRIVATE
 # 桌面端显式链接 OpenCV（WASM 在末尾 EMSCRIPTEN 块条件链接）
 if(NOT EMSCRIPTEN)
     target_link_libraries(graph_studio PRIVATE ${OpenCV_LIBS})
+endif()
+
+# wgpu 统一后端头（GpuBootstrap.cpp 按 TASK_GRAPH_ENABLE_WGPU include）：
+# 核心库探测成功（TASK_GRAPH_ENABLE_WGPU + WGPU_INCLUDE_DIR）即对 app 开放
+if(TASK_GRAPH_ENABLE_WGPU AND WGPU_INCLUDE_DIR)
+    target_compile_definitions(graph_studio PRIVATE TG_APP_HAS_WGPU=1)
+    target_include_directories(graph_studio PRIVATE ${WGPU_INCLUDE_DIR})
 endif()
 
 # Vulkan 后端头（GpuBootstrap.cpp 直接 include vulkan_backend.hpp）：非 Apple

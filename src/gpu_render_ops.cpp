@@ -63,6 +63,55 @@ void main() {
 }
 )GLSL";
 
+// WGSL（wgpu 后端）：entry 名 = kernel 名（"tg_pack_rgba"），绑定 0=src
+// storage read / 1=dst storage read_write / 2=uniform（vec4<u32>）。WebGPU
+// 的 storage 不支持 u8 数组视角，用 u32 位操作按字节拆取（小端，全平台一致）。
+// @workgroup_size(1,1,1)，grid 直派 workgroup（见 wgpu_backend.cpp 约定）。
+const char* kPackRgbaWgsl = R"WGSL(
+@group(0) @binding(0) var<storage, read> src: array<u32>;
+@group(0) @binding(1) var<storage, read_write> dst: array<u32>;
+struct Uni {
+    u: vec4<u32>,
+};
+@group(0) @binding(2) var<uniform> uni: Uni;
+
+fn get_byte(i: u32) -> u32 {
+    let word = src[i / 4u];
+    return (word >> ((i % 4u) * 8u)) & 0xFFu;
+}
+
+@compute @workgroup_size(1, 1, 1)
+fn tg_pack_rgba(@builtin(global_invocation_id) g: vec3<u32>) {
+    let width = uni.u.x;
+    let height = uni.u.y;
+    let mode = uni.u.z;
+    if (g.x >= width || g.y >= height) {
+        return;
+    }
+    let p = g.y * width + g.x;
+    var r: u32 = 0u;
+    var g: u32 = 0u;
+    var b: u32 = 0u;
+    var a: u32 = 255u;
+    if (mode == 1u) {  // GRAY
+        let v = get_byte(p);
+        r = v; g = v; b = v;
+    } else if (mode == 2u) {  // RGB
+        r = get_byte(p * 3u); g = get_byte(p * 3u + 1u); b = get_byte(p * 3u + 2u);
+    } else if (mode == 3u) {  // BGR
+        b = get_byte(p * 3u); g = get_byte(p * 3u + 1u); r = get_byte(p * 3u + 2u);
+    } else if (mode == 5u) {  // BGRA
+        b = get_byte(p * 4u); g = get_byte(p * 4u + 1u);
+        r = get_byte(p * 4u + 2u); a = get_byte(p * 4u + 3u);
+    } else {  // RGBA 直拷
+        r = get_byte(p * 4u); g = get_byte(p * 4u + 1u);
+        b = get_byte(p * 4u + 2u); a = get_byte(p * 4u + 3u);
+    }
+    // 小端：dst 的 u32 word 按字节序 r,g,b,a（每线程独占一个 word，无竞争）
+    dst[p] = r | (g << 8u) | (b << 16u) | (a << 24u);
+}
+)WGSL";
+
 }  // namespace
 
 bool pack_gpu_buffer_to_rgba(Image& image) {
@@ -104,8 +153,10 @@ bool pack_gpu_buffer_to_rgba(Image& image) {
         }
     }
     if (kernel == 0) {
-        const std::string src = backend->kernel_language() == "glsl"
-                                    ? kPackRgbaGlsl : kPackRgbaMsl;
+        const std::string lang = backend->kernel_language();
+        const char* src = lang == "glsl"   ? kPackRgbaGlsl
+                          : lang == "wgsl" ? kPackRgbaWgsl
+                                           : kPackRgbaMsl;
         kernel = backend->compile_kernel("tg_pack_rgba", src);
         if (kernel == 0) {
             return false;
@@ -121,12 +172,14 @@ bool pack_gpu_buffer_to_rgba(Image& image) {
         return false;
     }
 
-    const uint32_t uniform[3] = {static_cast<uint32_t>(image.width),
+    // WGSL 侧 uniform 是 vec4<u32>（16B，须整体写入）；MSL/GLSL 是 uint[3]
+    const uint32_t uniform[4] = {static_cast<uint32_t>(image.width),
                                  static_cast<uint32_t>(image.height),
-                                 static_cast<uint32_t>(mode)};
+                                 static_cast<uint32_t>(mode), 0};
+    const size_t uniform_size = backend->kernel_language() == "wgsl" ? 16 : 12;
     const std::vector<GpuBinding> bindings = {
         {image.gpu_handle}, {dst}};
-    if (!backend->dispatch(kernel, bindings, uniform, sizeof(uniform),
+    if (!backend->dispatch(kernel, bindings, uniform, uniform_size,
                            static_cast<uint32_t>(image.width),
                            static_cast<uint32_t>(image.height), 1)) {
         backend->free_gpu_memory(dst);

@@ -88,6 +88,45 @@ endif()
 
 option(TASK_GRAPH_ENABLE_OPENCV "Enable OpenCV support for image conversion" ON)
 
+# wgpu 统一 GPU 后端（wgpu-native C API，Metal/Vulkan/WebGPU 三端一张后端，
+# shader 一律 WGSL）。依赖 scripts/fetch_wgpu.py 下载的预构建产物：
+#   python scripts/fetch_wgpu.py
+# 找不到产物时 warn + 跳过（与 OpenCV/MNN 的"依赖缺失即降级"约定一致）。
+option(TASK_GRAPH_ENABLE_WGPU "Enable wgpu-native unified GPU backend" OFF)
+if(TASK_GRAPH_ENABLE_WGPU AND NOT EMSCRIPTEN AND NOT TASK_GRAPH_MOBILE)
+    if(WIN32)
+        set(WGPU_ARCH_DIR "windows-x86_64")
+    elseif(APPLE)
+        execute_process(COMMAND uname -m OUTPUT_VARIABLE _wgpu_mach
+                        OUTPUT_STRIP_TRAILING_WHITESPACE)
+        if(_wgpu_mach STREQUAL "arm64")
+            set(WGPU_ARCH_DIR "macos-aarch64")
+        else()
+            set(WGPU_ARCH_DIR "macos-x86_64")
+        endif()
+    else()
+        execute_process(COMMAND uname -m OUTPUT_VARIABLE _wgpu_mach
+                        OUTPUT_STRIP_TRAILING_WHITESPACE)
+        if(_wgpu_mach STREQUAL "aarch64")
+            set(WGPU_ARCH_DIR "linux-aarch64")
+        else()
+            set(WGPU_ARCH_DIR "linux-x86_64")
+        endif()
+    endif()
+    set(WGPU_INSTALL "${CMAKE_SOURCE_DIR}/build/wgpu/install/${WGPU_ARCH_DIR}")
+    find_path(WGPU_INCLUDE_DIR webgpu/webgpu.h
+        HINTS "${WGPU_INSTALL}/include" "$ENV{WGPU_SDK}/include")
+    find_library(WGPU_LIBRARY NAMES wgpu_native
+        HINTS "${WGPU_INSTALL}/lib" "$ENV{WGPU_SDK}/lib")
+    if(WGPU_INCLUDE_DIR AND WGPU_LIBRARY)
+        message(STATUS "wgpu-native found: ${WGPU_LIBRARY}")
+        add_definitions(-DTASK_GRAPH_ENABLE_WGPU)
+    else()
+        message(WARNING "wgpu-native not found (run scripts/fetch_wgpu.py); "
+                        "wgpu backend disabled")
+    endif()
+endif()
+
 # MNN 推理引擎（Alibaba MNN，直接编入核心库；非子模块插件）。
 # 依赖 scripts/build_mnn.py 产出的预编译静态库（install/lib/libMNN.a）：
 #   python scripts/build_mnn.py            # 本机桌面平台
@@ -223,6 +262,21 @@ if(TASK_GRAPH_ENABLE_VULKAN)
     target_sources(task_graph PRIVATE
         src/gpu_backends/vulkan_backend.cpp
         src/gpu_backends/vulkan_render.cpp
+    )
+endif()
+
+if(TASK_GRAPH_ENABLE_WGPU AND WGPU_LIBRARY)
+    target_sources(task_graph PRIVATE
+        src/gpu_backends/wgpu_backend.cpp
+        src/gpu_backends/wgpu_render.cpp
+    )
+    target_include_directories(task_graph PRIVATE ${WGPU_INCLUDE_DIR})
+    target_link_libraries(task_graph PRIVATE ${WGPU_LIBRARY})
+    # dylib 位于 build/wgpu/install/<plat>/lib：构建树 rpath 直达（安装包
+    # 分发时随包拷贝，参照 vulkan-1.dll 的分发策略另行处理）
+    set_target_properties(task_graph PROPERTIES
+        BUILD_RPATH "${WGPU_INSTALL}/lib"
+        INSTALL_RPATH "${WGPU_INSTALL}/lib;$ENV{HOME}/.local/lib"
     )
 endif()
 
