@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
-"""graph_cases.py — 子模块单测图夹具的发现与落位（对齐 e2e_windows/scenarios_files.py）。
+"""e2e_graph_cases.py — 子模块单测图夹具的发现与落位（对齐 e2e_windows/scenarios_files.py）。
+
+（macOS/WASM 两侧 E2E 共用——原先在 e2e_macos/graph_cases.py，WASM E2E
+对齐 mac 方案后提升到 scripts/ 层。）
 
 发现规则:
   - 枚举 submodules/**/tests/graphs/*.json（version 2.0 夹具，当前 69 张/10 模块）；

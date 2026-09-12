@@ -44,7 +44,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from gs import console, platform, repo_root, sdk  # noqa: E402
 from e2e_macos import ax_driver, scenarios as sc  # noqa: E402
 from e2e_macos.ax_driver import MacDriver, ensure_accessibility  # noqa: E402
-from e2e_macos.report import Report  # noqa: E402
+from e2e_report import Report  # noqa: E402
 
 ALL_SCENARIOS = sc.SCENARIOS + ["crash"]
 

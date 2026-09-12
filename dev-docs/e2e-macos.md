@@ -104,7 +104,8 @@ Cmd+Q：不产生 crashpad minidump（sentry-native 默认不挂 SIGTERM
 handler）、不依赖焦点；优雅退出路径由 lifecycle 场景单独覆盖。批跑前必须
 `stop()` 交互实例——两个 GraphStudio 抢焦点会让注入落到错误实例上。
 
-发现/落位逻辑在 `scripts/e2e_macos/graph_cases.py`（Windows 版的差异：
+发现/落位逻辑在 `scripts/e2e_graph_cases.py`（macOS/WASM E2E 共享；Windows
+版的差异：
 gpu 模块按路径前缀分类——其叶子目录名是 image_processing；macOS 默认跑
 全部图，Windows 默认 10 张）。用例级会话助手（status_counts/wait_finished/
 state_snapshot）在 `scripts/e2e_macos/session.py`。
@@ -128,7 +129,7 @@ dev .app 需要插件时入口脚本自动设 `TASK_GRAPH_PLUGINS_PATH` /
 `GRAPH_STUDIO_MODELS_DIR` / `DYLD_LIBRARY_PATH`（复刻 run_graph_studio.py；
 mediapipe 插件对裸 install name 的 libvision.dylib 靠自身 LC_RPATH 解析）。
 
-## 报告（scripts/e2e_macos/report.py，对齐 e2e_windows/report.py）
+## 报告（scripts/e2e_report.py，对齐 e2e_windows/report.py；macOS/WASM 共享）
 
 结果落 `dist/e2e_macos/<时间戳>/`（`--artifacts` 改根目录）：
 

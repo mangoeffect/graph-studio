@@ -24,7 +24,7 @@ import re
 import time
 from pathlib import Path
 
-from . import graph_cases as gc
+import e2e_graph_cases as gc
 from .ax_driver import (AxDriverError, MacDriver, kCGEventFlagMaskCommand,
                         kCGEventFlagMaskShift, kVK_ANSI_Q, kVK_ANSI_Z)
 from .session import MacSession, SessionError, wait_finished_file

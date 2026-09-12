@@ -20,8 +20,38 @@
 #include <cstring>
 #include <cstdlib>
 #include <cstdio>
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#include <fstream>
+#include <iterator>
+#endif
 
 using namespace graph_studio;
+
+#ifdef __EMSCRIPTEN__
+// ?open=<url>[&run=1] 的 C 入口（EM_ASM 闭包里经 MEMFS 交换调用）：
+// 图与相对资产已由 JS 预取进 MEMFS 根，这里走与桌面 --open/--run 完全
+// 相同的打开路径（OpenGraphAtStartup，含标题更新）。
+namespace {
+MainWindow* g_urlOpenWindow = nullptr;
+constexpr const char* kUrlOpenPath = "/tmp/gs_url_open.txt";
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE int gs_wasm_open_graph()
+{
+    if (!g_urlOpenWindow) return 0;
+    std::ifstream f(kUrlOpenPath, std::ios::binary);
+    if (!f) return 0;
+    const std::string payload((std::istreambuf_iterator<char>(f)),
+                              std::istreambuf_iterator<char>());
+    const auto sep = payload.find('\x1f');
+    if (sep == std::string::npos || sep + 2 > payload.size()) return 0;
+    const QString path = QString::fromUtf8(payload.c_str(), int(sep));
+    const bool run = payload[sep + 1] == '1';
+    std::remove(kUrlOpenPath);
+    return g_urlOpenWindow->OpenGraphAtStartup(path, run) ? 1 : 0;
+}
+#endif
 
 int main(int argc, char* argv[])
 {
@@ -97,6 +127,87 @@ int main(int argc, char* argv[])
 #ifdef __EMSCRIPTEN__
     // 浏览器 E2E 测试桥（window.__gsTest），桌面构建为 no-op
     InstallTestHooks(vm, window);
+
+    // ?open=<url>[&run=1]：WASM 侧对齐桌面 --open/--run 的图输入通道
+    //（可分享的图链接 + 浏览器 E2E 免文件选择器自动化）。JS 侧 fetch 图
+    // 与相对路径资产进 MEMFS 根（与桌面落位同语义：相对引用按图所在目录
+    // 解析），再经 MEMFS 交换调 gs_wasm_open_graph。字符串交换而非 ccall
+    // 的原因见 test_hooks.cpp 头注释（EXPORTED_RUNTIME_METHODS 不含
+    // stringToUTF8）。Module/FS 就绪时机不定，与 test_hooks 同款轮询。
+    g_urlOpenWindow = &window;
+    // 注意：EM_ASM 的 JS 里不能出现正则字面量——C 预处理器不认识正则，
+    // /^\// 或 \. 会被误lex成行注释/杂散token 吞掉后面的右括号，报
+    // "unterminated function-like macro invocation"。路径判断用 endsWith。
+    EM_ASM({
+        var waitForModule = setInterval(function() {
+            if (typeof Module === 'undefined' || !Module.FS
+                || !Module.FS.writeFile || !Module._gs_wasm_open_graph) return;
+            clearInterval(waitForModule);
+            var params = new URLSearchParams(location.search);
+            var open = params.get('open');
+            if (!open) return;
+            var run = params.get('run') === '1';
+            var clean = open.split('#')[0].split('?')[0];
+            var name = clean.split('/').pop() || 'graph.json';
+            var dir = clean.slice(0, clean.lastIndexOf('/') + 1);
+            fetch(open).then(function(r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.text();
+            }).then(function(text) {
+                Module.FS.writeFile('/' + name, text);
+                // 相对路径资产预取（启发式与 scripts/e2e_graph_cases.py /
+                // 桌面落位一致：路径形态 + 资产扩展名，写出型任务的
+                // file_path/out_path 除外）。单项失败只告警，交给执行期暴露。
+                var ASSET_EXT = ['.png', '.jpg', '.jpeg', '.webp', '.bmp',
+                                 '.mp4', '.avi', '.mov', '.js', '.json',
+                                 '.cube', '.task', '.tflite', '.mnn',
+                                 '.onnx', '.metal', '.vert', '.frag', '.wgsl'];
+                var refs = [];
+                try {
+                    var g = JSON.parse(text);
+                    (g.tasks || []).forEach(function(t) {
+                        var ty = t.type || '';
+                        var writer = ty.endsWith('_write')
+                                  || ty.endsWith('video_writer');
+                        Object.keys(t.params || {}).forEach(function(k) {
+                            var v = t.params[k];
+                            if (typeof v !== 'string' || !v) return;
+                            if (v.charAt(0) === '/' || v.indexOf('://') >= 0) return;
+                            var looksPath = v.indexOf('/') >= 0
+                                || ASSET_EXT.some(function(ext) {
+                                    return v.toLowerCase().endsWith(ext);
+                                });
+                            if (!looksPath) return;
+                            if (writer && (k === 'file_path' || k === 'out_path')) return;
+                            if (refs.indexOf(v) < 0) refs.push(v);
+                        });
+                    });
+                } catch (e) { /* 非 JSON：留给 C++ 侧 loadFromFile 报错 */ }
+                return Promise.all(refs.map(function(ref) {
+                    return fetch(dir + ref).then(function(r) {
+                        if (!r.ok) throw new Error('HTTP ' + r.status);
+                        return r.arrayBuffer();
+                    }).then(function(buf) {
+                        var path = '/' + ref;
+                        var dirPart = path.slice(0, path.lastIndexOf('/'));
+                        if (dirPart) Module.FS.createPath('/',
+                            dirPart.slice(1), true, true);
+                        Module.FS.writeFile(path, new Uint8Array(buf));
+                    }).catch(function(e) {
+                        console.warn('[gs] ?open 资产预取失败: ' + ref
+                                     + ': ' + e.message);
+                    });
+                }));
+            }).then(function() {
+                Module.FS.writeFile('/tmp/gs_url_open.txt',
+                                    name + '\x1f' + (run ? '1' : '0'));
+                if (Module._gs_wasm_open_graph() !== 1)
+                    console.error('[gs] ?open 打开失败: ' + open);
+            }).catch(function(e) {
+                console.error('[gs] ?open 拉取失败: ' + open + ': ' + e.message);
+            });
+        }, 100);
+    });
 #endif
 
     window.show();

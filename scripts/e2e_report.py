@@ -1,10 +1,13 @@
 # -*- coding: utf-8 -*-
-"""report.py — macOS E2E 运行目录、结果记录与失败现场（对齐 e2e_windows/report.py）。
+"""e2e_report.py — E2E 共享报告：运行目录、结果记录与失败现场。
 
-记录粒度到用例（core、files/open:<module>/<graph>.json…）；失败时保存：
-截图（screencapture 由入口脚本执行，路径经 record(artifacts=...) 关联）、
-应用状态快照、完整 traceback。finish() 产出 summary.json（机器可读）+
-summary.md（人读：总表 + 失败明细 + 跳过项）。
+（对齐 e2e_windows/report.py；macOS/WASM 两侧 E2E 共用——原先在
+e2e_macos/report.py，WASM E2E 对齐 mac 方案后提升到 scripts/ 层。）
+
+记录粒度到用例（core、files/graph:<module>/<graph>.json…）；失败时保存：
+截图（由入口脚本执行，路径经 record(artifacts=...) 关联）、应用状态快照、
+完整 traceback。finish() 产出 summary.json（机器可读）+ summary.md
+（人读：总表 + 失败明细 + 跳过项）。
 """
 
 from __future__ import annotations
@@ -20,7 +23,7 @@ from gs import console
 
 @dataclass
 class ScenarioResult:
-    name: str                       # 如 files/open:gpu/image_processing/gpu_chain.json
+    name: str                       # 如 files/graph:gpu/image_processing/gpu_chain.json
     status: str                     # pass / fail / skip
     detail: str = ""
     duration: float = 0.0
@@ -30,9 +33,10 @@ class ScenarioResult:
 
 
 class Report:
-    def __init__(self, base: Path):
+    def __init__(self, base: Path, title: str = "GraphStudio E2E 报告"):
         self.base = base
         self.base.mkdir(parents=True, exist_ok=True)
+        self.title = title
         stamp = time.strftime("%Y%m%d-%H%M%S")
         self.run_dir = self.base / stamp
         self.run_dir.mkdir(parents=True)
@@ -102,7 +106,7 @@ class Report:
         return 1 if counts["failed"] else 0
 
     def _markdown(self, summary: dict) -> str:
-        lines = ["# GraphStudio macOS E2E 报告", ""]
+        lines = [f"# {self.title}", ""]
         meta = summary.get("meta", {})
         if meta:
             lines += ["| 项 | 值 |", "|---|---|"]
