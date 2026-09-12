@@ -57,8 +57,27 @@ class MainWindow : public QMainWindow
 {
     Q_OBJECT
 public:
+    // 画布内节点端口锚点（供 WASM E2E 测试桥定坐标）：viewport 像素坐标
+    // + 节点尺寸 + 节点中心（cx/cy）；x<0 表示节点/端口不存在。
+    struct NodePortAnchor
+    {
+        double x = -1;
+        double y = -1;
+        double w = 0;
+        double h = 0;
+        double cx = -1;
+        double cy = -1;
+    };
+
     MainWindow(GraphViewModel& vm, QWidget* parent = nullptr);
     ~MainWindow() override;
+
+    // ---- 外部 UI 自动化（E2E）桥接：仅供 test_hooks / 测试调用 ----
+    // 按 action 文本前缀触发（如 "Undo"/"Redo"/"Delete"），未命中返回 false。
+    bool triggerAction(const QString& textStartsWith);
+    NodePortAnchor nodePortAnchor(const QString& nodeId, const QString& port) const;
+    // 场景侧全部节点 id（对照 VM 侧，E2E 调试用）
+    QStringList sceneNodeIds() const { return nodeItems_.keys(); }
 
 protected:
     void keyPressEvent(QKeyEvent* event) override;

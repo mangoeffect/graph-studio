@@ -725,13 +725,24 @@ bool GraphViewModel::loadFromFile(const QString& filePath)
     QString json = QTextStream(&file).readAll();
     file.close();
 
-    positions_.clear();
-    selectedNodeId_.clear();
-
     // graph.json 所在目录作为相对路径基准，注入到每个 task 的 _source_dir。
     // 这样 graph 内引用的图片/模型/脚本可以用相对路径，整个 graph 目录
     // 挪到别处仍可执行。
-    const QString graphDir = QFileInfo(filePath).absolutePath();
+    return loadFromJsonData(json, QFileInfo(filePath).absolutePath(),
+                            "Graph loaded from: " + filePath);
+}
+
+bool GraphViewModel::loadFromString(const QString& json, const QString& baseDir)
+{
+    return loadFromJsonData(json, baseDir, "Graph loaded from string");
+}
+
+bool GraphViewModel::loadFromJsonData(const QString& json, const QString& graphDir,
+                                      const QString& logLabel)
+{
+    positions_.clear();
+    selectedNodeId_.clear();
+
     std::string metadata_str = model_.from_json_string_with_metadata(
         json.toStdString(), graphDir.toStdString());
     if (metadata_str.empty() && !model_.task_count()) {
@@ -766,8 +777,8 @@ bool GraphViewModel::loadFromFile(const QString& filePath)
         }
     }
 
-    emit logMessage(kLogInfo, "Graph loaded from: " + filePath);
-    syncGraphCrashContext(model_, filePath);
+    emit logMessage(kLogInfo, logLabel);
+    syncGraphCrashContext(model_, logLabel);
     return true;
 }
 

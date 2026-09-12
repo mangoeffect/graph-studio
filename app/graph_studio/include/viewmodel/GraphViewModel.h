@@ -94,6 +94,9 @@ public:
     Q_INVOKABLE void clear();
     Q_INVOKABLE bool saveToFile(const QString& filePath);
     Q_INVOKABLE bool loadFromFile(const QString& filePath);
+    // 从 JSON 字符串直接加载（WASM E2E 测试桥 / 剪贴板导入）。baseDir 为
+    // 图内相对路径的解析基准，空则走默认规则（ModelFinder / 绝对路径）。
+    Q_INVOKABLE bool loadFromString(const QString& json, const QString& baseDir = QString());
 
     Q_INVOKABLE void autoLayout();
 
@@ -164,6 +167,9 @@ private:
     bool canReach(const QString& from, const QString& to) const;
     void finishExecution();
     void ensureExecutor();
+    // loadFromFile/loadFromString 共同实现：json + 相对路径基准 + 日志文案
+    bool loadFromJsonData(const QString& json, const QString& graphDir,
+                          const QString& logLabel);
 
     GraphModel& model_;
     QHash<QString, QPointF> positions_;

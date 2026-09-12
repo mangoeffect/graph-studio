@@ -9,6 +9,7 @@
 #endif
 #include "viewmodel/GraphViewModel.h"
 
+#include <QDebug>
 #include <QMenu>
 #include <QAction>
 #include <QMenuBar>
@@ -794,6 +795,11 @@ void MainWindow::onGraphReset()
 
 void MainWindow::onLogMessage(int level, const QString& msg)
 {
+    // 镜像进 Qt 日志通道：WASM 上经 emscripten 打到浏览器 console、桌面进
+    // 系统 log——两端的外部 E2E 都以此作为执行结果的断言通道（logWidget_
+    // 是内部控件，WASM 的浏览器 console 之外无处可读）。
+    qInfo().noquote() << "[gs]" << msg;
+
     if (!logWidget_) return;
 
     auto lvl = static_cast<task_graph::LogLevel>(level);
@@ -1255,6 +1261,55 @@ void MainWindow::UpdateWindowTitle()
         setWindowTitle(QStringLiteral("%1 - Graph Studio")
                            .arg(QFileInfo(currentFilePath_).fileName()));
     }
+}
+
+bool MainWindow::triggerAction(const QString& textStartsWith)
+{
+    for (auto* a : findChildren<QAction*>()) {
+        if (a->text().startsWith(textStartsWith)) {
+            a->trigger();
+            return true;
+        }
+    }
+    return false;
+}
+
+MainWindow::NodePortAnchor MainWindow::nodePortAnchor(const QString& nodeId,
+                                                      const QString& port) const
+{
+    NodePortAnchor result;
+    auto* node = nodeItems_.value(nodeId);
+    if (!node || !graphicsView_) return result;
+
+    // 端口在节点局部坐标中的锚点：先查声明的端口名；未声明（或仅默认
+    // in/out 单端口）的侧放行默认名——占位任务的端口声明两侧可能不对称
+    // （如 inputs=["in"] 而 outputs 为空），按侧判断而非要求两侧全空。
+    QPointF local(-1, -1);
+    const QStringList inputs = node->inputPorts();
+    const QStringList outputs = node->outputPorts();
+    if (inputs.contains(port)) local = node->inputPortPos(port);
+    else if (outputs.contains(port)) local = node->outputPortPos(port);
+    else if (port == "in") local = node->inputPortPos(port);
+    else if (port == "out") local = node->outputPortPos(port);
+    else return result;
+    // input/outputPortPos 返回的已是场景坐标（内部 mapToScene），这里只做
+    // 场景 -> viewport 一次变换。注意 mapFromScene 给的是 viewport 控件
+    // 坐标，而 Qt wasm 把整窗画在一张 canvas 上——CDP/外部注入需要的是
+    // 窗口坐标，须加上 viewport 在窗口内的原点（任务库/工具栏的占位）。
+    const QPointF inViewport = graphicsView_->mapFromScene(local);
+    const QPoint viewOrigin = graphicsView_->viewport()->mapTo(this, QPoint(0, 0));
+    const QRectF bounds = node->boundingRect();
+    result.x = viewOrigin.x() + inViewport.x();
+    result.y = viewOrigin.y() + inViewport.y();
+    result.w = bounds.width();
+    result.h = bounds.height();
+    // 节点中心（NodeItem 原点即中心）；boundingRect 含 port margin，
+    // x + w/2 会落到节点体右缘之外——选中/点击一律用 cx/cy。
+    const QPointF centerInViewport =
+        graphicsView_->mapFromScene(node->mapToScene(QPointF(0, 0)));
+    result.cx = viewOrigin.x() + centerInViewport.x();
+    result.cy = viewOrigin.y() + centerInViewport.y();
+    return result;
 }
 
 void MainWindow::dragEnterEvent(QDragEnterEvent* event)

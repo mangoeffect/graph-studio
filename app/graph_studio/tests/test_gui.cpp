@@ -21,6 +21,8 @@
 #include "view/NodeItem.h"
 #include "view/EdgeItem.h"
 #include <plugin_api.hpp>
+#include <task_graph/profiler.hpp>
+#include <task_graph/data_types.hpp>
 
 using namespace graph_studio;
 
@@ -65,6 +67,63 @@ public:
                  task_graph::PortSpec{"aux", "", false} };
     }
 };
+
+// 产出真实 task_graph::Image 的源节点：供"执行图"端到端场景验证
+// DAGExecutor 运行 -> 图像结果采集（imageResultsReady/imageResult）链路。
+class ImageProducerNode : public task_graph::INode {
+public:
+    using task_graph::INode::INode;
+    const std::string& type() const override {
+        static std::string t = "image_producer_node";
+        return t;
+    }
+    task_graph::TaskResult execute(task_graph::TaskContext&) override {
+        task_graph::Image img(8, 8, 3, task_graph::PixelFormat::RGB);
+        for (int y = 0; y < 8; ++y)
+            for (int x = 0; x < 8; ++x) {
+                auto* p = img.ptr() + (y * 8 + x) * 3;
+                p[0] = static_cast<uint8_t>(x * 31);
+                p[1] = static_cast<uint8_t>(y * 31);
+                p[2] = 128;
+            }
+        task_graph::TaskResult r;
+        r.status = task_graph::TaskStatus::COMPLETED;
+        r.value = std::move(img);
+        return r;
+    }
+    std::vector<task_graph::PortSpec> input_specs() const override { return {}; }
+    std::vector<task_graph::PortSpec> output_specs() const override {
+        return { task_graph::PortSpec{"out", "", false} };
+    }
+};
+
+// 恒定失败的 task：验证失败路径下执行周期正常收尾（executionFinished /
+// FAILED 状态事件 / profiler 失败计数），不悬挂、不产生图像结果。
+class FailingNode : public task_graph::INode {
+public:
+    using task_graph::INode::INode;
+    const std::string& type() const override {
+        static std::string t = "failing_node";
+        return t;
+    }
+    task_graph::TaskResult execute(task_graph::TaskContext&) override {
+        task_graph::TaskResult r;
+        r.status = task_graph::TaskStatus::FAILED;
+        return r;
+    }
+    std::vector<task_graph::PortSpec> input_specs() const override { return {}; }
+    std::vector<task_graph::PortSpec> output_specs() const override { return {}; }
+};
+
+// 测试节点工厂注册（模式与下方各 slot 的 register_task 调用一致）
+template <typename T>
+static void registerNodeType(const char* type)
+{
+    task_graph::PluginRegistry::instance().register_task(
+        type, [](const std::string& id, const task_graph::TaskConfig& cfg) {
+            return std::make_shared<T>(id, cfg);
+        });
+}
 }
 
 // 默认无头运行：未显式指定 QT_QPA_PLATFORM 时回落到 offscreen，便于 CI/ctest。
@@ -118,6 +177,8 @@ private slots:
     void testFileDropPriorityOverText();
     void testNonJsonFileDropIgnored();
     void testWholeWindowFileDrop();
+    void testExecuteGraphCollectsImageResults();
+    void testExecuteGraphFailureFinishes();
 
 private:
     GraphModel* model_ = nullptr;
@@ -693,6 +754,90 @@ void TestGui::testWholeWindowFileDrop()
     sendFileDrop(window_, fileA);
     QCOMPARE(vm_->taskCount(), 1);
     QVERIFY(window_->windowTitle().contains("win_drop"));
+}
+
+// "执行图"端到端：真实 DAGExecutor 经 VM 执行 producer→consumer 图，
+// 断言执行生命周期信号、图像结果采集与 profiler 帧全链路。
+void TestGui::testExecuteGraphCollectsImageResults()
+{
+    registerNodeType<ImageProducerNode>("image_producer_node");
+    registerNodeType<PortedNode>("ported_node");
+
+    QString src = vm_->addTask("image_producer_node", -200, 0);
+    QString dst = vm_->addTask("ported_node", 200, 0);
+    QVERIFY(!src.isEmpty() && !dst.isEmpty());
+    QVERIFY(vm_->addEdge(src, "out", dst, "image"));
+
+    QSignalSpy started(vm_, &GraphViewModel::executionStarted);
+    QSignalSpy finished(vm_, &GraphViewModel::executionFinished);
+    QSignalSpy images(vm_, &GraphViewModel::imageResultsReady);
+    QSignalSpy status(vm_, &GraphViewModel::nodeStatusChanged);
+
+    vm_->execute();
+    QCOMPARE(started.count(), 1);
+    // 执行异步（QueuedConnection 编组回 UI 线程），等完成信号
+    QVERIFY(finished.wait(15000));
+    QCOMPARE(vm_->isExecuting(), false);
+
+    // 2 个节点各 STARTED + COMPLETED 两条状态事件
+    QCOMPARE(status.count(), 4);
+
+    // 图像结果采集：producer 的 value(Image) 以 "srcId:out" 入缓存
+    QCOMPARE(images.count(), 1);
+    QStringList keys = images.first().at(0).toStringList();
+    QCOMPARE(keys.size(), 1);
+    QCOMPARE(keys.first(), src + ":out");
+    QImage img = vm_->imageResult(src + ":out");
+    QCOMPARE(img.width(), 8);
+    QCOMPARE(img.height(), 8);
+
+    // profiler 帧已采集且计数正确
+    QVERIFY(vm_->profileFrameCount() >= 1);
+    const auto* frame = vm_->profileFrame(vm_->profileFrameCount() - 1);
+    QVERIFY(frame != nullptr);
+    QCOMPARE(frame->dag.completedTasks, 2);
+    QCOMPARE(frame->dag.failedTasks, 0);
+
+    task_graph::PluginRegistry::instance().unregister_task("image_producer_node");
+    task_graph::PluginRegistry::instance().unregister_task("ported_node");
+}
+
+// 失败路径：FAILED 节点状态事件到达 UI、执行周期正常收尾、无图像结果
+void TestGui::testExecuteGraphFailureFinishes()
+{
+    registerNodeType<FailingNode>("failing_node");
+
+    QString id = vm_->addTask("failing_node", 0, 0);
+    QVERIFY(!id.isEmpty());
+
+    QSignalSpy finished(vm_, &GraphViewModel::executionFinished);
+    QSignalSpy images(vm_, &GraphViewModel::imageResultsReady);
+    QSignalSpy status(vm_, &GraphViewModel::nodeStatusChanged);
+
+    vm_->execute();
+    QVERIFY(finished.wait(15000));
+    QCOMPARE(vm_->isExecuting(), false);
+
+    bool sawFailed = false;
+    for (const auto& args : status) {
+        if (args.at(0).toString() == id &&
+            args.at(1).toInt() == static_cast<int>(task_graph::ProfilePhase::FAILED))
+            sawFailed = true;
+    }
+    QVERIFY(sawFailed);
+
+    // 失败节点不产生图像结果，但 imageResultsReady 未发射、缓存为空
+    QCOMPARE(images.count(), 0);
+    QVERIFY(vm_->imageResultKeys().isEmpty());
+
+    // profiler 帧记录失败计数
+    QVERIFY(vm_->profileFrameCount() >= 1);
+    const auto* frame = vm_->profileFrame(vm_->profileFrameCount() - 1);
+    QVERIFY(frame != nullptr);
+    QCOMPARE(frame->dag.completedTasks, 0);
+    QCOMPARE(frame->dag.failedTasks, 1);
+
+    task_graph::PluginRegistry::instance().unregister_task("failing_node");
 }
 
 // 自定义 main：GUI 测试必须用 QApplication（而非 QCoreApplication）

@@ -11,6 +11,9 @@
 #include "GpuBootstrap.h"
 #include "ModelBootstrap.h"
 #include "CrashReporter.h"
+#ifdef __EMSCRIPTEN__
+#include "../wasm/test_hooks.h"
+#endif
 
 #include <cstring>
 #include <cstdlib>
@@ -78,6 +81,11 @@ int main(int argc, char* argv[])
     InitModelFinder();
 
     MainWindow window(vm);
+
+#ifdef __EMSCRIPTEN__
+    // 浏览器 E2E 测试桥（window.__gsTest），桌面构建为 no-op
+    InstallTestHooks(vm, window);
+#endif
 
     window.show();
 

@@ -37,7 +37,9 @@ elseif(APPLE)
 endif()
 
 if(EMSCRIPTEN)
-    set(QT_COMPONENTS Widgets OpenGL OpenGLWidgets)
+    # Test：逻辑层 QTest 编译到 wasm 跑（见文件末尾 EMSCRIPTEN 测试块；
+    # test_gui 仍为桌面专属——wasm 无 offscreen 平台，GUI 事件模拟不可靠）
+    set(QT_COMPONENTS Widgets Test OpenGL OpenGLWidgets)
 else()
     set(QT_COMPONENTS Widgets Test OpenGL OpenGLWidgets)
 endif()
@@ -66,6 +68,7 @@ set(PROJECT_HEADERS
     include/GpuBootstrap.h
     include/ModelBootstrap.h
     include/CrashReporter.h
+    src/platform/wasm/test_hooks.h
 )
 
 set(PROJECT_SOURCES
@@ -84,6 +87,7 @@ set(PROJECT_SOURCES
     src/view/GanttChart.cpp
     src/view/ProfilePanel.cpp
     src/view/GpuImageViewer.cpp
+    src/platform/wasm/test_hooks.cpp
 )
 
 # ---- 崩溃上报模块（Sentry + Crashpad，仅桌面端）----
@@ -366,6 +370,13 @@ endif()
 if(EMSCRIPTEN)
     set(TG_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../)
     include(${TG_ROOT}/cmake/Subnode.cmake)
+    # Qt 平台模块默认追加 -sDISABLE_EXCEPTION_CACHING=1（catch 全部编译
+    # 消失），与 wasm 构建 -fexceptions 组合成"能 throw 但 catch 即 trap"。
+    # 追加到 Qt6::Platform 的 INTERFACE 选项尾部（同旗标后者生效）以翻回。
+    # 背景见 scripts/run_graph_studio_wasm.py 的 -fexceptions 注释。
+    if(TARGET Qt6::Platform)
+        target_link_options(Qt6::Platform INTERFACE "-sDISABLE_EXCEPTION_CATCHING=0")
+    endif()
     # subnode 的 CMakeLists 调用 use_task_graph_sdk()（桌面主仓库构建由根
     # CMakeLists include(SdkUtil) 提供）。此处 app 自身是顶层工程，必须显式引入；
     # SdkUtil 走 legacy 模式（TASK_GRAPH_ROOT + 预构建 build_wasm/libtask_graph.a）。
@@ -435,4 +446,54 @@ if(EMSCRIPTEN)
         target_link_libraries(graph_studio PRIVATE
             "${TASK_GRAPH_ROOT}/build_wasm/mnn/install/lib/libMNN.a")
     endif()
+endif()
+
+# ============================================================
+# WASM 逻辑层测试：三套纯逻辑 QTest（ViewModel/CommandStack/集成）编译到
+# wasm，由 scripts/run_ui_tests_wasm.py 构建并在浏览器中收集结果（Qt 日志
+# 经 emscripten 打到 console，无 ctest 可用）。
+# test_gui 不编译：wasm 无 offscreen 平台，QTest 鼠标/键盘模拟不可靠，GUI
+# 层覆盖由 scripts/run_e2e_wasm.py（CDP 驱动真实浏览器）承担。
+# Qt6Test 已加入上方 QT_COMPONENTS；OpenCV 依赖与 graph_studio 同源
+# （_OPENCV_WASM_AVAILABLE 在上方 subnode 块定义）。
+# ============================================================
+if(EMSCRIPTEN)
+    set(_WASM_TEST_COMMON
+        include/model/GraphModel.h
+        include/viewmodel/GraphViewModel.h
+        src/model/GraphModel.cpp
+        src/viewmodel/GraphViewModel.cpp
+        src/CrashReporter.cpp
+    )
+    set(_WASM_TEST_MEM "200MB")
+
+    qt_add_executable(test_graph_view_model
+        tests/test_graph_view_model.cpp
+        ${_WASM_TEST_COMMON}
+    )
+    qt_add_executable(test_command_stack
+        tests/test_command_stack.cpp
+        ${_WASM_TEST_COMMON}
+        include/command/CommandStack.h
+        src/command/CommandStack.cpp
+    )
+    qt_add_executable(test_integration
+        tests/test_integration.cpp
+        ${_WASM_TEST_COMMON}
+        include/command/CommandStack.h
+        src/command/CommandStack.cpp
+    )
+    foreach(_wt test_graph_view_model test_command_stack test_integration)
+        set_target_properties(${_wt} PROPERTIES QT_WASM_INITIAL_MEMORY "${_WASM_TEST_MEM}")
+        target_link_libraries(${_wt} PRIVATE Qt6::Test Qt6::Gui task_graph)
+        # libtask_graph.a（OpenCV 构建时）引用 OpenCV 符号，测试一并链接
+        if(_OPENCV_WASM_AVAILABLE)
+            target_link_libraries(${_wt} PRIVATE ${OpenCV_LIBS})
+        endif()
+        # MNN 符号经 TypeRegistry 锚点被拉入（pull_mnn_tasks），同 app 一起链接
+        if(EXISTS "${TASK_GRAPH_ROOT}/build_wasm/mnn/install/lib/libMNN.a")
+            target_link_libraries(${_wt} PRIVATE
+                "${TASK_GRAPH_ROOT}/build_wasm/mnn/install/lib/libMNN.a")
+        endif()
+    endforeach()
 endif()
