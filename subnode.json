@@ -131,7 +131,18 @@
         "render_mix",
         "render_gauss_h",
         "render_gauss_v",
-        "render_threshold"
+        "render_threshold",
+        "render_lut",
+        "render_lut_cube",
+        "render_gauss_dir",
+        "render_box_dir",
+        "render_unsharp",
+        "render_subtract",
+        "render_sobel",
+        "render_scharr",
+        "render_laplacian",
+        "render_dilate_dir",
+        "render_erode_dir"
       ]
     },
     {
