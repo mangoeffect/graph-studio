@@ -93,6 +93,9 @@ def main() -> int:
         "-DBUILD_TESTS=OFF",
         "-DBUILD_PERF_TESTS=OFF",
         "-DBUILD_EXAMPLES=OFF",
+        # 不关掉的话 4.x 会尝试用 gradle 构建 samples/android 的示例 APK（需 SDK build-tools）
+        "-DBUILD_ANDROID_PROJECTS=OFF",
+        "-DBUILD_ANDROID_EXAMPLES=OFF",
         "-DBUILD_DOCS=OFF",
         "-DBUILD_opencv_apps=OFF",
         "-DBUILD_opencv_gapi=OFF",

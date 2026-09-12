@@ -92,21 +92,38 @@ if ! command -v xcodebuild >/dev/null 2>&1; then
     exit 1
 fi
 
-# OpenCV 可用性检查
-OPENCV_FLAG=""
-OPENCV_AVAILABLE=0
+# OpenCV 可用性检查（per-slice：device / simulator 各自探测各自的预编译库；
+# 无论可用与否都显式传 flag：旧 CMakeCache 可能缓存了 TASK_GRAPH_ENABLE_OPENCV=ON，
+# 省略 flag 会让 option() 沿用缓存并在 find_package(OpenCV REQUIRED) 处配置失败。
+# device-only 库绝不能并入 sim slice——异平台对象会让 create-xcframework 报错）
+OPENCV_DEVICE_INSTALL="${ROOT_DIR}/build_ios/opencv/install"
+OPENCV_SIM_INSTALL="${ROOT_DIR}/build_ios_sim/opencv/install"
+# OpenCV 系子模块（依赖 OpenCV 预编译库）；video_io 需要opencv_videoio 模块
+# （build_opencv_ios.sh 的 BUILD_LIST 只编 core/imgproc/imgcodecs），暂不打包
+OPENCV_SUBMODULES="image_filtering image_reader image_writer image_geometry image_color image_color_grading"
+OPENCV_DEVICE_FLAG="-DTASK_GRAPH_ENABLE_OPENCV=OFF"
+OPENCV_SIM_FLAG="-DTASK_GRAPH_ENABLE_OPENCV=OFF"
+OPENCV_DEVICE_OK=0
+OPENCV_SIM_OK=0
 if [[ "${NO_OPENCV}" -eq 0 ]]; then
-    if [[ -d "${ROOT_DIR}/build_ios/opencv/install/lib/cmake/opencv4" ]]; then
-        OPENCV_FLAG="-DTASK_GRAPH_ENABLE_OPENCV=ON"
-        OPENCV_AVAILABLE=1
-        echo "${C_BOLD}==> 检测到 OpenCV iOS 库，启用 OpenCV${C_RESET}"
+    if [[ -d "${OPENCV_DEVICE_INSTALL}/lib/cmake/opencv4" ]]; then
+        OPENCV_DEVICE_FLAG="-DTASK_GRAPH_ENABLE_OPENCV=ON"
+        OPENCV_DEVICE_OK=1
+        echo "${C_BOLD}==> 检测到 OpenCV iOS device 库，启用 OpenCV${C_RESET}"
     else
-        echo "${C_BOLD}==> 未检测到 OpenCV iOS 库（运行 scripts/build_opencv_ios.sh 构建），跳过 OpenCV 子模块${C_RESET}"
+        echo "${C_BOLD}==> 未检测到 OpenCV iOS device 库（运行 scripts/build_opencv_ios.sh 构建），跳过 OpenCV 子模块${C_RESET}"
+    fi
+    if [[ -d "${OPENCV_SIM_INSTALL}/lib/cmake/opencv4" ]]; then
+        OPENCV_SIM_FLAG="-DTASK_GRAPH_ENABLE_OPENCV=ON"
+        OPENCV_SIM_OK=1
+        echo "${C_BOLD}==> 检测到 OpenCV iOS simulator 库，sim slice 启用 OpenCV${C_RESET}"
+    else
+        echo "${C_BOLD}==> 未检测到 OpenCV iOS simulator 库（运行 scripts/build_opencv_ios.sh --sim），sim 产物不含 OpenCV${C_RESET}"
     fi
 fi
 
-# Metal 标志
-METAL_FLAG=""
+# Metal 标志（同理显式传 ON/OFF，防陈旧缓存）
+METAL_FLAG="-DTASK_GRAPH_ENABLE_METAL=OFF"
 if [[ "${NO_METAL}" -eq 0 ]]; then
     METAL_FLAG="-DTASK_GRAPH_ENABLE_METAL=ON"
 else
@@ -120,6 +137,31 @@ if [[ ! -f "${MNN_LIB}" ]]; then
     echo "${C_BOLD}==> 构建 MNN iOS 静态库（build_mnn.py --platform ios）${C_RESET}"
     python3 "${SCRIPT_DIR}/build_mnn.py" --platform ios -j "${JOBS}" \
         || echo "${C_RED}==> MNN iOS 构建失败，task_graph 以 stub 降级（仅影响 MNN 任务）${C_RESET}" >&2
+fi
+
+# libMNN 平台探测：build_mnn.py --platform ios 目前只产出 device slice。
+# 只有模拟器版 libMNN 才允许并入 sim slice；否则 sim slice 必须 -DTASK_GRAPH_ENABLE_MNN=OFF，
+# 否则模拟器产物会引用无法解析的 MNN 符号（且 device 平台对象混入会让
+# xcodebuild -create-xcframework 报 "identifier 'ios-arm64' already exists"）。
+MNN_SIM_OK=0
+if [[ -f "${MNN_LIB}" ]]; then
+    TMP_OBJ_DIR="$(mktemp -d)"
+    # 纯 bash 取第一个 .o 成员（跳过 __.SYMDEF 符号表成员；不用 head -1 截断
+    # 上游管道，避免 pipefail 下的 SIGPIPE；ar x 失败按"非模拟器"处理）
+    AR_MEMBERS="$(ar t "${MNN_LIB}" 2>/dev/null || true)"
+    FIRST_OBJ=""
+    while IFS= read -r member; do
+        case "${member}" in *.o) FIRST_OBJ="${member}"; break ;; esac
+    done <<< "${AR_MEMBERS}"
+    if [[ -n "${FIRST_OBJ}" ]] \
+        && (cd "${TMP_OBJ_DIR}" && ar x "${MNN_LIB}" "${FIRST_OBJ}" 2>/dev/null) \
+        && [[ -f "${TMP_OBJ_DIR}/${FIRST_OBJ}" ]]; then
+        MNN_PLAT="$(vtool -show-build "${TMP_OBJ_DIR}/${FIRST_OBJ}" 2>/dev/null | awk '/^ *platform /{print $2}')"
+        if [[ "${MNN_PLAT}" == "IOSSIMULATOR" ]]; then
+            MNN_SIM_OK=1
+        fi
+    fi
+    rm -rf "${TMP_OBJ_DIR}"
 fi
 
 # 清理
@@ -136,39 +178,55 @@ build_slice() {
     local build_dir="$2"
     local arch="$3"
     local platform="$4"
+    local sysroot="$5"
+    local mnn_flag="${6:-}"
+    local opencv_flag="${7:-}"
+    local opencv_ok="${8:-0}"
 
-    echo "${C_BOLD}==> 构建 iOS ${slice_name} (${arch}, ${platform})${C_RESET}"
+    echo "${C_BOLD}==> 构建 iOS ${slice_name} (${arch}, ${platform}, sysroot=${sysroot})${C_RESET}"
 
     local cmake_args=(
         -S "${ROOT_DIR}" -B "${build_dir}"
         -DCMAKE_SYSTEM_NAME=iOS
+        # 显式指定 SDK：CMake 对 arm64 默认选 iphoneos（只有 x86_64 自动选模拟器），
+        # 不显式传会把 sim slice 编成 device 平台产物
+        -DCMAKE_OSX_SYSROOT="${sysroot}"
         -DCMAKE_OSX_ARCHITECTURES="${arch}"
         -DCMAKE_OSX_DEPLOYMENT_TARGET="${DEPLOY_TARGET}"
         -DCMAKE_BUILD_TYPE=Release
         ${METAL_FLAG}
-        ${OPENCV_FLAG}
+        ${opencv_flag}
+        ${mnn_flag}
     )
 
     cmake "${cmake_args[@]}"
     cmake --build "${build_dir}" --target task_graph -j "${JOBS}"
 
-    # 构建子模块
+    # 构建子模块（OpenCV 系子模块仅在该 slice 自身的 OpenCV 预编译库可用时构建）
     local submodules=()
-    [[ "${OPENCV_AVAILABLE}" -eq 1 ]] && submodules+=(image_filtering image_reader)
+    if [[ "${opencv_ok}" -eq 1 ]]; then
+        for sub in ${OPENCV_SUBMODULES}; do submodules+=("${sub}"); done
+    fi
     [[ "${NO_METAL}" -eq 0 ]] && submodules+=(gpu_image_processing)
 
     for sub in "${submodules[@]}"; do
-        cmake --build "${build_dir}" --target "${sub}" -j "${JOBS}" 2>/dev/null || true
+        cmake --build "${build_dir}" --target "${sub}" -j "${JOBS}" \
+            || echo "${C_RED}==> 子模块 ${sub} 构建失败（忽略，不影响其余产物）${C_RESET}" >&2
     done
 }
 
-build_slice "device" "${DEVICE_BUILD}" "${DEVICE_ARCH}" "OS"
+build_slice "device" "${DEVICE_BUILD}" "${DEVICE_ARCH}" "OS" "iphoneos" "" "${OPENCV_DEVICE_FLAG}" "${OPENCV_DEVICE_OK}"
 
 # ============================================================
 # 构建 iOS simulator slice
 # ============================================================
 if [[ "${DEVICE_ONLY}" -eq 0 ]]; then
-    build_slice "simulator" "${SIM_BUILD}" "${SIM_ARCH}" "Simulator"
+    SIM_MNN_FLAG=""
+    if [[ "${MNN_SIM_OK}" -eq 0 && -f "${MNN_LIB}" ]]; then
+        SIM_MNN_FLAG="-DTASK_GRAPH_ENABLE_MNN=OFF"
+        echo "${C_BOLD}==> libMNN.a 为 device-only（无 IOSSIMULATOR slice），模拟器产物禁用 MNN${C_RESET}"
+    fi
+    build_slice "simulator" "${SIM_BUILD}" "${SIM_ARCH}" "Simulator" "iphonesimulator" "${SIM_MNN_FLAG}" "${OPENCV_SIM_FLAG}" "${OPENCV_SIM_OK}"
 fi
 
 # ============================================================
@@ -176,24 +234,27 @@ fi
 # ============================================================
 merge_static_libs() {
     local build_dir="$1"
+    local include_mnn="$2"
+    local opencv_install="${3:-}"
     local output="${build_dir}/libtask_graph_full.a"
     local libs=("${build_dir}/libtask_graph.a")
 
-    for sub in image_filtering image_reader gpu_image_processing; do
-        local lib="${build_dir}/lib${sub}.a"
+    # 子模块 .a 在 add_subdirectory 的二进制目录 submodules/<name>/ 下（顶层没有）
+    for sub in ${OPENCV_SUBMODULES} gpu_image_processing; do
+        local lib="${build_dir}/submodules/${sub}/lib${sub}.a"
+        [[ -f "${lib}" ]] || lib="${build_dir}/lib${sub}.a"
         [[ -f "${lib}" ]] && libs+=("${lib}")
     done
 
-    # OpenCV 静态库（如果存在）
-    if [[ "${OPENCV_AVAILABLE}" -eq 1 ]]; then
-        local oc_dir="${ROOT_DIR}/build_ios/opencv/install/lib"
-        for oc_lib in "${oc_dir}"/libopencv_*.a; do
+    # OpenCV 静态库——仅并入与该 slice 平台匹配的预编译库
+    if [[ -n "${opencv_install}" && -d "${opencv_install}/lib" ]]; then
+        for oc_lib in "${opencv_install}/lib"/libopencv_*.a; do
             [[ -f "${oc_lib}" ]] && libs+=("${oc_lib}")
         done
     fi
 
-    # MNN 推理引擎静态库（如果存在）——并入后 libtask_graph_full.a 对 MNN 自包含
-    if [[ -f "${ROOT_DIR}/build_ios/mnn/install/lib/libMNN.a" ]]; then
+    # MNN 推理引擎静态库——仅并入平台匹配的 slice（device-only 库不进 sim slice）
+    if [[ "${include_mnn}" -eq 1 && -f "${ROOT_DIR}/build_ios/mnn/install/lib/libMNN.a" ]]; then
         libs+=("${ROOT_DIR}/build_ios/mnn/install/lib/libMNN.a")
     fi
 
@@ -201,9 +262,14 @@ merge_static_libs() {
     libtool -static -o "${output}" "${libs[@]}" 2>/dev/null
 }
 
-merge_static_libs "${DEVICE_BUILD}"
+DEV_OC_DIR=""
+[[ "${OPENCV_DEVICE_OK}" -eq 1 ]] && DEV_OC_DIR="${OPENCV_DEVICE_INSTALL}"
+SIM_OC_DIR=""
+[[ "${OPENCV_SIM_OK}" -eq 1 ]] && SIM_OC_DIR="${OPENCV_SIM_INSTALL}"
+
+merge_static_libs "${DEVICE_BUILD}" 1 "${DEV_OC_DIR}"
 if [[ "${DEVICE_ONLY}" -eq 0 ]]; then
-    merge_static_libs "${SIM_BUILD}"
+    merge_static_libs "${SIM_BUILD}" "${MNN_SIM_OK}" "${SIM_OC_DIR}"
 fi
 
 # ============================================================

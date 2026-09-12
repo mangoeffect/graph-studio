@@ -63,9 +63,11 @@ if [[ ! -f "${OPENCV_SRC}/CMakeLists.txt" ]]; then
     exit 1
 fi
 
+# 显式指定 SDK：CMake 对 arm64 默认选 iphoneos，不传会把 --sim 产物编成 device 平台
 echo "==> Configuring OpenCV iOS (${SDK} ${ARCH}, modules: ${OPENCV_MODULES})"
 cmake -S "${OPENCV_SRC}" -B "${BUILD_DIR}" \
     -DCMAKE_SYSTEM_NAME=iOS \
+    -DCMAKE_OSX_SYSROOT="${SDK}" \
     -DCMAKE_OSX_ARCHITECTURES="${ARCH}" \
     -DCMAKE_OSX_DEPLOYMENT_TARGET="${DEPLOY_TARGET}" \
     -DCMAKE_BUILD_TYPE=Release \

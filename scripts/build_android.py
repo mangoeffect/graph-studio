@@ -37,7 +37,12 @@ from gs import android, console, platform, repo_root, runner, toolchain  # noqa:
 from gs.cmake import CMake  # noqa: E402
 
 OPENCV_INSTALL_REL = "build_android/opencv/install"
-SUBMODULE_TARGETS = ["image_filtering", "image_reader"]
+# OpenCV 系子模块（全部依赖 OpenCV 预编译库）；video_io 需要opencv_videoio 模块
+# （build_opencv_android.py 的 BUILD_LIST 只编 core/imgproc/imgcodecs），暂不打包
+SUBMODULE_TARGETS = [
+    "image_filtering", "image_reader", "image_writer",
+    "image_geometry", "image_color", "image_color_grading",
+]
 
 
 def merge_static_libs(build_dir: Path, dist_dir: Path, llvm_ar: Path, opencv_available: bool,
@@ -47,8 +52,11 @@ def merge_static_libs(build_dir: Path, dist_dir: Path, llvm_ar: Path, opencv_ava
     dist_dir.mkdir(parents=True, exist_ok=True)
 
     libs: List[Path] = [build_dir / "libtask_graph.a"]
+    # 子模块 .a 在 add_subdirectory 的二进制目录 submodules/<name>/ 下（顶层没有）
     for sub in SUBMODULE_TARGETS:
-        lib = build_dir / f"lib{sub}.a"
+        lib = build_dir / "submodules" / sub / f"lib{sub}.a"
+        if not lib.is_file():
+            lib = build_dir / f"lib{sub}.a"
         if lib.is_file():
             libs.append(lib)
 
@@ -60,15 +68,23 @@ def merge_static_libs(build_dir: Path, dist_dir: Path, llvm_ar: Path, opencv_ava
             libs.append(mnn_lib)
 
     if opencv_available:
+        # build_opencv_android.py 产出 OpenCV 官方 Android SDK 布局：
+        # staticlibs/<abi>/（libopencv_*）+ 3rdparty/libs/<abi>/（jpeg/png/kleidicv 等辅助库）。
+        # 先收 opencv 主库再收辅助库（被依赖者在前）。
         oc_dir = root / OPENCV_INSTALL_REL / "lib"
         if oc_dir.is_dir():
-            # 先收 libopencv_*.a
             for lib in sorted(oc_dir.glob("libopencv_*.a")):
                 if lib.is_file():
                     libs.append(lib)
-            # 再收非 opencv 的辅助 .a（libcpufeatures / libtegra_hal 等）
-            for lib in sorted(oc_dir.glob("lib*.a")):
-                if lib.is_file() and not lib.name.startswith("libopencv_"):
+        staticlibs = root / OPENCV_INSTALL_REL / "sdk" / "native" / "staticlibs" / abi
+        thirdparty = root / OPENCV_INSTALL_REL / "sdk" / "native" / "3rdparty" / "libs" / abi
+        if staticlibs.is_dir():
+            for lib in sorted(staticlibs.glob("libopencv_*.a")):
+                if lib.is_file():
+                    libs.append(lib)
+        if thirdparty.is_dir():
+            for lib in sorted(thirdparty.glob("*.a")):
+                if lib.is_file() and lib not in libs:
                     libs.append(lib)
 
     console.step(f"合并静态库 -> {output} ({len(libs)} 个库)")
@@ -104,8 +120,9 @@ def build_abi(abi: str, root: Path, cmake: CMake, toolchain_file: Path, api_leve
         f"-DANDROID_PLATFORM=android-{api_level}",
         f"-DCMAKE_BUILD_TYPE=Release",
     ]
-    if opencv_available:
-        defines.append("-DTASK_GRAPH_ENABLE_OPENCV=ON")
+    # 显式传 ON/OFF（不省略）：旧 CMakeCache 可能缓存 TASK_GRAPH_ENABLE_OPENCV=ON，
+    # 省略 flag 会让 option() 沿用缓存并在 find_package(OpenCV REQUIRED) 处失败。
+    defines.append(f"-DTASK_GRAPH_ENABLE_OPENCV={'ON' if opencv_available else 'OFF'}")
 
     # NDK 工具链强制单配置生成器（Unix Makefiles），即使在 Windows host 上也是单配置。
     code = cmake.configure(root, build_dir, defines=defines, build_type="Release")
@@ -115,11 +132,14 @@ def build_abi(abi: str, root: Path, cmake: CMake, toolchain_file: Path, api_leve
     if code != 0:
         return code
 
-    # 子模块（Metal 不可用，gpu_image_processing 自动跳过）；失败不致命
+    # 子模块（全部 OpenCV 系：无 OpenCV 预编译库时整组跳过；Metal 不可用，
+    # gpu_image_processing 不在此列）；失败不致命但必须可见
     for sub in SUBMODULE_TARGETS:
-        if sub in ("image_filtering", "image_reader") and not opencv_available:
+        if not opencv_available:
             continue
-        cmake.build(build_dir, target=sub, jobs=jobs, what=f"构建子模块 {sub}")
+        code = cmake.build(build_dir, target=sub, jobs=jobs, what=f"构建子模块 {sub}")
+        if code != 0:
+            console.warn(f"子模块 {sub} 构建失败（忽略，不影响其余产物）")
 
     return merge_static_libs(build_dir, dist_dir, llvm_ar, opencv_available, root, abi)
 
@@ -158,8 +178,12 @@ def main() -> int:
     # NDK 强制单配置生成器，显式关掉 multi_config
     cm = CMake(cmake_exe, multi_config=False)
 
-    opencv_available = (not args.no_opencv) and \
-        (root / OPENCV_INSTALL_REL / "lib" / "cmake" / "opencv4").is_dir()
+    # OpenCV 预编译库探测：build_opencv_android.py 产出官方 Android SDK 布局
+    # （sdk/native/jni/OpenCVConfig.cmake）；lib/cmake/opencv4 为兼容保留
+    opencv_available = (not args.no_opencv) and (
+        (root / OPENCV_INSTALL_REL / "sdk" / "native" / "jni" / "OpenCVConfig.cmake").is_file()
+        or (root / OPENCV_INSTALL_REL / "lib" / "cmake" / "opencv4").is_dir()
+    )
     if not args.no_opencv:
         if opencv_available:
             console.step("检测到 OpenCV Android 库，启用 OpenCV")
