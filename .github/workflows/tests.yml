@@ -112,3 +112,158 @@ jobs:
         shell: bash
         run: |
           echo "::notice::run_all_test 阶段汇总见上方日志；若 GPU/Metal 阶段被跳过属预期（无 GPU runner）。mediapipe 在 Windows 应真实执行（非跳过）。"
+
+  # ------------------------------------------------------------------ iOS SDK
+  # 交叉编译验证 + 产出 libtask_graph.xcframework（device + simulator 双 slice）。
+  # OpenCV（device+sim 两套预编译库）与 MNN 按脚本哈希缓存；缓存命中时构建秒过。
+  # CI 中只有 4 个 plugin-* 子模块（render_task 尚无远端仓库，见 AGENTS.md），
+  # 移动端打包本就不含 render_task，与本地产物行为一致。
+  ios:
+    name: ios-sdk (xcframework)
+    runs-on: macos-14
+    # 上限需容纳全冷路径：OpenCV device+sim（各 ~25-40min）+ MNN iOS + 双 slice 构建
+    timeout-minutes: 180
+    steps:
+      # 主仓库是公有仓库；四个 plugin-* 子模块是私有仓库，GITHUB_TOKEN 拉不到，
+      # 由 fetch-private-submodules 用只读 deploy key 单独拉取。
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Fetch private submodules
+        uses: ./.github/actions/fetch-private-submodules
+        with:
+          keys: ${{ secrets.SUBMODULES_DEPLOY_KEYS }}
+
+      - name: Restore OpenCV iOS cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            build_ios/opencv/install
+            build_ios_sim/opencv/install
+          key: opencv-ios-${{ hashFiles('scripts/build_opencv_ios.sh') }}
+
+      # build_opencv_ios.sh 无幂等 sentinel，命中缓存时整体跳过；
+      # sim 版复用 device 分支克隆的源码（省一次 shallow clone）
+      - name: Build OpenCV iOS device + simulator (on cache miss)
+        shell: bash
+        run: |
+          if [ -f build_ios/opencv/install/lib/libopencv_core.a ] && \
+             [ -f build_ios_sim/opencv/install/lib/libopencv_core.a ]; then
+            echo "OpenCV iOS cached, skip build"
+          else
+            ./scripts/build_opencv_ios.sh
+            ./scripts/build_opencv_ios.sh --sim build_ios/opencv/opencv-src
+          fi
+
+      - name: Restore MNN iOS cache
+        uses: actions/cache@v4
+        with:
+          path: build_ios/mnn/install
+          key: mnn-ios-${{ hashFiles('scripts/build_mnn.py') }}
+
+      # 失败即失败（与桌面 tests.yml 的 --mnn 口径一致）；build_mnn.py 有幂等
+      # sentinel，缓存命中时快速返回
+      - name: Build MNN iOS (on cache miss)
+        shell: bash
+        run: python3 scripts/build_mnn.py --platform ios -j 3
+
+      - name: Build iOS SDK (device + simulator xcframework)
+        shell: bash
+        run: ./scripts/build_ios.sh -j 3
+
+      - name: Verify xcframework slices
+        shell: bash
+        run: |
+          test -d dist/ios/libtask_graph.xcframework/ios-arm64
+          test -d dist/ios/libtask_graph.xcframework/ios-arm64-simulator
+          ls -lh dist/ios/libtask_graph.xcframework/ios-arm64/libtask_graph_full.a \
+                 dist/ios/libtask_graph.xcframework/ios-arm64-simulator/libtask_graph_full.a
+
+      - name: Upload iOS SDK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-sdk
+          path: dist/ios/
+          if-no-files-found: error
+          retention-days: 7
+
+  # ------------------------------------------------------------------ Android SDK
+  # NDK 交叉编译验证 + 产出 dist/android/arm64-v8a/libtask_graph.a。
+  # NDK 用 runner 预装（ANDROID_NDK 只读环境变量，gs.android 不做默认路径探测）；
+  # ANDROID_SDK_ROOT 是 OpenCV Android 探测的硬性要求。
+  android:
+    name: android-sdk (arm64-v8a)
+    runs-on: ubuntu-22.04
+    # 上限需容纳全冷路径：OpenCV Android + MNN Android + 核心库/子模块构建
+    timeout-minutes: 150
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Fetch private submodules
+        uses: ./.github/actions/fetch-private-submodules
+        with:
+          keys: ${{ secrets.SUBMODULES_DEPLOY_KEYS }}
+
+      - name: Locate preinstalled Android NDK
+        shell: bash
+        run: |
+          sdk="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          ndk="$(ls -d "$sdk"/ndk/* 2>/dev/null | sort -V | tail -1 || true)"
+          if [ -z "$ndk" ]; then
+            echo "::error::runner 上未找到预装 NDK（$sdk/ndk/ 为空）" >&2
+            exit 1
+          fi
+          echo "ANDROID_NDK=$ndk"       >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$sdk"  >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=$sdk"      >> "$GITHUB_ENV"
+          echo "NDK: $ndk"
+
+      - name: Restore OpenCV Android cache
+        uses: actions/cache@v4
+        with:
+          path: build_android/opencv/install
+          key: opencv-android-${{ hashFiles('scripts/build_opencv_android.py') }}
+
+      # 产出 OpenCV 官方 Android SDK 布局（sdk/native/{jni,staticlibs,3rdparty}）
+      - name: Build OpenCV Android (on cache miss)
+        shell: bash
+        run: |
+          if [ -f build_android/opencv/install/sdk/native/staticlibs/arm64-v8a/libopencv_core.a ]; then
+            echo "OpenCV Android cached, skip build"
+          else
+            python3 scripts/build_opencv_android.py -j 4
+          fi
+
+      - name: Restore MNN Android cache
+        uses: actions/cache@v4
+        with:
+          path: build_android/mnn/install
+          key: mnn-android-${{ hashFiles('scripts/build_mnn.py') }}
+
+      - name: Build MNN Android (on cache miss)
+        shell: bash
+        run: python3 scripts/build_mnn.py --platform android --abis arm64-v8a -j 4
+
+      - name: Build Android SDK (arm64-v8a)
+        shell: bash
+        run: python3 scripts/build_android.py -j 4
+
+      - name: Verify merged archive
+        shell: bash
+        run: |
+          test -f dist/android/arm64-v8a/libtask_graph.a
+          test -d dist/android/include/task_graph
+          ls -lh dist/android/arm64-v8a/libtask_graph.a
+
+      - name: Upload Android SDK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-sdk
+          path: dist/android/
+          if-no-files-found: error
+          retention-days: 7
