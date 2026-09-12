@@ -513,6 +513,11 @@ SdkStatus TaskGraphSdk::load_graph_file(const std::filesystem::path& path) {
 }
 
 SdkStatus TaskGraphSdk::load_graph_string(const std::string& json) {
+    return load_graph_string(json, std::string());
+}
+
+SdkStatus TaskGraphSdk::load_graph_string(const std::string& json,
+                                          const std::string& base_dir) {
     std::lock_guard<std::mutex> exec_lock(impl_->exec_mutex);  // 等在途执行结束
     std::lock_guard<std::mutex> lock(impl_->mutex);
     if (impl_->state != Impl::State::Inited) {
@@ -521,6 +526,7 @@ SdkStatus TaskGraphSdk::load_graph_string(const std::string& json) {
     }
     DagConfigLoader::Options opts;
     opts.require_known_types = impl_->config.require_known_types;
+    if (!base_dir.empty()) opts.base_dir = base_dir;
     auto loaded = DagConfigLoader::load_string(json, opts);
     if (!loaded.ok()) {
         impl_->last_issues = std::move(loaded.issues);

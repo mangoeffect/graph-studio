@@ -24,12 +24,14 @@
 >   - C 侧补 `tg_register_c_task` + `tg_task_ctx_*`(纯 C 自定义任务);
 >   - **examples 三个(basic/parallel/multi_output)为纯 C**(`.c`:JSON graph +
 >     io 边界 + C 任务 + tg_sdk_* 完整生命周期);
->   - **submodule graph 测试迁移到 C++ 消费 API**:image_filtering、
+>   - **全部 submodule 单测迁移到 C++ 消费 API**(无例外):image_filtering、
 >     image_color/grading/geometry、image_reader/writer、gpu_image_graph、
->     js_script_graph、render_graph——图生命周期(load_graph_file 自动 base_dir
->     → execute → task_result 断言)全部经 TaskGraphSdk,插件加载/GPU 后端
->     setup/像素参考比较等测试自身逻辑保持;video_io/stream、render_bench、
->     mediapipe(流式/计时/双设备矩阵)不迁移。
+>     js_script_graph、render_graph、video_io(流式)、render_bench(计时)、
+>     mediapipe×10(delegate 切换经 inject_param 注入 JSON + load_graph_string
+>     的 base_dir 重载)。图生命周期(load → execute → task_result 断言)
+>     全部经 TaskGraphSdk;插件加载/GPU 后端 setup/像素参考比较等测试自身
+>     逻辑保持直连。bench 计时口径为 load+execute(单实例线程池跨迭代
+>     amortize,相对比较语义不变)。
 > 目标:在"只读配置加载"之上,提供一套**面向宿主 App 的完整 SDK 生命周期**:
 > 创建 → 初始化 → 加载 graph → 绑定输入/输出 → 更新 graph → 执行 → 销毁。
 

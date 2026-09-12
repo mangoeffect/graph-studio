@@ -121,6 +121,9 @@ public:
     // ===== 步骤 3:加载 graph(只消费 JSON 文件/字符串;重复 load = 整图替换)=====
     SdkStatus load_graph_file(const std::filesystem::path& path);
     SdkStatus load_graph_string(const std::string& json);
+    // base_dir 显式版(字符串来源无目录可推导时用,如"改参后重注入"的
+    // JSON:_source_dir 注入与文件路径等价)
+    SdkStatus load_graph_string(const std::string& json, const std::string& base_dir);
     // GRAPH_INVALID 时取回结构化诊断(行列号/JSON pointer)。
     const std::vector<DagConfigIssue>& last_load_issues() const;
     // 当前图的只读快照(未加载时为 nullptr;UI 预览用)。
