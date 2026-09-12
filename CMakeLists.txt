@@ -174,9 +174,9 @@ add_library(task_graph ${TASK_GRAPH_LIB_TYPE}
     src/plugin.cpp
     src/plugin_registry.cpp
     src/dag_serializer.cpp
-    src/dag_config.cpp
-    src/sdk.cpp
-    src/sdk_c.cpp
+    api/src/dag_config.cpp
+    api/src/sdk.cpp
+    api/src/sdk_c.cpp
     src/logger.cpp
     src/model_finder.cpp
     src/data_types.cpp
@@ -266,8 +266,13 @@ endif()
 target_include_directories(task_graph
     PUBLIC
         $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/api/include>
         $<INSTALL_INTERFACE:include>
 )
+
+# 向消费者传播 C++20 要求(安装后的导出目标同样生效;纯 C 消费者不受影响,
+# 其编译器用 C 方言编译 .c TU)
+target_compile_features(task_graph PUBLIC cxx_std_20)
 
 target_link_libraries(task_graph
     PUBLIC
@@ -470,6 +475,13 @@ install(TARGETS task_graph
 )
 
 install(DIRECTORY include/
+    DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+    FILES_MATCHING PATTERN "*.hpp" PATTERN "*.h"
+)
+
+# 消费者 API(api/include,与主 include 合并安装到同一 include/task_graph/):
+# dag_config(只读加载)+ sdk(C++ 生命周期)+ tg_sdk_c(纯 C)
+install(DIRECTORY api/include/
     DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
     FILES_MATCHING PATTERN "*.hpp" PATTERN "*.h"
 )
