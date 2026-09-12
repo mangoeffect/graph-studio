@@ -205,6 +205,9 @@ public:
     // per-run 输出槽(上次执行的结果,直到下次执行被清空)
     std::unordered_map<std::string, std::any> run_outputs;
 
+    // 上次执行的逐任务结果快照(按任意节点访问;每次 execute 入口清空)
+    std::unordered_map<std::string, TaskResult> last_results;
+
     std::string last_error_;
 
     // 异步 worker 跟踪(shutdown join)
@@ -697,6 +700,30 @@ std::optional<std::any> TaskGraphSdk::get_output_any(const std::string& node_id)
     return it->second;
 }
 
+std::optional<TaskStatus> TaskGraphSdk::task_status(const std::string& node_id) const {
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    auto it = impl_->last_results.find(node_id);
+    if (it == impl_->last_results.end()) return std::nullopt;
+    return it->second.status;
+}
+
+std::optional<std::any> TaskGraphSdk::task_output(const std::string& node_id) const {
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    auto it = impl_->last_results.find(node_id);
+    if (it == impl_->last_results.end() || !it->second.is_success()) {
+        return std::nullopt;
+    }
+    return it->second.value;
+}
+
+std::vector<std::string> TaskGraphSdk::executed_tasks() const {
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    std::vector<std::string> ids;
+    ids.reserve(impl_->last_results.size());
+    for (const auto& kv : impl_->last_results) ids.push_back(kv.first);
+    return ids;
+}
+
 SdkStatus TaskGraphSdk::set_global(const std::string& key, std::any value) {
     std::lock_guard<std::mutex> lock(impl_->mutex);
     if (impl_->state != Impl::State::Inited) {
@@ -756,8 +783,9 @@ SdkStatus TaskGraphSdk::execute() {
             }
         }
 
-        // 3) 清空 per-run 输出槽 + 旧 io_output 值
+        // 3) 清空 per-run 输出槽 + 旧 io_output 值 + 上次执行结果快照
         impl_->run_outputs.clear();
+        impl_->last_results.clear();
         for (const auto& id : impl_->dag->task_ids()) {
             auto t = impl_->dag->get_task(id);
             if (t && t->type() == kIoOutputType) {
@@ -803,8 +831,9 @@ SdkStatus TaskGraphSdk::execute() {
         for (auto& kv : collected) {
             impl_->run_outputs[kv.first] = kv.second;  // 拉模式输出槽
         }
-        auto results = impl_->executor->get_results();
-        for (const auto& kv : results) {
+        // 逐任务结果快照(按任意节点访问的缓存源)
+        impl_->last_results = impl_->executor->get_results();
+        for (const auto& kv : impl_->last_results) {
             if (kv.second.is_failed()) {
                 status = SdkStatus::INTERNAL_ERROR;
                 impl_->set_error("task '" + kv.first + "' failed");

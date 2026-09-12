@@ -172,6 +172,48 @@ int tg_sdk_diff_count(tg_sdk* sdk, int kind);
 const char* tg_sdk_diff_item(tg_sdk* sdk, int kind, int index);  /* 越界 NULL */
 int tg_sdk_diff_topology_changed(tg_sdk* sdk);
 
+/* ====================== C 自定义任务注册 ====================== */
+
+/* C 宿主注册自有任务类型(等价 C++ lambda Task/INode 子类),供 graph JSON
+ * 的 "type" 直接引用。注册进 PluginRegistry,进程级生效,需在 load_graph
+ * 前完成;重复注册同名类型返回 TG_ERR_INVALID_ARGUMENT。
+ * execute 返回 0 = COMPLETED,-1 = FAILED。
+ *
+ * 声明形(用于端口规范化/参数类型化/编辑器渲染):
+ *   input_ports / output_ports:NULL 结尾的端口名数组;NULL = 无该侧端口
+ *     (输出端口 NULL 时仍可 set_output,落到默认端口 "out")
+ *   param_names / param_types:  参数声明,类型 0=int32 1=double 2=string
+ *     3=bool;声明后 JSON params 按类型解析,经 ctx 参数访问器读取
+ *
+ * 上下文访问器仅在 execute 回调内有效(生命周期 = 本次调用):
+ *   读参数/读输入:缺失或类型不符返回 0 / NULL
+ *   写输出:写到第一个声明的输出端口(未声明则为 "out");
+ *   返回 0 但未写输出 = 无值完成。 */
+typedef struct tg_task_ctx tg_task_ctx;
+
+const char*     tg_task_ctx_param_string(const tg_task_ctx* ctx, const char* key);
+int32_t         tg_task_ctx_param_int(const tg_task_ctx* ctx, const char* key);
+double          tg_task_ctx_param_double(const tg_task_ctx* ctx, const char* key);
+
+const char*     tg_task_ctx_input_string(const tg_task_ctx* ctx, const char* port);
+int32_t         tg_task_ctx_input_int(const tg_task_ctx* ctx, const char* port);
+double          tg_task_ctx_input_double(const tg_task_ctx* ctx, const char* port);
+const tg_image* tg_task_ctx_input_image(const tg_task_ctx* ctx, const char* port);
+
+void tg_task_ctx_set_output_string(tg_task_ctx* ctx, const char* value);
+void tg_task_ctx_set_output_int(tg_task_ctx* ctx, int32_t value);
+void tg_task_ctx_set_output_double(tg_task_ctx* ctx, double value);
+void tg_task_ctx_set_output_image(tg_task_ctx* ctx, const tg_image* img);
+
+int tg_register_c_task(const char* type,
+                       int (*execute)(tg_task_ctx*),
+                       const char* const* input_ports,
+                       const char* const* output_ports,
+                       const char* const* param_names,
+                       const int* param_types,
+                       int param_count);
+int tg_unregister_c_task(const char* type);
+
 #ifdef __cplusplus
 }  /* extern "C" */
 #endif

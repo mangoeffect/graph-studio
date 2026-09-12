@@ -418,13 +418,14 @@ endif() # NOT EMSCRIPTEN AND TASK_GRAPH_BUILD_TESTS
 # ============================================================
 # 示例
 # ============================================================
-add_executable(example_basic examples/basic.cpp)
+# 示例:纯 C 消费者 API(JSON graph + io 边界 + tg_register_c_task)
+add_executable(example_basic examples/basic.c)
 target_link_libraries(example_basic PRIVATE task_graph)
 
-add_executable(example_parallel examples/parallel.cpp)
+add_executable(example_parallel examples/parallel.c)
 target_link_libraries(example_parallel PRIVATE task_graph)
 
-add_executable(example_multi_output examples/multi_output.cpp)
+add_executable(example_multi_output examples/multi_output.c)
 target_link_libraries(example_multi_output PRIVATE task_graph)
 
 endif() # NOT TASK_GRAPH_MOBILE

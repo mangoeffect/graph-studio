@@ -12,6 +12,7 @@
 
 #include <cstring>
 #include <future>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -22,6 +23,100 @@
 struct tg_image {
     task_graph::Image img;
 };
+
+// tg_task_ctx 布局(对外不透明):execute 回调期间的栈上视图。
+// out_value 由回调经 set_output 写入,execute 结束后搬进 TaskResult;
+// str/img cache 给返回的 C 指针提供稳定存储(本次 execute 内有效)。
+struct tg_task_ctx {
+    task_graph::TaskContext* tc;
+    std::any out_value;
+    std::vector<std::unique_ptr<std::string>> str_cache;
+    std::vector<std::unique_ptr<tg_image>> img_cache;
+};
+
+// ====================== C 自定义任务(trampoline) ======================
+
+namespace {
+
+using task_graph::INode;
+using task_graph::NodePtr;
+using task_graph::ParamSpec;
+using task_graph::ParamType;
+using task_graph::PortSpec;
+using task_graph::TaskConfig;
+using task_graph::TaskContext;
+using task_graph::TaskResult;
+using task_graph::TaskStatus;
+
+struct CTaskSpec {
+    int (*execute)(tg_task_ctx*);
+    std::vector<std::string> input_ports;
+    std::vector<std::string> output_ports;
+    std::vector<std::pair<std::string, int>> params;  // name -> C 类型码
+};
+
+// 进程级 C 任务注册表:type -> spec(PluginRegistry creator 闭包引用此处)
+std::mutex& ctask_mutex() {
+    static std::mutex m;
+    return m;
+}
+std::map<std::string, std::shared_ptr<CTaskSpec>>& ctask_registry() {
+    static std::map<std::string, std::shared_ptr<CTaskSpec>> reg;
+    return reg;
+}
+
+class CTaskNode final : public INode {
+public:
+    CTaskNode(const std::string& id, const TaskConfig& cfg,
+              std::shared_ptr<CTaskSpec> spec, std::string type_name)
+        : INode(id, cfg), spec_(std::move(spec)), type_name_(std::move(type_name)) {}
+
+    const std::string& type() const override { return type_name_; }
+
+    std::vector<PortSpec> input_specs() const override {
+        std::vector<PortSpec> out;
+        for (const auto& p : spec_->input_ports) out.push_back(PortSpec{p, "", true});
+        return out;
+    }
+    std::vector<PortSpec> output_specs() const override {
+        std::vector<PortSpec> out;
+        for (const auto& p : spec_->output_ports) out.push_back(PortSpec{p, "", true});
+        return out;
+    }
+    std::vector<ParamSpec> param_specs() const override {
+        std::vector<ParamSpec> out;
+        for (const auto& kv : spec_->params) {
+            ParamSpec s;
+            s.name = kv.first;
+            s.type = kv.second == 0 ? ParamType::Int
+                    : kv.second == 1 ? ParamType::Float
+                    : kv.second == 2 ? ParamType::String
+                                     : ParamType::Bool;
+            out.push_back(std::move(s));
+        }
+        return out;
+    }
+
+    TaskResult execute(TaskContext& ctx) override {
+        tg_task_ctx cctx;
+        cctx.tc = &ctx;
+        const int rc = spec_->execute(&cctx);
+        TaskResult r;
+        if (rc != 0) {
+            r.status = TaskStatus::FAILED;
+            return r;
+        }
+        r.status = TaskStatus::COMPLETED;
+        r.value = std::move(cctx.out_value);  // 未 set 则为空 any(无值完成)
+        return r;
+    }
+
+private:
+    std::shared_ptr<CTaskSpec> spec_;
+    std::string type_name_;
+};
+
+}  // namespace
 
 struct tg_sdk {
     std::shared_ptr<task_graph::TaskGraphSdk> impl;
@@ -447,6 +542,132 @@ const char* tg_sdk_diff_item(tg_sdk* sdk, int kind, int index) {
 int tg_sdk_diff_topology_changed(tg_sdk* sdk) {
     if (!sdk) return 0;
     return sdk->impl->last_diff().topology_changed() ? 1 : 0;
+}
+
+// ====================== C 自定义任务:上下文访问器 ======================
+
+const char* tg_task_ctx_param_string(const tg_task_ctx* ctx, const char* key) {
+    if (!ctx || !key || !ctx->tc) return nullptr;
+    auto v = ctx->tc->params().get_string(key);
+    if (!v.has_value()) return nullptr;
+    // get_string 返回值拷贝;c_str 挂到 ctx 缓存保稳定(本次 execute 内有效)
+    auto s = std::make_unique<std::string>(std::move(*v));
+    const char* ptr = s->c_str();
+    const_cast<tg_task_ctx*>(ctx)->str_cache.push_back(std::move(s));
+    return ptr;
+}
+
+int32_t tg_task_ctx_param_int(const tg_task_ctx* ctx, const char* key) {
+    if (!ctx || !key || !ctx->tc) return 0;
+    auto v = ctx->tc->params().get_int(key);
+    return v.value_or(0);
+}
+
+double tg_task_ctx_param_double(const tg_task_ctx* ctx, const char* key) {
+    if (!ctx || !key || !ctx->tc) return 0.0;
+    auto vf = ctx->tc->params().get_float(key);
+    if (vf.has_value()) return *vf;
+    // Int 参数当 double 读(声明与使用类型不一致的宽容路径)
+    auto vi = ctx->tc->params().get_int(key);
+    return vi.has_value() ? static_cast<double>(*vi) : 0.0;
+}
+
+const char* tg_task_ctx_input_string(const tg_task_ctx* ctx, const char* port) {
+    if (!ctx || !port || !ctx->tc) return nullptr;
+    auto v = ctx->tc->input<std::string>(port);
+    if (!v.has_value()) return nullptr;
+    // 拷进缓存:C 指针须在本次 execute 内稳定(inputs_by_port 是 const 引用,
+    // 原值即稳定,但经 input<T> 拷贝返回,故挂到 ctx 缓存统一保证)
+    auto s = std::make_unique<std::string>(std::move(*v));
+    const char* ptr = s->c_str();
+    const_cast<tg_task_ctx*>(ctx)->str_cache.push_back(std::move(s));
+    return ptr;
+}
+
+int32_t tg_task_ctx_input_int(const tg_task_ctx* ctx, const char* port) {
+    if (!ctx || !port || !ctx->tc) return 0;
+    auto v = ctx->tc->input<int32_t>(port);
+    return v.value_or(0);
+}
+
+double tg_task_ctx_input_double(const tg_task_ctx* ctx, const char* port) {
+    if (!ctx || !port || !ctx->tc) return 0.0;
+    auto v = ctx->tc->input<double>(port);
+    return v.value_or(0.0);
+}
+
+const tg_image* tg_task_ctx_input_image(const tg_task_ctx* ctx, const char* port) {
+    if (!ctx || !port || !ctx->tc) return nullptr;
+    auto v = ctx->tc->input<task_graph::Image>(port);
+    if (!v.has_value()) return nullptr;
+    // 包装进缓存:tg_image 按值持有 Image,像素零拷贝
+    auto img = std::make_unique<tg_image>();
+    img->img = std::move(*v);
+    const tg_image* ptr = img.get();
+    const_cast<tg_task_ctx*>(ctx)->img_cache.push_back(std::move(img));
+    return ptr;
+}
+
+void tg_task_ctx_set_output_string(tg_task_ctx* ctx, const char* value) {
+    if (ctx && value) ctx->out_value = std::any(std::string(value));
+}
+void tg_task_ctx_set_output_int(tg_task_ctx* ctx, int32_t value) {
+    if (ctx) ctx->out_value = std::any(value);
+}
+void tg_task_ctx_set_output_double(tg_task_ctx* ctx, double value) {
+    if (ctx) ctx->out_value = std::any(value);
+}
+void tg_task_ctx_set_output_image(tg_task_ctx* ctx, const tg_image* img) {
+    if (ctx && img) ctx->out_value = std::any(img->img);
+}
+
+int tg_register_c_task(const char* type,
+                       int (*execute)(tg_task_ctx*),
+                       const char* const* input_ports,
+                       const char* const* output_ports,
+                       const char* const* param_names,
+                       const int* param_types,
+                       int param_count) {
+    if (!type || !execute) return TG_ERR_INVALID_ARGUMENT;
+
+    auto spec = std::make_shared<CTaskSpec>();
+    spec->execute = execute;
+    if (input_ports) {
+        for (auto p = input_ports; *p; ++p) spec->input_ports.emplace_back(*p);
+    }
+    if (output_ports) {
+        for (auto p = output_ports; *p; ++p) spec->output_ports.emplace_back(*p);
+    }
+    for (int i = 0; i < param_count; ++i) {
+        if (!param_names || !param_names[i]) continue;
+        spec->params.emplace_back(param_names[i],
+                                  param_types ? param_types[i] : 2);
+    }
+
+    std::string type_str(type);
+    {
+        std::lock_guard<std::mutex> lock(ctask_mutex());
+        if (ctask_registry().count(type_str)) return TG_ERR_INVALID_ARGUMENT;
+        ctask_registry()[type_str] = spec;
+    }
+
+    auto& reg = task_graph::PluginRegistry::instance();
+    reg.register_task(type_str,
+        [spec, type_str](const std::string& id, const TaskConfig& cfg) -> NodePtr {
+            return std::make_shared<CTaskNode>(id, cfg, spec, type_str);
+        });
+    return TG_OK;
+}
+
+int tg_unregister_c_task(const char* type) {
+    if (!type) return TG_ERR_INVALID_ARGUMENT;
+    std::string type_str(type);
+    {
+        std::lock_guard<std::mutex> lock(ctask_mutex());
+        if (ctask_registry().erase(type_str) == 0) return TG_ERR_INVALID_ARGUMENT;
+    }
+    task_graph::PluginRegistry::instance().unregister_task(type_str);
+    return TG_OK;
 }
 
 }  // extern "C"

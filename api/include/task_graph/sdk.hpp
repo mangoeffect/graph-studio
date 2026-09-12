@@ -163,6 +163,17 @@ public:
         return std::any_cast<T>(std::move(*v));
     }
 
+    // ===== 按任意节点访问上次执行的结果(检查/测试用消费面) =====
+    // 与 get_output_* 不同,不要求节点是 io_output——返回上次 execute 中
+    // 该任务的 TaskResult 快照(每次 execute 入口清空):
+    //   task_status: 任务状态;nullopt = 无结果记录(未执行/节点不存在)
+    //   task_output: 任务 COMPLETED 时的 TaskResult.value(可能为空 any);
+    //                否则 nullopt
+    //   executed_tasks: 上次执行涉及的全部节点 id
+    std::optional<TaskStatus> task_status(const std::string& node_id) const;
+    std::optional<std::any> task_output(const std::string& node_id) const;
+    std::vector<std::string> executed_tasks() const;
+
     // 全局参数运行期更新(下次执行生效;env 不可变)。
     SdkStatus set_global(const std::string& key, std::any value);
 

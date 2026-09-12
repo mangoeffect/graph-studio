@@ -450,3 +450,63 @@ TEST(SdkEquivalence, MatchesBareExecutorPath) {
     EXPECT_EQ(via_sdk, "golden-A");
     EXPECT_EQ(std::any_cast<std::string>(results["proc"].value), "golden-A");
 }
+
+// ====================== 按任意节点访问上次执行结果 ======================
+
+TEST(SdkTaskResults, PerNodeStatusAndOutput) {
+    register_test_tasks_once();
+    auto sdk = TaskGraphSdk::create();
+    ASSERT_EQ(sdk->init(base_config()), SdkStatus::OK);
+    ASSERT_EQ(sdk->load_graph_string(kPipeline), SdkStatus::OK);
+
+    // 未执行:无结果记录
+    EXPECT_EQ(sdk->task_status("proc"), std::nullopt);
+    EXPECT_EQ(sdk->task_output("proc"), std::nullopt);
+    EXPECT_TRUE(sdk->executed_tasks().empty());
+
+    ASSERT_EQ(sdk->bind_input<std::string>("src", std::string("x")), SdkStatus::OK);
+    ASSERT_EQ(sdk->execute(), SdkStatus::OK);
+
+    // 逐节点状态与输出(非 io_output 节点)
+    EXPECT_EQ(sdk->task_status("src"), TaskStatus::COMPLETED);
+    EXPECT_EQ(sdk->task_status("proc"), TaskStatus::COMPLETED);
+    auto mid = sdk->task_output("proc");
+    ASSERT_TRUE(mid.has_value());
+    EXPECT_EQ(std::any_cast<std::string>(*mid), "x-A");
+    // io_input 的输出 = 绑定值
+    auto srcv = sdk->task_output("src");
+    ASSERT_TRUE(srcv.has_value());
+    EXPECT_EQ(std::any_cast<std::string>(*srcv), "x");
+    // 节点不存在
+    EXPECT_EQ(sdk->task_status("nope"), std::nullopt);
+    EXPECT_EQ(sdk->executed_tasks().size(), 3u);
+
+    // 下次 execute 清空并重建
+    ASSERT_EQ(sdk->bind_input<std::string>("src", std::string("y")), SdkStatus::OK);
+    ASSERT_EQ(sdk->execute(), SdkStatus::OK);
+    auto mid2 = sdk->task_output("proc");
+    ASSERT_TRUE(mid2.has_value());
+    EXPECT_EQ(std::any_cast<std::string>(*mid2), "y-A");
+    EXPECT_EQ(sdk->executed_tasks().size(), 3u);
+}
+
+TEST(SdkTaskResults, FailedTaskHasStatusButNoOutput) {
+    register_test_tasks_once();
+    auto sdk = TaskGraphSdk::create();
+    ASSERT_EQ(sdk->init(base_config()), SdkStatus::OK);
+    // proc 无输入(直连 src→dst,proc 悬空)→ proc FAILED
+    ASSERT_EQ(sdk->load_graph_string(R"({
+      "version": "2.0",
+      "tasks": [
+        { "id": "src", "type": "io_input", "params": { "data_type": "std::string" } },
+        { "id": "proc", "type": "test_append", "params": { "suffix": "-Z" } },
+        { "id": "dst", "type": "io_output" }
+      ],
+      "edges": [ { "from": "src", "from_port": "out", "to": "dst", "to_port": "in" } ]
+    })"), SdkStatus::OK);
+    ASSERT_EQ(sdk->bind_input<std::string>("src", std::string("x")), SdkStatus::OK);
+    EXPECT_EQ(sdk->execute(), SdkStatus::INTERNAL_ERROR);
+    EXPECT_EQ(sdk->task_status("proc"), TaskStatus::FAILED);
+    EXPECT_EQ(sdk->task_output("proc"), std::nullopt);   // 失败任务无输出
+    EXPECT_EQ(sdk->task_status("src"), TaskStatus::COMPLETED);
+}

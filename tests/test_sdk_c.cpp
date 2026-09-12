@@ -339,3 +339,116 @@ TEST(CApi, HeaderIsPlainC) {
     tg_image_destroy(img);
     tg_sdk_destroy(sdk);
 }
+
+// ====================== C 自定义任务注册 ======================
+
+namespace {
+// 字符串加工 C 任务:param "suffix" + 输入 "in"
+int c_greet_execute(tg_task_ctx* ctx) {
+    const char* in = tg_task_ctx_input_string(ctx, "in");
+    const char* suffix = tg_task_ctx_param_string(ctx, "suffix");
+    if (!in) return -1;
+    std::string out = std::string(in) + (suffix ? suffix : "");
+    tg_task_ctx_set_output_string(ctx, out.c_str());
+    return 0;
+}
+// 图像面积 C 任务:输入 Image → 输出 int
+int c_area_execute(tg_task_ctx* ctx) {
+    const tg_image* img = tg_task_ctx_input_image(ctx, "in");
+    if (!img) return -1;
+    tg_task_ctx_set_output_int(ctx, tg_image_width(img) * tg_image_height(img));
+    return 0;
+}
+// 双端口输入 C 任务(parallel 形态):int + string → string
+int c_report_execute(tg_task_ctx* ctx) {
+    int32_t health = tg_task_ctx_input_int(ctx, "health");
+    const char* analysis = tg_task_ctx_input_string(ctx, "analysis");
+    std::string out = "health=" + std::to_string(health) +
+                      " analysis=" + (analysis ? analysis : "?");
+    tg_task_ctx_set_output_string(ctx, out.c_str());
+    return 0;
+}
+}  // namespace
+
+TEST(CApi, RegisterCTaskStringPipeline) {
+    register_c_test_tasks_once();
+    static const char* in_ports[] = {"in", nullptr};
+    static const char* out_ports[] = {"out", nullptr};
+    static const char* param_names[] = {"suffix"};
+    static const int param_types[] = {2 /*string*/};
+    ASSERT_EQ(tg_register_c_task("c_greet", c_greet_execute, in_ports, out_ports,
+                                 param_names, param_types, 1),
+              TG_OK);
+    // 重复注册同名
+    EXPECT_EQ(tg_register_c_task("c_greet", c_greet_execute, in_ports, out_ports,
+                                 nullptr, nullptr, 0),
+              TG_ERR_INVALID_ARGUMENT);
+
+    tg_sdk* sdk = tg_sdk_create();
+    ASSERT_EQ(tg_sdk_init(sdk, nullptr), TG_OK);
+    ASSERT_EQ(tg_sdk_load_graph_json(sdk, R"({
+      "version": "2.0",
+      "tasks": [
+        { "id": "src", "type": "io_input", "params": { "data_type": "std::string" } },
+        { "id": "g", "type": "c_greet", "params": { "suffix": "!" } },
+        { "id": "dst", "type": "io_output" }
+      ],
+      "edges": [
+        { "from": "src", "from_port": "out", "to": "g", "to_port": "in" },
+        { "from": "g", "from_port": "out", "to": "dst", "to_port": "in" }
+      ]
+    })"), TG_OK);
+    ASSERT_EQ(tg_sdk_bind_input_string(sdk, "src", "hi"), TG_OK);
+    EXPECT_EQ(tg_sdk_execute(sdk), TG_OK);
+    char buf[32];
+    tg_sdk_get_output_string(sdk, "dst", buf, sizeof(buf));
+    EXPECT_STREQ(buf, "hi!");
+
+    tg_sdk_destroy(sdk);
+    ASSERT_EQ(tg_unregister_c_task("c_greet"), TG_OK);
+    EXPECT_EQ(tg_unregister_c_task("c_greet"), TG_ERR_INVALID_ARGUMENT);
+}
+
+TEST(CApi, RegisterCTaskImageAndPorts) {
+    register_c_test_tasks_once();
+    static const char* in_ports[] = {"in", nullptr};
+    static const char* report_in[] = {"health", "analysis", nullptr};
+    static const char* out_ports[] = {"out", nullptr};
+
+    ASSERT_EQ(tg_register_c_task("c_area", c_area_execute, in_ports, out_ports,
+                                 nullptr, nullptr, 0), TG_OK);
+    ASSERT_EQ(tg_register_c_task("c_report", c_report_execute, report_in, out_ports,
+                                 nullptr, nullptr, 0), TG_OK);
+
+    tg_sdk* sdk = tg_sdk_create();
+    ASSERT_EQ(tg_sdk_init(sdk, nullptr), TG_OK);
+    ASSERT_EQ(tg_sdk_load_graph_json(sdk, R"({
+      "version": "2.0",
+      "tasks": [
+        { "id": "img_src", "type": "io_input", "params": { "data_type": "task_graph::Image" } },
+        { "id": "area", "type": "c_area" },
+        { "id": "report", "type": "c_report" },
+        { "id": "dst", "type": "io_output" }
+      ],
+      "edges": [
+        { "from": "img_src", "from_port": "out", "to": "area", "to_port": "in" },
+        { "from": "area", "from_port": "out", "to": "report", "to_port": "health" },
+        { "from": "img_src", "from_port": "out", "to": "report", "to_port": "analysis" },
+        { "from": "report", "from_port": "out", "to": "dst", "to_port": "in" }
+      ]
+    })"), TG_OK);
+
+    // 注意:report 的 analysis 端口收到的是 Image(类型不符读出 NULL → "?")
+    tg_image* img = tg_image_create(6, 7, 3, 3 /*RGB*/, 0, nullptr);
+    ASSERT_NE(img, nullptr);
+    ASSERT_EQ(tg_sdk_bind_input_image(sdk, "img_src", img), TG_OK);
+    EXPECT_EQ(tg_sdk_execute(sdk), TG_OK);
+    char buf[64];
+    tg_sdk_get_output_string(sdk, "dst", buf, sizeof(buf));
+    EXPECT_STREQ(buf, "health=42 analysis=?");
+    tg_image_destroy(img);
+    tg_sdk_destroy(sdk);
+
+    ASSERT_EQ(tg_unregister_c_task("c_area"), TG_OK);
+    ASSERT_EQ(tg_unregister_c_task("c_report"), TG_OK);
+}
