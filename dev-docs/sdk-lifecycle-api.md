@@ -17,6 +17,19 @@
 >     (int32/double/string/bool/tg_image)、推模式回调只通知+拉取取数、
 >     异步经 execute_async/execute_wait 的 future 存储)、diff/env 访问器;
 >     `tests/sdk_c_header_check.c` 以纯 C 编译验证头文件合法性。
+>
+> **消费者迁移(已落地)**:
+>   - `TaskGraphSdk` 补 `task_result/task_status/task_output/executed_tasks`
+>     (execute 后缓存 executor 结果,按任意节点访问,含 exception 失败诊断);
+>   - C 侧补 `tg_register_c_task` + `tg_task_ctx_*`(纯 C 自定义任务);
+>   - **examples 三个(basic/parallel/multi_output)为纯 C**(`.c`:JSON graph +
+>     io 边界 + C 任务 + tg_sdk_* 完整生命周期);
+>   - **submodule graph 测试迁移到 C++ 消费 API**:image_filtering、
+>     image_color/grading/geometry、image_reader/writer、gpu_image_graph、
+>     js_script_graph、render_graph——图生命周期(load_graph_file 自动 base_dir
+>     → execute → task_result 断言)全部经 TaskGraphSdk,插件加载/GPU 后端
+>     setup/像素参考比较等测试自身逻辑保持;video_io/stream、render_bench、
+>     mediapipe(流式/计时/双设备矩阵)不迁移。
 > 目标:在"只读配置加载"之上,提供一套**面向宿主 App 的完整 SDK 生命周期**:
 > 创建 → 初始化 → 加载 graph → 绑定输入/输出 → 更新 graph → 执行 → 销毁。
 

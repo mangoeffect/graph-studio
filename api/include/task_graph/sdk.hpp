@@ -170,6 +170,9 @@ public:
     //   task_output: 任务 COMPLETED 时的 TaskResult.value(可能为空 any);
     //                否则 nullopt
     //   executed_tasks: 上次执行涉及的全部节点 id
+    //   task_result: 完整 TaskResult 快照(含 status/value/exception/duration,
+    //                失败诊断用——exception 指针可 rethrow 取消息)
+    std::optional<TaskResult> task_result(const std::string& node_id) const;
     std::optional<TaskStatus> task_status(const std::string& node_id) const;
     std::optional<std::any> task_output(const std::string& node_id) const;
     std::vector<std::string> executed_tasks() const;

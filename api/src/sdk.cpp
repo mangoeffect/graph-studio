@@ -700,6 +700,13 @@ std::optional<std::any> TaskGraphSdk::get_output_any(const std::string& node_id)
     return it->second;
 }
 
+std::optional<TaskResult> TaskGraphSdk::task_result(const std::string& node_id) const {
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    auto it = impl_->last_results.find(node_id);
+    if (it == impl_->last_results.end()) return std::nullopt;
+    return it->second;  // 完整拷贝(含 exception/duration)
+}
+
 std::optional<TaskStatus> TaskGraphSdk::task_status(const std::string& node_id) const {
     std::lock_guard<std::mutex> lock(impl_->mutex);
     auto it = impl_->last_results.find(node_id);
