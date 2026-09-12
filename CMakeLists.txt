@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.18)
 project(task_graph
     VERSION 0.1.0
     DESCRIPTION "A lightweight DAG task execution framework in C++"
-    LANGUAGES CXX
+    LANGUAGES C CXX   # C:纯 C API(tg_sdk_c.h)的头文件编译校验
 )
 
 set(CMAKE_CXX_STANDARD 20)
@@ -176,6 +176,7 @@ add_library(task_graph ${TASK_GRAPH_LIB_TYPE}
     src/dag_serializer.cpp
     src/dag_config.cpp
     src/sdk.cpp
+    src/sdk_c.cpp
     src/logger.cpp
     src/model_finder.cpp
     src/data_types.cpp
@@ -353,6 +354,9 @@ endfunction()
 add_tg_test(test_dag)
 add_tg_test(test_dag_config)
 add_tg_test(test_sdk)
+# 纯 C API 测试:附带一个以 C 编译的 TU 验证 tg_sdk_c.h 是合法 C 头
+add_tg_test(test_sdk_c)
+target_sources(test_sdk_c PRIVATE tests/sdk_c_header_check.c)
 add_tg_test(test_ports)
 add_tg_test(test_params)
 add_tg_test(test_serializer)

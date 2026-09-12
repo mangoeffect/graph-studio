@@ -7,6 +7,16 @@
 >   3. **绑定 API = std::any 底座 + template 便捷封装** —— 核心 ABI 只有 any 签名,
 >      typed 版本头文件内联转发(跨语言/WASM 绑定只包 any 层)。
 > 前置文档:`dev-docs/dag-config-api.md`(只读 DAG JSON 配置 API —— 本文的 graph 加载层)
+>
+> **实现状态**(全部落地,211/211 测试通过):
+>   - C++ 层:`include/task_graph/dag_config.hpp` / `sdk.hpp` + `src/dag_config.cpp` /
+>     `sdk.cpp`(含 io_input/io_output 内置任务、DAGExecutor context_values)
+>   - **纯 C 层**:`include/task_graph/tg_sdk_c.h` + `src/sdk_c.cpp` —— C++ API 的
+>     extern "C" 包装,完整生命周期;约定见头文件注释(不透明句柄、
+>     tg_status 码、拷贝式字符串出参(snprintf 语义)、类型化 bind/getter
+>     (int32/double/string/bool/tg_image)、推模式回调只通知+拉取取数、
+>     异步经 execute_async/execute_wait 的 future 存储)、diff/env 访问器;
+>     `tests/sdk_c_header_check.c` 以纯 C 编译验证头文件合法性。
 > 目标:在"只读配置加载"之上,提供一套**面向宿主 App 的完整 SDK 生命周期**:
 > 创建 → 初始化 → 加载 graph → 绑定输入/输出 → 更新 graph → 执行 → 销毁。
 
