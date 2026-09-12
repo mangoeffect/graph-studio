@@ -13,6 +13,7 @@ submodules/*
 /AGENTS.md
 /.zcode
 /.mimosa
+.mimosa/
 /.trae
 .DS_Store
 app/graph_studio/build/
