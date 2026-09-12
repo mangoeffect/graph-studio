@@ -5,7 +5,7 @@
 #include "view/EdgeItem.h"
 #include "view/ProfilePanel.h"
 #ifndef __EMSCRIPTEN__
-#include "view/GpuImageViewer.h"
+#include "view/WgpuImageViewer.h"
 #endif
 #include "viewmodel/GraphViewModel.h"
 
@@ -539,8 +539,8 @@ QWidget* MainWindow::CreateImageResultPanel()
     resultSelector_->setEnabled(false);
     layout->addWidget(resultSelector_);
 
-    // GPU-accelerated image viewer（桌面）/ QLabel 退化视图（WASM：
-    // QOpenGLFunctions_3_3_Core 是桌面 core profile，Qt wasm 只有 OpenGL ES）
+    // wgpu（WebGPU）surface 渲染的图像查看器（桌面；自持 wgpu 设备，与
+    // 任务图后端分离）/ QLabel 退化视图（WASM：浏览器端验证是独立里程碑）
 #ifdef __EMSCRIPTEN__
     imageViewerFallback_ = new QLabel(tr("No image"));
     imageViewerFallback_->setMinimumSize(300, 200);
@@ -548,7 +548,7 @@ QWidget* MainWindow::CreateImageResultPanel()
     imageViewerFallback_->setBackgroundRole(QPalette::Dark);
     layout->addWidget(imageViewerFallback_, 1);
 #else
-    imageViewer_ = new GpuImageViewer();
+    imageViewer_ = new WgpuImageViewer();
     imageViewer_->setMinimumSize(300, 200);
     layout->addWidget(imageViewer_, 1);
 
@@ -559,7 +559,7 @@ QWidget* MainWindow::CreateImageResultPanel()
         "border-top: 1px solid #3c3c3c; font-family: Menlo, Consolas, monospace; font-size: 11px;");
     layout->addWidget(pixelInfoLabel_);
 
-    connect(imageViewer_, &GpuImageViewer::pixelInfoChanged,
+    connect(imageViewer_, &WgpuImageViewer::pixelInfoChanged,
             pixelInfoLabel_, &QLabel::setText);
 #endif
 

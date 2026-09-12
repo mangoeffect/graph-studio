@@ -275,6 +275,152 @@ std::string glsl_source(const char* kernel_body) {
     return std::string(kGlslHeader) + kernel_body;
 }
 
+// ---- wgpu WGSL kernel 源码（与上方 MSL/GLSL 逐算子等价）----
+// 约定：单输入 binding 0=src(read) / 1=dst(read_write)，uniform 在 binding 2；
+// 双输入 0=src / 1=src2 / 2=dst，uniform 在 binding 3（pipeline auto layout
+// 按用法推断）。uniform 结构固定 4x vec4<u32> = 64B（run_gpu_op 把 pack 出的
+// 短 uniform 补零到 64B，minBindingSize 校验拒短绑定）。
+// WebGPU storage 无 u8 视角：字节经 u32 位操作按小端拆取。3ch 像素的相邻
+// 线程共享 u32 word，字节写必须 atomic：先 And 清本字节 lane、再 Or 置位——
+// 各线程的 lane 掩码互不相交，两个原子操作与其它线程的字节写天然可交换，
+// 无需 CAS。@workgroup_size(8,8) + global_invocation_id 越界守卫，与 GLSL
+// local_size 8x8 同 oversubscribe 语义（dispatch grid 仍是 (w,h) workgroup 数）。
+// WGSL 无三元运算符，条件取值用 select(false_val, true_val, cond)。
+
+const char* kWgslHeader1in = R"WGSL(
+@group(0) @binding(0) var<storage, read> src: array<u32>;
+@group(0) @binding(1) var<storage, read_write> dst: array<atomic<u32>>;
+struct Uni { data: array<vec4<u32>, 4> };
+@group(0) @binding(2) var<uniform> uni: Uni;
+
+fn u(i: u32) -> u32 { return uni.data[i / 4u][i % 4u]; }
+fn uf(i: u32) -> f32 { return bitcast<f32>(u(i)); }
+fn get_byte(i: u32) -> u32 {
+    let w = src[i / 4u];
+    return (w >> ((i % 4u) * 8u)) & 0xFFu;
+}
+fn set_byte(i: u32, v: u32) {
+    let sh = (i % 4u) * 8u;
+    atomicAnd(&dst[i / 4u], ~(0xFFu << sh));
+    atomicOr(&dst[i / 4u], (v & 0xFFu) << sh);
+}
+fn put_f(i: u32, v: f32) { set_byte(i, u32(clamp(v, 0.0, 255.0))); }
+)WGSL";
+
+const char* kBoxBlurWgsl = R"WGSL(
+@compute @workgroup_size(8, 8)
+fn box_blur(@builtin(global_invocation_id) g: vec3<u32>) {
+    let width = u(0u); let height = u(1u); let radius = u(2u);
+    if (g.x >= width || g.y >= height) { return; }
+    var sum = vec3<u32>(0u);
+    var count: u32 = 0u;
+    for (var dy: i32 = -i32(radius); dy <= i32(radius); dy++) {
+        for (var dx: i32 = -i32(radius); dx <= i32(radius); dx++) {
+            let x = i32(g.x) + dx;
+            let y = i32(g.y) + dy;
+            if (x >= 0 && x < i32(width) && y >= 0 && y < i32(height)) {
+                let idx = (u32(y) * width + u32(x)) * 3u;
+                sum += vec3<u32>(get_byte(idx), get_byte(idx + 1u), get_byte(idx + 2u));
+                count++;
+            }
+        }
+    }
+    let idx = (g.y * width + g.x) * 3u;
+    set_byte(idx, sum.x / count);
+    set_byte(idx + 1u, sum.y / count);
+    set_byte(idx + 2u, sum.z / count);
+}
+)WGSL";
+
+const char* kGaussianBlurWgsl = R"WGSL(
+@compute @workgroup_size(8, 8)
+fn gaussian_blur(@builtin(global_invocation_id) g: vec3<u32>) {
+    let width = u(0u); let height = u(1u); let radius = u(2u);
+    var sigma = uf(3u);
+    if (sigma < 0.001) { sigma = 0.001; }
+    if (g.x >= width || g.y >= height) { return; }
+    var sum = vec3<f32>(0.0);
+    var weight_sum = 0.0;
+    let s2 = 2.0 * sigma * sigma;
+    for (var dy: i32 = -i32(radius); dy <= i32(radius); dy++) {
+        for (var dx: i32 = -i32(radius); dx <= i32(radius); dx++) {
+            let x = i32(g.x) + dx;
+            let y = i32(g.y) + dy;
+            if (x >= 0 && x < i32(width) && y >= 0 && y < i32(height)) {
+                let w = exp(-f32(dx * dx + dy * dy) / s2);
+                let idx = (u32(y) * width + u32(x)) * 3u;
+                sum += vec3<f32>(f32(get_byte(idx)), f32(get_byte(idx + 1u)),
+                                 f32(get_byte(idx + 2u))) * w;
+                weight_sum += w;
+            }
+        }
+    }
+    sum = sum / weight_sum;
+    let idx = (g.y * width + g.x) * 3u;
+    put_f(idx, sum.x);
+    put_f(idx + 1u, sum.y);
+    put_f(idx + 2u, sum.z);
+}
+)WGSL";
+
+const char* kGrayscaleWgsl = R"WGSL(
+@compute @workgroup_size(8, 8)
+fn rgb_to_gray(@builtin(global_invocation_id) g: vec3<u32>) {
+    let width = u(0u); let height = u(1u);
+    if (g.x >= width || g.y >= height) { return; }
+    let idx = (g.y * width + g.x) * 3u;
+    let gray = 0.299 * f32(get_byte(idx)) + 0.587 * f32(get_byte(idx + 1u)) +
+               0.114 * f32(get_byte(idx + 2u));
+    put_f(g.y * width + g.x, gray);
+}
+)WGSL";
+
+const char* kBrightnessContrastWgsl = R"WGSL(
+@compute @workgroup_size(8, 8)
+fn brightness_contrast(@builtin(global_invocation_id) g: vec3<u32>) {
+    let width = u(0u); let height = u(1u);
+    let brightness = uf(2u);
+    let contrast = uf(3u);
+    if (g.x >= width || g.y >= height) { return; }
+    let idx = (g.y * width + g.x) * 3u;
+    for (var c: i32 = 0; c < 3; c++) {
+        var val = f32(get_byte(idx + u32(c)));
+        val = (val - 128.0) * (1.0 + contrast) + 128.0 + brightness * 255.0;
+        put_f(idx + u32(c), val);
+    }
+}
+)WGSL";
+
+const char* kResizeWgsl = R"WGSL(
+@compute @workgroup_size(8, 8)
+fn bilinear_resize(@builtin(global_invocation_id) g: vec3<u32>) {
+    let src_w = u(0u); let src_h = u(1u); let dst_w = u(2u); let dst_h = u(3u);
+    if (g.x >= dst_w || g.y >= dst_h) { return; }
+    let x_ratio = (f32(g.x) + 0.5) / f32(dst_w) * f32(src_w) - 0.5;
+    let y_ratio = (f32(g.y) + 0.5) / f32(dst_h) * f32(src_h) - 0.5;
+    let x0 = u32(clamp(x_ratio, 0.0, f32(src_w - 1u)));
+    let y0 = u32(clamp(y_ratio, 0.0, f32(src_h - 1u)));
+    let x1 = min(x0 + 1u, src_w - 1u);
+    let y1 = min(y0 + 1u, src_h - 1u);
+    let fx = clamp(x_ratio - f32(x0), 0.0, 1.0);
+    let fy = clamp(y_ratio - f32(y0), 0.0, 1.0);
+    for (var c: i32 = 0; c < 3; c++) {
+        let uc = u32(c);
+        let top = f32(get_byte((y0 * src_w + x0) * 3u + uc)) * (1.0 - fx) +
+                  f32(get_byte((y0 * src_w + x1) * 3u + uc)) * fx;
+        let bot = f32(get_byte((y1 * src_w + x0) * 3u + uc)) * (1.0 - fx) +
+                  f32(get_byte((y1 * src_w + x1) * 3u + uc)) * fx;
+        let val = top * (1.0 - fy) + bot * fy;
+        put_f((g.y * dst_w + g.x) * 3u + uc, val);
+    }
+}
+)WGSL";
+
+// 拼接 header + compute fn 成完整 WGSL 源
+std::string wgsl_source(const char* kernel_body) {
+    return std::string(kWgslHeader1in) + kernel_body;
+}
+
 }  // namespace
 
 // ====================== GpuKernelLibrary ======================
@@ -322,6 +468,7 @@ void GpuKernelLibrary::register_builtin_ops() {
         op.kernel_name = "box_blur";
         op.kernel_source = kBoxBlurSource;
         op.kernel_source_glsl = glsl_source(kBoxBlurGlsl);
+        op.kernel_source_wgsl = wgsl_source(kBoxBlurWgsl);
         op.params = {make_int_param("kernel_size", 5, 1, 99, 2)};
         op.compute_grid = [](const Image& in, const TaskParams&,
                              uint32_t& gx, uint32_t& gy, uint32_t& gz) {
@@ -349,6 +496,7 @@ void GpuKernelLibrary::register_builtin_ops() {
         op.kernel_name = "gaussian_blur";
         op.kernel_source = kGaussianBlurSource;
         op.kernel_source_glsl = glsl_source(kGaussianBlurGlsl);
+        op.kernel_source_wgsl = wgsl_source(kGaussianBlurWgsl);
         op.params = {
             make_int_param("kernel_size", 5, 1, 99, 2),
             make_float_param("sigma", 0.0f, 0.0, 100.0)
@@ -381,6 +529,7 @@ void GpuKernelLibrary::register_builtin_ops() {
         op.kernel_name = "rgb_to_gray";
         op.kernel_source = kGrayscaleSource;
         op.kernel_source_glsl = glsl_source(kGrayscaleGlsl);
+        op.kernel_source_wgsl = wgsl_source(kGrayscaleWgsl);
         op.params = {};
         op.compute_grid = [](const Image& in, const TaskParams&,
                              uint32_t& gx, uint32_t& gy, uint32_t& gz) {
@@ -404,6 +553,7 @@ void GpuKernelLibrary::register_builtin_ops() {
         op.kernel_name = "brightness_contrast";
         op.kernel_source = kBrightnessContrastSource;
         op.kernel_source_glsl = glsl_source(kBrightnessContrastGlsl);
+        op.kernel_source_wgsl = wgsl_source(kBrightnessContrastWgsl);
         op.params = {
             make_float_param("brightness", 0.0f, -1.0, 1.0),
             make_float_param("contrast", 0.0f, -1.0, 1.0)
@@ -433,6 +583,7 @@ void GpuKernelLibrary::register_builtin_ops() {
         op.kernel_name = "bilinear_resize";
         op.kernel_source = kResizeSource;
         op.kernel_source_glsl = glsl_source(kResizeGlsl);
+        op.kernel_source_wgsl = wgsl_source(kResizeWgsl);
         op.params = {
             make_int_param("target_w", 256, 1, 16384),
             make_int_param("target_h", 256, 1, 16384)

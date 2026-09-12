@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 // WgpuGpuBackend 的 pimpl 实现体：wgpu_backend.cpp 与 wgpu_render.cpp 共享。
 //
@@ -126,7 +126,7 @@ struct WgpuGpuBackendImpl {
         cb.mode = WGPUCallbackMode_AllowProcessEvents;
         cb.userdata1 = &st;
         cb.callback = &on_work_done;
-        wgpuQueueOnSubmittedWorkDone(queue, cb);
+        wgpu_compat::tg_queue_work_done(queue, cb);
         spin_until(st);
         return st.ok;
     }
@@ -145,7 +145,7 @@ struct WgpuGpuBackendImpl {
         cb.mode = WGPUCallbackMode_AllowProcessEvents;
         cb.userdata1 = &r;
         cb.callback = &wgpu_on_error_scope;
-        wgpuDevicePopErrorScope(device, cb);
+        wgpu_compat::tg_pop_error_scope(device, cb);
         spin_until(r);
         if (r.has_error) {
             std::fprintf(stderr, "  [wgpu] validation failed (%s): %s\n", tag,

@@ -181,6 +181,20 @@ function Build-GraphStudioStack {
     elseif ($Env.OpenCvDir) { $TgArgs += "-DOpenCV_DIR=$(Join-Path $Env.OpenCvDir 'lib')" }
     # GpuBootstrap.cpp needs the Vulkan backend symbols on desktop Win32.
     $TgArgs += "-DTASK_GRAPH_ENABLE_VULKAN=ON"
+
+    # wgpu-native prebuild (default GPU backend; idempotent, pinned release).
+    # Fetch failure only warns: the CMake probe then skips the wgpu backend and
+    # GpuBootstrap falls back to Vulkan.
+    Write-Step "Fetching wgpu-native (fetch_wgpu.py, idempotent)"
+    $Code = Invoke-Native "python" @((Join-Path $RootDir "scripts\fetch_wgpu.py"))
+    if ($Code -ne 0) {
+        Write-Fail "wgpu-native fetch failed; wgpu backend disabled (fallback Vulkan)"
+    }
+    $WgpuInc = Join-Path $RootDir "build\wgpu\install\windows-x86_64\include"
+    $WgpuLib = Join-Path $RootDir "build\wgpu\install\windows-x86_64\lib\wgpu_native.lib"
+    $WgpuDll = Join-Path $RootDir "build\wgpu\install\windows-x86_64\lib\wgpu_native.dll"
+    $HasWgpu = (Test-Path (Join-Path $WgpuInc "webgpu\webgpu.h")) -and (Test-Path $WgpuLib)
+    if ($HasWgpu) { $TgArgs += "-DTASK_GRAPH_ENABLE_WGPU=ON" }
     $Code = Invoke-Native $Env.Cmake $TgArgs
     if ($Code -ne 0) { exit $Code }
     $Code = Invoke-Native $Env.Cmake @("--build", $LibBuild, "--config", $Config, "-j", "$Jobs")
@@ -201,6 +215,13 @@ function Build-GraphStudioStack {
         if (-not $Env.DisableOpenCv -and $Env.OpenCvDir) {
             $GsArgs += "-DOpenCV_DIR=$(Join-Path $Env.OpenCvDir 'lib')"
         }
+        # The app is its own top-level project: pass the wgpu probe results
+        # explicitly (GpuBootstrap defaults to the wgpu backend).
+        if ($HasWgpu) {
+            $GsArgs += "-DTASK_GRAPH_ENABLE_WGPU=ON"
+            $GsArgs += "-DWGPU_INCLUDE_DIR=$WgpuInc"
+            $GsArgs += "-DWGPU_LIBRARY=$WgpuLib"
+        }
         if ($AppDefines) { $GsArgs += $AppDefines }
         Write-Step "Configuring graph_studio"
         $Code = Invoke-Native $Env.Cmake $GsArgs
@@ -216,6 +237,9 @@ function Build-GraphStudioStack {
         LibBuild  = $LibBuild
         GsDir     = $GsDir
         GsBuild   = $GsBuild
+        # wgpu-native runtime (import-lib counterpart); packaging copies it next
+        # to the exe. Empty when the prebuild fetch failed (wgpu disabled).
+        WgpuDll   = $(if ($HasWgpu -and (Test-Path $WgpuDll)) { $WgpuDll } else { $null })
     }
 }
 

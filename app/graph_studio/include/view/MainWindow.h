@@ -1,4 +1,4 @@
-#ifndef MAIN_WINDOW_H
+﻿#ifndef MAIN_WINDOW_H
 #define MAIN_WINDOW_H
 
 #include <QMainWindow>
@@ -27,7 +27,7 @@ class GraphViewModel;
 class NodeItem;
 class EdgeItem;
 class ProfilePanel;
-class GpuImageViewer;
+class WgpuImageViewer;
 
 // QTreeWidget subclass that emits plain-text mime data on drag, so the canvas
 // GraphView (which checks hasText()) can accept the drop. Categories are
@@ -161,7 +161,7 @@ private:
 
     // 图像结果面板：根据当前下拉选中显示对应 QImage；填充下拉列表
     void ShowResultImage(const QString& key);
-    // 结果图面板的统一入口（img.isNull() 即清空）。桌面走 GpuImageViewer，
+    // 结果图面板的统一入口（img.isNull() 即清空）。桌面走 WgpuImageViewer，
     // WASM 退化为 QLabel（见 .cpp 的 __EMSCRIPTEN__ 分支）。
     void ShowViewerImage(const QImage& image);
     void RebuildResultSelector(const QStringList& keys);
@@ -177,7 +177,7 @@ private:
     QStatusBar* statusBar_ = nullptr;
 
     TaskListWidget* taskList_ = nullptr;
-    GpuImageViewer* imageViewer_ = nullptr;          // 桌面端（WASM 恒为 null）
+    WgpuImageViewer* imageViewer_ = nullptr;          // 桌面端（WASM 恒为 null）
     QLabel* imageViewerFallback_ = nullptr;          // WASM 的 QLabel 退化视图
     QLabel* pixelInfoLabel_ = nullptr;
     QComboBox* resultSelector_ = nullptr;

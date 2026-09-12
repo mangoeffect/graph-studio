@@ -36,7 +36,8 @@ from gs.cmake import CMake  # noqa: E402
 
 def build_stack(cm: CMake, root: Path, lib_build: Path, gs_dir: Path, gs_build: Path,
                 config: str, jobs: int, qt_prefix, opencv_dir, disable_opencv: bool,
-                clean: bool, skip_app: bool = False, with_mnn: bool = False) -> int:
+                clean: bool, skip_app: bool = False, with_mnn: bool = False,
+                with_wgpu: bool = True) -> int:
     """构建 task_graph 根库 + subnode 插件，再把 task_graph.lib 镜像上来（Windows quirk），
     然后构建 graph_studio。返回退出码。"""
     if clean and gs_build.exists():
@@ -45,6 +46,7 @@ def build_stack(cm: CMake, root: Path, lib_build: Path, gs_dir: Path, gs_build: 
 
     console.step("构建 task_graph 库 + subnode 插件")
     defines = platform.feature_macros()
+    wgpu = platform.wgpu_paths(root) if with_wgpu else None
     if disable_opencv:
         defines = ["-DTASK_GRAPH_ENABLE_OPENCV=OFF"]
     else:
@@ -59,6 +61,13 @@ def build_stack(cm: CMake, root: Path, lib_build: Path, gs_dir: Path, gs_build: 
             defines.append(f"-DOpenCV_DIR={opencv_dir / 'lib'}")
     if with_mnn:
         defines.append("-DTASK_GRAPH_ENABLE_MNN=ON")
+    # wgpu 统一后端默认开启：产物缺失仅告警降级（CMake 探针 warn+跳过，
+    # Metal/Vulkan 回退；核心库 add_definitions 只在探测成功时生效）
+    if with_wgpu:
+        defines.append("-DTASK_GRAPH_ENABLE_WGPU=ON")
+        if not wgpu:
+            console.warn("wgpu-native 产物缺失（scripts/fetch_wgpu.py 失败或未运行）；"
+                         "wgpu 后端禁用，回退 Metal/Vulkan")
     if cm.configure(root, lib_build, defines=defines, build_type=config) != 0:
         return 1
     if cm.build(lib_build, config=config, jobs=jobs, what="构建 task_graph 库 + subnode 插件") != 0:
@@ -83,6 +92,12 @@ def build_stack(cm: CMake, root: Path, lib_build: Path, gs_dir: Path, gs_build: 
         app_defines.append(f"-DCMAKE_PREFIX_PATH={qt_prefix}")
     if not disable_opencv and opencv_dir:
         app_defines.append(f"-DOpenCV_DIR={opencv_dir / 'lib'}")
+    # app 是独立顶层工程，不继承核心库 configure 的探针结果——把 wgpu 产物
+    # 路径显式传入（app 侧 GpuBootstrap 默认选 wgpu；WgpuImageViewer 直连）
+    if wgpu:
+        app_defines += [f"-DTASK_GRAPH_ENABLE_WGPU=ON",
+                        f"-DWGPU_INCLUDE_DIR={wgpu[0]}",
+                        f"-DWGPU_LIBRARY={wgpu[1]}"]
     console.step("配置 graph_studio")
     if cm.configure(gs_dir, gs_build, defines=app_defines, build_type=config) != 0:
         return 1
@@ -108,6 +123,9 @@ def run() -> int:
     ap.add_argument("--mnn", action="store_true",
                     help="启用 MNN 推理（预期 build*/mnn/install 已由 build_mnn.py 产出，"
                          "缺失时 stub 降级）")
+    ap.add_argument("--no-wgpu", action="store_true",
+                    help="禁用 wgpu 统一后端（默认开启：自动下载 wgpu-native 并以"
+                         " WGPU=ON 配置；GPU 后端回退 Metal/Vulkan）")
     ap.add_argument("--opencv-dir", default="", help="OpenCV 安装前缀（默认自动探测）")
     ap.add_argument("--cmake", default="", help="cmake 可执行文件路径")
     args = ap.parse_args()
@@ -130,10 +148,21 @@ def run() -> int:
 
     cm = CMake(cmake_exe)
 
+    with_wgpu = not args.no_wgpu
+    if with_wgpu and not args.no_build:
+        # wgpu-native 预构建（幂等，钉版本；失败仅告警，构建回退 Metal/Vulkan）
+        console.step("下载/复用 wgpu-native（fetch_wgpu.py，幂等）")
+        code = subprocess.run(
+            [sys.executable, str(root / "scripts" / "fetch_wgpu.py")],
+            cwd=str(root),
+        ).returncode
+        if code != 0:
+            console.warn("wgpu-native 下载失败；wgpu 后端禁用，回退 Metal/Vulkan")
+
     if not args.no_build:
         code = build_stack(cm, root, lib_build, gs_dir, gs_build, args.config, jobs,
                            qt_prefix, opencv_dir, args.disable_opencv, args.clean,
-                           with_mnn=args.mnn)
+                           with_mnn=args.mnn, with_wgpu=with_wgpu)
         if code != 0:
             return code
     elif not gs_build.is_dir():

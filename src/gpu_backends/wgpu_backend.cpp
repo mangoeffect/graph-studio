@@ -1,4 +1,4 @@
-// WgpuGpuBackend — wgpu-native 统一 GPU 后端：init/shutdown + buffer 段 +
+﻿// WgpuGpuBackend — wgpu-native 统一 GPU 后端：init/shutdown + buffer 段 +
 // compute 段（WGSL）。render 段见 wgpu_render.cpp。
 //
 // 语义对齐（与 Metal/Vulkan 后端一致）：
@@ -28,7 +28,7 @@ using wgpu_compat::str_view;
 
 namespace {
 
-void on_uncaptured_error(WGPUDevice const*, WGPUErrorType type,
+[[maybe_unused]] void on_uncaptured_error(WGPUDevice const*, WGPUErrorType type,
                          WGPUStringView message, void*, void*) {
     std::fprintf(stderr, "  [wgpu] uncaptured error (%d): %.*s\n",
                  static_cast<int>(type),
@@ -56,7 +56,11 @@ WGPUShaderModule WgpuGpuBackendImpl::create_shader_module(const std::string& cod
     WGPUShaderSourceWGSL src = wgpu_compat::make_wgsl_source(code);
     WGPUShaderModuleDescriptor d{};
     d.nextInChain = &src.chain;
+#ifdef __EMSCRIPTEN__
+    d.label = tag;                     // 旧头：label 是 char*
+#else
     d.label = str_view(tag);
+#endif
     WGPUShaderModule module = nullptr;
     if (!validated(tag, [&] {
             module = wgpuDeviceCreateShaderModule(device, &d);
@@ -100,6 +104,9 @@ bool WgpuGpuBackend::init() {
     // 适配器：默认任意后端（macOS→Metal / Windows→D3D12|Vulkan / Linux→
     // Vulkan），TG_WGPU_BACKEND=metal|vulkan|gl|d3d12 可强制。
     WGPURequestAdapterOptions ao{};
+#ifndef __EMSCRIPTEN__
+    // 旧 emscripten 头的 RequestAdapterOptions 无 backendType（wasm 上
+    // 浏览器自选适配器，本就无需强制）
     if (const char* env = std::getenv("TG_WGPU_BACKEND")) {
         const std::string b = env;
         if (b == "metal") ao.backendType = WGPUBackendType_Metal;
@@ -107,6 +114,7 @@ bool WgpuGpuBackend::init() {
         else if (b == "gl" || b == "opengl") ao.backendType = WGPUBackendType_OpenGL;
         else if (b == "d3d12") ao.backendType = WGPUBackendType_D3D12;
     }
+#endif
     ao.powerPreference = WGPUPowerPreference_HighPerformance;
 
     struct AdapterState {
@@ -129,7 +137,7 @@ bool WgpuGpuBackend::init() {
             }
             s->done.store(true, std::memory_order_release);
         };
-        wgpuInstanceRequestAdapter(impl_->instance, &ao, cb);
+        wgpu_compat::tg_request_adapter(impl_->instance, &ao, cb);
         impl_->spin_until(adapter_state);
     }
     if (adapter_state.status != WGPURequestAdapterStatus_Success ||
@@ -144,11 +152,15 @@ bool WgpuGpuBackend::init() {
     impl_->adapter = adapter;
 
     // 设备：默认 limits/features；uncaptured 错误打到 stderr 便于定位
+    //（旧 emscripten 头的 DeviceDescriptor 无该字段——wasm 上 init 本就
+    // 优雅失败，回调装不上无妨）
+    WGPUDeviceDescriptor dd{};
+#ifndef __EMSCRIPTEN__
     WGPUUncapturedErrorCallbackInfo err{};
     err.nextInChain = nullptr;
     err.callback = on_uncaptured_error;
-    WGPUDeviceDescriptor dd{};
     dd.uncapturedErrorCallbackInfo = err;
+#endif
 
     struct DeviceState {
         std::atomic<bool> done{false};
@@ -168,7 +180,7 @@ bool WgpuGpuBackend::init() {
             }
             s->done.store(true, std::memory_order_release);
         };
-        wgpuAdapterRequestDevice(adapter, &dd, cb);
+        wgpu_compat::tg_request_device(adapter, &dd, cb);
         impl_->spin_until(device_state);
     }
     WGPUDevice device = device_state.device;
@@ -230,7 +242,10 @@ uintptr_t WgpuGpuBackend::allocate_gpu_memory(size_t size) {
     WGPUBufferDescriptor d{};
     d.usage = WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst |
               WGPUBufferUsage_CopySrc | WGPUBufferUsage_Uniform;
-    d.size = size;
+    // WGSL 侧 storage 是 array<u32> 视角：绑定范围必须 4 字节对齐（w*h*3 类
+    // 尺寸不是 4 的倍数会触发 bind group 校验 panic）。补零对齐不影响逻辑
+    // 大小——download/upload 都按 Image 的 total_size() 拷贝。
+    d.size = (size + 3) & ~size_t(3);
     d.mappedAtCreation = false;
     WGPUBuffer buf = wgpuDeviceCreateBuffer(impl_->device, &d);
     return buf ? reinterpret_cast<uintptr_t>(buf) : 0;
@@ -280,17 +295,20 @@ bool WgpuGpuBackend::download_to_cpu(Image& image) {
         image.data->resize(total);
     }
 
-    // MAP_READ staging + copyBufferToBuffer + map（WebGPU 不能直 map 设备 buffer）
+    // MAP_READ staging + copyBufferToBuffer + map（WebGPU 不能直 map 设备 buffer）。
+    // 拷贝尺寸须 4 字节对齐（COPY_BUFFER_ALIGNMENT）：按补齐后的尺寸拷/
+    // map，主机侧只 memcpy 逻辑 total（尾部 padding 丢弃）。
+    const size_t copy_size = (total + 3) & ~size_t(3);
     WGPUBufferDescriptor d{};
     d.usage = WGPUBufferUsage_MapRead | WGPUBufferUsage_CopyDst;
-    d.size = total;
+    d.size = copy_size;
     WGPUBuffer staging = wgpuDeviceCreateBuffer(impl_->device, &d);
     if (!staging) {
         return false;
     }
 
     WGPUCommandEncoder enc = wgpuDeviceCreateCommandEncoder(impl_->device, nullptr);
-    wgpuCommandEncoderCopyBufferToBuffer(enc, src, 0, staging, 0, total);
+    wgpuCommandEncoderCopyBufferToBuffer(enc, src, 0, staging, 0, copy_size);
     WGPUCommandBuffer cmd = wgpuCommandEncoderFinish(enc, nullptr);
     wgpuQueueSubmit(impl_->queue, 1, &cmd);
     wgpuCommandBufferRelease(cmd);
@@ -309,12 +327,12 @@ bool WgpuGpuBackend::download_to_cpu(Image& image) {
             s->ok = status == WGPUMapAsyncStatus_Success;
             s->done.store(true, std::memory_order_release);
         };
-        wgpuBufferMapAsync(staging, WGPUMapMode_Read, 0, total, cb);
+        wgpu_compat::tg_buffer_map_async(staging, WGPUMapMode_Read, 0, copy_size, cb);
         impl_->spin_until(map_state);
     }
     bool ok = map_state.ok;
     if (ok) {
-        const void* mapped = wgpuBufferGetConstMappedRange(staging, 0, total);
+        const void* mapped = wgpuBufferGetConstMappedRange(staging, 0, copy_size);
         if (mapped) {
             std::memcpy(image.ptr(), mapped, total);
         } else {
@@ -369,12 +387,17 @@ uintptr_t WgpuGpuBackend::compile_kernel(const std::string& name,
         return 0;
     }
 
+    WGPUComputePipelineDescriptor d{};
+    d.compute.module = module;  // 约定：entry 名 = kernel 名；layout = NULL
+                                // → auto layout（见头注释 dispatch 约定）
+#ifdef __EMSCRIPTEN__
+    d.compute.entryPoint = name.c_str();  // 旧头：compute 内联且 entry 是 char*
+#else
     WGPUComputeState cs{};
     cs.module = module;
-    cs.entryPoint = str_view(name);  // 约定：entry 名 = kernel 名
-
-    WGPUComputePipelineDescriptor d{};
-    d.compute = cs;  // layout = NULL → auto layout（见头注释 dispatch 约定）
+    cs.entryPoint = str_view(name);
+    d.compute = cs;
+#endif
     WGPUComputePipeline pipe = nullptr;
     const bool ok = impl_->validated(name.c_str(), [&] {
         pipe = wgpuDeviceCreateComputePipeline(impl_->device, &d);

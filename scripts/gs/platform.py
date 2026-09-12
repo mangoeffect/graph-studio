@@ -62,6 +62,38 @@ def feature_macros() -> List[str]:
     return defines
 
 
+def wgpu_install_dir(root: Path) -> Path:
+    """fetch_wgpu.py 的平台产物目录（镜像根 CMakeLists 探针的 arch 目录名）。"""
+    import platform as _plat
+    machine = _plat.machine().lower()
+    if is_windows():
+        arch_dir = "windows-x86_64"
+    elif is_macos():
+        arch_dir = "macos-aarch64" if machine in ("arm64", "aarch64") else "macos-x86_64"
+    else:
+        arch_dir = "linux-aarch64" if machine in ("arm64", "aarch64") else "linux-x86_64"
+    return Path(root) / "build" / "wgpu" / "install" / arch_dir
+
+
+def wgpu_paths(root: Path) -> Optional[tuple]:
+    """wgpu-native 产物 (include_dir, library) 探测；缺失返回 None。
+
+    库名对齐 fetch_wgpu.py 的落位：macOS/Linux libwgpu_native.<dylib|so>、
+    Windows wgpu_native.dll（import 库 wgpu_native.lib 同目录）。
+    """
+    install = wgpu_install_dir(root)
+    inc = install / "include"
+    if not (inc / "webgpu" / "webgpu.h").is_file():
+        return None
+    if is_windows():
+        lib = install / "lib" / "wgpu_native.lib"
+    else:
+        lib = install / "lib" / ("libwgpu_native" + shlib_suffix())
+    if not lib.is_file():
+        return None
+    return inc, lib
+
+
 def runtime_lib_env() -> Optional[str]:
     """本平台用于追加动态库搜索路径的环境变量（Windows 用 PATH）。"""
     if is_windows():

@@ -96,6 +96,11 @@ def build_stack(cm: CMake, root: Path, lib_build: Path, gs_dir: Path, gs_build: 
     # 库若不开启本开关，链接 graph_studio 时报 undefined reference。
     if platform.has_vulkan():
         root_defines.append("-DTASK_GRAPH_ENABLE_VULKAN=ON")
+    # wgpu 默认后端（产物由 release/graphstudio CI 的 fetch_wgpu 预热或
+    # actions/cache 提供；缺失时探针 warn+跳过，回退 Vulkan）
+    wgpu = platform.wgpu_paths(root)
+    if wgpu:
+        root_defines.append("-DTASK_GRAPH_ENABLE_WGPU=ON")
     if cm.configure(root, lib_build, defines=root_defines, build_type=config) != 0:
         return 1
     if cm.build(lib_build, config=config, jobs=jobs,
@@ -105,6 +110,11 @@ def build_stack(cm: CMake, root: Path, lib_build: Path, gs_dir: Path, gs_build: 
     app_defines = ["-DCMAKE_PREFIX_PATH={}".format(qt_prefix)] if qt_prefix else []
     if opencv_dir and (opencv_dir / "lib").is_dir():
         app_defines.append(f"-DOpenCV_DIR={opencv_dir / 'lib'}")
+    # wgpu 产物路径传给 app 独立 configure（GpuBootstrap 默认选 wgpu）
+    if wgpu:
+        app_defines += [f"-DTASK_GRAPH_ENABLE_WGPU=ON",
+                        f"-DWGPU_INCLUDE_DIR={wgpu[0]}",
+                        f"-DWGPU_LIBRARY={wgpu[1]}"]
     app_defines += gs_sentry.cmake_defines(dsn=sentry_dsn, release=sentry_release)
     if sentry_dsn:
         console.step(f"嵌入 Sentry DSN: {sentry_dsn}")

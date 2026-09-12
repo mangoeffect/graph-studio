@@ -12,16 +12,20 @@ namespace task_graph {
 
 // GpuImageOp：一个 GPU 图像算子的完整描述。
 //
-// kernel_name        - kernel 入口名（Metal function / GLSL 入口）
+// kernel_name        - kernel 入口名（Metal function / GLSL 入口 / WGSL fn 名）
 // kernel_source      - Metal kernel 源码（含 #include <metal_stdlib>）
 // kernel_source_glsl - Vulkan compute 的 GLSL 源码（空表示不支持 Vulkan）
+// kernel_source_wgsl - wgpu 后端的 WGSL 源码（空表示该 op 未移植 WGSL）
 // params             - 参数契约（供 UI / 工具链发现）
 //
 // 回调签名中 input 为上游输入 Image，params 为 task 配置参数。
+// WGSL 侧约定：uniform 结构固定 4x vec4<u32>（64B，run_gpu_op 负责把
+// pack_uniforms 的结果补零到 64B）；字节经 u32 位操作小端拆取。
 struct GpuImageOp {
     std::string kernel_name;
     std::string kernel_source;
     std::string kernel_source_glsl;
+    std::string kernel_source_wgsl;
     std::vector<ParamSpec> params;
 
     // 输入端口数：1 = 单输入（buffer(0)=in, buffer(1)=dst）；

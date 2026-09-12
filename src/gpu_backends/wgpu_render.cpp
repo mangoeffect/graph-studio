@@ -1,4 +1,4 @@
-// WgpuGpuBackend — wgpu-native 统一 GPU 后端：render 段（WGSL）。
+﻿// WgpuGpuBackend — wgpu-native 统一 GPU 后端：render 段（WGSL）。
 //
 // 模型与 Metal/Vulkan render 段同构（P1 批处理：end 只结束 pass 录制，
 // wait_render_idle 统一 finish+submit+等待；上传/下载/拷贝路径内部先排空）。
@@ -158,7 +158,9 @@ bool WgpuGpuBackend::download_texture(uintptr_t texture, uint8_t* data, size_t s
     src.aspect = WGPUTextureAspect_All;
     WGPUTexelCopyBufferInfo dst{};
     dst.buffer = staging;
-    dst.layout = {0, aligned, td.height};
+    dst.layout.offset = 0;
+    dst.layout.bytesPerRow = aligned;
+    dst.layout.rowsPerImage = td.height;
     WGPUExtent3D extent = {td.width, td.height, 1};
 
     WGPUCommandEncoder enc = wgpuDeviceCreateCommandEncoder(impl_->device, nullptr);
@@ -181,7 +183,7 @@ bool WgpuGpuBackend::download_texture(uintptr_t texture, uint8_t* data, size_t s
             s->ok = status == WGPUMapAsyncStatus_Success;
             s->done.store(true, std::memory_order_release);
         };
-        wgpuBufferMapAsync(staging, WGPUMapMode_Read, 0, sd.size, cb);
+        wgpu_compat::tg_buffer_map_async(staging, WGPUMapMode_Read, 0, sd.size, cb);
         impl_->spin_until(map_state);
     }
     bool ok = map_state.ok;
@@ -248,7 +250,9 @@ bool WgpuGpuBackend::copy_buffer_to_texture(uintptr_t buffer, size_t size, uintp
     }
     WGPUTexelCopyBufferInfo sbuf{};
     sbuf.buffer = staging;
-    sbuf.layout = {0, aligned, td.height};
+    sbuf.layout.offset = 0;
+    sbuf.layout.bytesPerRow = aligned;
+    sbuf.layout.rowsPerImage = td.height;
     WGPUTexelCopyTextureInfo dtex{};
     dtex.texture = reinterpret_cast<WGPUTexture>(texture);
     dtex.origin = {0, 0, 0};
@@ -300,7 +304,9 @@ bool WgpuGpuBackend::copy_texture_to_buffer(uintptr_t texture, uintptr_t buffer,
     stex.aspect = WGPUTextureAspect_All;
     WGPUTexelCopyBufferInfo dbuf{};
     dbuf.buffer = staging;
-    dbuf.layout = {0, aligned, td.height};
+    dbuf.layout.offset = 0;
+    dbuf.layout.bytesPerRow = aligned;
+    dbuf.layout.rowsPerImage = td.height;
     WGPUExtent3D extent = {td.width, td.height, 1};
     wgpuCommandEncoderCopyTextureToBuffer(enc, &stex, &dbuf, &extent);
     for (uint32_t y = 0; y < td.height; ++y) {
@@ -428,7 +434,11 @@ uintptr_t WgpuGpuBackend::compile_render_pipeline(const GpuRenderPipelineDesc& d
 
     WGPUVertexState vs{};
     vs.module = module;
+#ifdef __EMSCRIPTEN__
+    vs.entryPoint = "vs_main";          // 旧头：entryPoint 是 char*
+#else
     vs.entryPoint = str_view("vs_main");
+#endif
 
     WGPUBlendComponent blend_color{};
     blend_color.operation = WGPUBlendOperation_Add;
@@ -449,7 +459,11 @@ uintptr_t WgpuGpuBackend::compile_render_pipeline(const GpuRenderPipelineDesc& d
 
     WGPUFragmentState fs{};
     fs.module = module;
+#ifdef __EMSCRIPTEN__
+    fs.entryPoint = "fs_main";          // 旧头：entryPoint 是 char*
+#else
     fs.entryPoint = str_view("fs_main");
+#endif
     fs.targetCount = 1;
     fs.targets = &target;
 
@@ -511,7 +525,9 @@ bool WgpuGpuBackend::begin_render_pass(const GpuRenderPassDesc& desc) {
 
     WGPURenderPassColorAttachment att{};
     att.view = view;
+#ifndef __EMSCRIPTEN__
     att.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;  // 零初始化=0 会被当成 3D 切片
+#endif
     att.loadOp = desc.clear ? WGPULoadOp_Clear : WGPULoadOp_Load;
     att.storeOp = WGPUStoreOp_Store;
     att.clearValue = {desc.clear_color[0], desc.clear_color[1],

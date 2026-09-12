@@ -15,8 +15,10 @@
     #include <task_graph/gpu_backends/vulkan_backend.hpp>
     #define TG_HAS_VULKAN 1
 #endif
-// wgpu 统一后端（WGSL）：三端可用；TG_GPU_BACKEND=wgpu 显式选择
-#if defined(TASK_GRAPH_ENABLE_WGPU)
+// wgpu 统一后端（WGSL）：三端可用，默认后端（Metal/Vulkan 回退）。
+// app 侧宏由 app CMakeLists 定义为 TG_APP_HAS_WGPU（核心库直编路径下
+// 也会带 TASK_GRAPH_ENABLE_WGPU，两个都认）。
+#if defined(TG_APP_HAS_WGPU) || defined(TASK_GRAPH_ENABLE_WGPU)
     #include <task_graph/gpu_backends/wgpu_backend.hpp>
     #define TG_HAS_WGPU 1
 #endif
@@ -75,10 +77,12 @@ bool try_init_vulkan() {
 }  // namespace
 
 void InitGpuBackend() {
-    // TG_GPU_BACKEND=wgpu 显式选择 wgpu 统一后端（Metal/Vulkan 后端保留，
-    // compute op 在 wgpu 上暂无 WGSL kernel）；未指定/失败时走平台默认
-    if (const char* pref = std::getenv("TG_GPU_BACKEND");
-        pref && std::string(pref) == "wgpu") {
+    // TG_GPU_BACKEND=wgpu|metal|vulkan 显式强制指定后端（回归对照用）；
+    // 未指定时默认顺序：wgpu 统一后端（WGSL 单源）→ Metal → Vulkan，
+    // 前者 init 失败自动回退原生后端。
+    const char* pref = std::getenv("TG_GPU_BACKEND");
+    const std::string pref_str = pref ? pref : "";
+    if (pref_str == "wgpu") {
 #if defined(TG_HAS_WGPU)
         if (try_init_wgpu()) {
             return;
@@ -88,7 +92,32 @@ void InitGpuBackend() {
         TG_LOG_WARN("TG_GPU_BACKEND=wgpu requested but wgpu backend not compiled in "
                     "(build with -DTASK_GRAPH_ENABLE_WGPU=ON and run scripts/fetch_wgpu.py)");
 #endif
+    } else if (pref_str == "metal") {
+#if defined(TG_HAS_METAL)
+        if (try_init_metal()) {
+            return;
+        }
+        TG_LOG_WARN("TG_GPU_BACKEND=metal requested but init failed; falling back to default");
+#else
+        TG_LOG_WARN("TG_GPU_BACKEND=metal requested but not available on this platform");
+#endif
+    } else if (pref_str == "vulkan") {
+#if defined(TG_HAS_VULKAN)
+        if (try_init_vulkan()) {
+            return;
+        }
+        TG_LOG_WARN("TG_GPU_BACKEND=vulkan requested but init failed; falling back to default");
+#else
+        TG_LOG_WARN("TG_GPU_BACKEND=vulkan requested but Vulkan backend not compiled in");
+#endif
     }
+    // 平台默认：wgpu 优先，失败回退 Metal / Vulkan
+#if defined(TG_HAS_WGPU)
+    if (try_init_wgpu()) {
+        return;
+    }
+    TG_LOG_WARN("wgpu backend init failed; falling back to native backend");
+#endif
 #if defined(TG_HAS_METAL)
     try_init_metal();
 #elif defined(TG_HAS_VULKAN)

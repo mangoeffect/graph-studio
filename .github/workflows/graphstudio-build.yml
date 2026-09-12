@@ -80,6 +80,14 @@ jobs:
         continue-on-error: ${{ runner.os == 'Windows' }}
         run: python scripts/build_mnn.py -j 3
 
+      # wgpu-native 预构建（默认 GPU 后端；钉版本 release zip）。缓存命中时
+      # 跳过下载，run_graph_studio.py 的幂等 fetch 复用产物。
+      - name: Restore wgpu-native cache
+        uses: actions/cache@v4
+        with:
+          path: build/wgpu/install
+          key: wgpu-native-${{ runner.os }}-${{ hashFiles('scripts/fetch_wgpu.py') }}
+
       - name: Configure + build GraphStudio stack (RelWithDebInfo)
         shell: bash
         run: |

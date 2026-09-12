@@ -144,6 +144,15 @@ jobs:
           path: app/graph_studio/third_party/sentry-native
           key: sentry-native-${{ hashFiles('scripts/fetch_sentry.py') }}
 
+      # wgpu-native 预构建（默认 GPU 后端；钉版本 release zip）。缓存命中时
+      # 跳过下载；打包脚本按产物存在与否决定是否启用 wgpu（Windows 的
+      # libwgpu_native.dll 随 msix 分发）。
+      - name: Restore wgpu-native cache
+        uses: actions/cache@v4
+        with:
+          path: build/wgpu/install
+          key: wgpu-native-${{ runner.os }}-${{ hashFiles('scripts/fetch_wgpu.py') }}
+
       # ---- macOS: macdeployqt + dylibbundler + create-dmg -> .dmg ----
       - name: Install macOS packaging tools
         if: runner.os == 'macOS'

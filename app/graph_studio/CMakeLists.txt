@@ -1,8 +1,14 @@
-cmake_minimum_required(VERSION 3.20)
+﻿cmake_minimum_required(VERSION 3.20)
 project(graph_studio LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# WgpuImageViewer 的 macOS surface 需要 ObjC++（CAMetalLayer）；缺编译器时
+# 静默降级（该源文件会编译失败，正常 macOS 开发机都带 clang）
+if(APPLE)
+    enable_language(OBJCXX OPTIONAL)
+endif()
 
 set(TASK_GRAPH_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../)
 
@@ -64,7 +70,7 @@ set(PROJECT_HEADERS
     include/view/GraphView.h
     include/view/GanttChart.h
     include/view/ProfilePanel.h
-    include/view/GpuImageViewer.h
+    include/view/WgpuImageViewer.h
     include/GpuBootstrap.h
     include/ModelBootstrap.h
     include/CrashReporter.h
@@ -86,7 +92,7 @@ set(PROJECT_SOURCES
     src/view/GraphView.cpp
     src/view/GanttChart.cpp
     src/view/ProfilePanel.cpp
-    src/view/GpuImageViewer.cpp
+    src/view/WgpuImageViewer.cpp
     src/platform/wasm/test_hooks.cpp
 )
 
@@ -105,11 +111,11 @@ endif()
 list(APPEND PROJECT_SOURCES src/CrashReporter.cpp)
 
 if(EMSCRIPTEN)
-    # WASM：GpuImageViewer 依赖桌面 core profile（QOpenGLFunctions_3_3_Core），
-    # Qt wasm 构建只有 OpenGL ES、没有该头文件。排除后 MainWindow 内部
-    # __EMSCRIPTEN__ 分支退化为 QLabel 展示结果图。
-    list(REMOVE_ITEM PROJECT_SOURCES src/view/GpuImageViewer.cpp)
-    list(REMOVE_ITEM PROJECT_HEADERS include/view/GpuImageViewer.h)
+    # WASM：WgpuImageViewer 依赖 wgpu-native surface（浏览器路径为 WebGPU
+    # canvas，Qt wasm 整窗单 canvas 限制下暂不编译——浏览器内验证是独立
+    # 里程碑）。排除后 MainWindow 内部 __EMSCRIPTEN__ 分支为 QLabel 展示。
+    list(REMOVE_ITEM PROJECT_SOURCES src/view/WgpuImageViewer.cpp)
+    list(REMOVE_ITEM PROJECT_HEADERS include/view/WgpuImageViewer.h)
 endif()
 
 if(EMSCRIPTEN)
@@ -144,11 +150,32 @@ if(NOT EMSCRIPTEN)
     target_link_libraries(graph_studio PRIVATE ${OpenCV_LIBS})
 endif()
 
-# wgpu 统一后端头（GpuBootstrap.cpp 按 TASK_GRAPH_ENABLE_WGPU include）：
-# 核心库探测成功（TASK_GRAPH_ENABLE_WGPU + WGPU_INCLUDE_DIR）即对 app 开放
+# wgpu 统一后端（GpuBootstrap 默认优先选择；WgpuImageViewer 直连渲染）：
+# 由 run_graph_studio.py 把 TASK_GRAPH_ENABLE_WGPU/WGPU_INCLUDE_DIR/WGPU_LIBRARY
+# 作为 cache 变量传入（核心库探测成功的产物路径）
 if(TASK_GRAPH_ENABLE_WGPU AND WGPU_INCLUDE_DIR)
     target_compile_definitions(graph_studio PRIVATE TG_APP_HAS_WGPU=1)
     target_include_directories(graph_studio PRIVATE ${WGPU_INCLUDE_DIR})
+    if(WGPU_LIBRARY)
+        # 查看器/Bootstrap 直连 wgpu-native C API（libtask_graph 已 PRIVATE 链接，
+        # 这里为 app 自身的符号引用；运行库由打包脚本随 app 分发）
+        target_link_libraries(graph_studio PRIVATE ${WGPU_LIBRARY})
+    endif()
+    # WgpuImageViewer 的平台 surface：macOS 需 ObjC++（CAMetalLayer）；
+    # Linux 在 X11 可用时启用 Xlib 路径（Wayland 会话运行时降级 QLabel）
+    if(APPLE)
+        set_source_files_properties(src/view/WgpuImageViewer.cpp
+            PROPERTIES LANGUAGE OBJCXX)
+        # CAMetalLayer（wgpu surface 的 macOS 原生层）
+        find_library(QUARTZCORE_FW QuartzCore REQUIRED)
+        target_link_libraries(graph_studio PRIVATE ${QUARTZCORE_FW})
+    elseif(UNIX AND NOT EMSCRIPTEN)
+        find_package(X11 QUIET)
+        if(X11_FOUND)
+            target_compile_definitions(graph_studio PRIVATE TG_VIEWER_X11=1)
+            target_link_libraries(graph_studio PRIVATE X11::X11)
+        endif()
+    endif()
 endif()
 
 # Vulkan 后端头（GpuBootstrap.cpp 直接 include vulkan_backend.hpp）：非 Apple
@@ -337,7 +364,7 @@ qt_add_executable(test_gui
     include/view/EdgeItem.h
     include/view/GanttChart.h
     include/view/ProfilePanel.h
-    include/view/GpuImageViewer.h
+    include/view/WgpuImageViewer.h
     src/model/GraphModel.cpp
     src/viewmodel/GraphViewModel.cpp
     src/CrashReporter.cpp
@@ -349,7 +376,7 @@ qt_add_executable(test_gui
     src/view/EdgeItem.cpp
     src/view/GanttChart.cpp
     src/view/ProfilePanel.cpp
-    src/view/GpuImageViewer.cpp
+    src/view/WgpuImageViewer.cpp
 )
 target_link_libraries(test_gui PRIVATE Qt6::Widgets Qt6::Test Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets task_graph ${OpenCV_LIBS})
 add_test(NAME test_gui COMMAND test_gui)
@@ -382,6 +409,14 @@ if(EMSCRIPTEN)
     # SdkUtil 走 legacy 模式（TASK_GRAPH_ROOT + 预构建 build_wasm/libtask_graph.a）。
     include(${TG_ROOT}/cmake/SdkUtil.cmake)
     parse_subnode_json("${TG_ROOT}/subnode.json")
+
+    # wgpu 统一后端的 wasm 编译接线：核心库以 -DTASK_GRAPH_ENABLE_WGPU=ON
+    # 构建时，app 侧链接 emscripten 的 WebGPU 实现（-sUSE_WEBGPU，头由 sysroot
+    # 提供）。浏览器内初始化优雅失败（兼容层 spin 不阻塞），验证是独立里程碑。
+    if(TASK_GRAPH_ENABLE_WGPU)
+        target_compile_definitions(graph_studio PRIVATE TG_APP_HAS_WGPU=1)
+        target_link_options(graph_studio PRIVATE "-sUSE_WEBGPU=1")
+    endif()
 
     # OpenCV WASM 静态库若已用 scripts/build_opencv_wasm.py 构建到
     # build_wasm/opencv/install/，则依赖 OpenCV 的 submodule 自动启用；否则跳过。

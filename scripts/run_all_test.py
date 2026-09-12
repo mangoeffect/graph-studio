@@ -121,10 +121,12 @@ def main() -> int:
                     help="构建/复用 MNN 引擎并以 -DTASK_GRAPH_ENABLE_MNN=ON 配置"
                          "（产物 build/mnn/install，配合 CI actions/cache；"
                          "Windows 构建失败仅告警降级 stub，不阻塞）")
-    ap.add_argument("--wgpu", action="store_true",
+    ap.add_argument("--wgpu", action="store_true", default=True,
                     help="下载/复用 wgpu-native 并以 -DTASK_GRAPH_ENABLE_WGPU=ON 配置"
-                         "（产物 build/wgpu/install，配合 CI actions/cache；"
-                         "下载失败仅告警跳过，不阻塞）")
+                         "（默认开启——wgpu 是默认 GPU 后端；产物 build/wgpu/install，"
+                         "配合 CI actions/cache；下载失败仅告警跳过，不阻塞）")
+    ap.add_argument("--no-wgpu", dest="wgpu", action="store_false",
+                    help="禁用 wgpu 后端（回退 Metal/Vulkan 测试路径）")
     args = ap.parse_args()
 
     root = repo_root()
@@ -218,11 +220,13 @@ def main() -> int:
     if args.mnn:
         root_defines.append("-DTASK_GRAPH_ENABLE_MNN=ON")
     if args.wgpu:
-        # CMake 侧探不到产物只 warn+跳过；这里同时探测产物决定是否传开关
-        if (root / "build" / "wgpu" / "install").is_dir():
+        # wgpu 默认后端：直接传 WGPU=ON，CMake 探针找不到产物时 warn+跳过
+        # （fetch 已在上方幂等执行；这里再探一次产物给更明确的本地提示）
+        if platform.wgpu_paths(root):
             root_defines.append("-DTASK_GRAPH_ENABLE_WGPU=ON")
         else:
-            console.warn("build/wgpu/install 不存在，跳过 -DTASK_GRAPH_ENABLE_WGPU=ON")
+            console.warn("wgpu-native 产物缺失，跳过 -DTASK_GRAPH_ENABLE_WGPU=ON"
+                         "（GPU 后端回退 Metal/Vulkan）")
 
     if not args.no_build:
         if need_root:

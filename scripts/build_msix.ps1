@@ -291,6 +291,10 @@ Write-Step "Staging package layout: $Staging"
 Copy-Item $exeSource    (Join-Path $Staging "graph_studio.exe")
 Copy-Item $libDllSource (Join-Path $Staging "task_graph.dll")
 
+# libwgpu_native.dll next to the exe (default GPU backend runtime; absent when
+# the prebuild fetch failed — the app then degrades to the Vulkan backend)
+if ($Build.WgpuDll) { Copy-Item $Build.WgpuDll (Join-Path $Staging "wgpu_native.dll") }
+
 # crashpad_handler.exe next to the exe (Sentry release builds)
 $crashpad = Join-Path $Build.GsBuild "$Config\crashpad_handler.exe"
 if (Test-Path $crashpad) { Copy-Item $crashpad (Join-Path $Staging "crashpad_handler.exe") }

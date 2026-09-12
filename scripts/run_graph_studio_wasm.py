@@ -56,6 +56,10 @@ def main() -> int:
     ap.add_argument("--port", default="8000", help="dev server 端口（默认 8000）")
     ap.add_argument("--clean", action="store_true", help="清空两个 build 目录")
     ap.add_argument("-j", "--jobs", type=int, default=0, help="并行编译线程数（默认 CPU 核数）")
+    ap.add_argument("--wgpu", action="store_true",
+                    help="wasm 编入 wgpu 统一后端（核心库 WGPU=ON + 链接 -sUSE_WEBGPU；"
+                         "浏览器内初始化优雅失败——真实初始化是独立里程碑。"
+                         "默认关闭：发布 CI 在浏览器验证完成前不受影响）")
     ap.add_argument("--emsdk-root", default="", help="emsdk 根目录（默认 $EMSDK_ROOT/$EMSDK）")
     ap.add_argument("--qt-wasm-root", default="", help="Qt wasm 前缀（默认 $QT_WASM_ROOT）")
     ap.add_argument("--qt-host-root", default="", help="Qt host 前缀（默认 $QT_HOST_ROOT）")
@@ -125,6 +129,8 @@ def main() -> int:
             lib_defines.append("-DTASK_GRAPH_ENABLE_OPENCV=ON")
         else:
             lib_defines.append("-DTASK_GRAPH_ENABLE_OPENCV=OFF")
+        if args.wgpu:
+            lib_defines.append("-DTASK_GRAPH_ENABLE_WGPU=ON")
 
         console.step("构建 libtask_graph.a (WASM + pthread)")
         # emscripten toolchain 强制单配置 Makefiles
@@ -143,6 +149,10 @@ def main() -> int:
                    # 与核心库一致：app 侧 try/catch（GraphModel 等）需要异常表
                    "-DCMAKE_CXX_FLAGS=-fexceptions",
                    "-DCMAKE_EXE_LINKER_FLAGS=-fexceptions"]
+        if args.wgpu:
+            # app 的 EMSCRIPTEN 块按此开关链接 -sUSE_WEBGPU（GpuBootstrap 编入
+            # wgpu 路径；浏览器内 init 优雅失败）
+            qt_args.append("-DTASK_GRAPH_ENABLE_WGPU=ON")
         env = dict(os.environ, EMSDK=str(emsdk_root))
         code = runner.check(qt_args, env=env, what="配置 graph_studio WASM")
         if code != 0:

@@ -89,10 +89,13 @@ endif()
 option(TASK_GRAPH_ENABLE_OPENCV "Enable OpenCV support for image conversion" ON)
 
 # wgpu 统一 GPU 后端（wgpu-native C API，Metal/Vulkan/WebGPU 三端一张后端，
-# shader 一律 WGSL）。依赖 scripts/fetch_wgpu.py 下载的预构建产物：
+# shader 一律 WGSL）——默认后端：app（GpuBootstrap）与子模块测试默认优先
+# 选它，Metal/Vulkan 保留为回退与对照（TG_GPU_BACKEND / TG_*_TEST_FORCE_*）。
+# 依赖 scripts/fetch_wgpu.py 下载的预构建产物：
 #   python scripts/fetch_wgpu.py
-# 找不到产物时 warn + 跳过（与 OpenCV/MNN 的"依赖缺失即降级"约定一致）。
-option(TASK_GRAPH_ENABLE_WGPU "Enable wgpu-native unified GPU backend" OFF)
+# 构建脚本会自动调用（幂等）；找不到产物时 warn + 跳过（与 OpenCV/MNN 的
+# "依赖缺失即降级"约定一致，回退 Metal/Vulkan）。
+option(TASK_GRAPH_ENABLE_WGPU "Enable wgpu-native unified GPU backend" ON)
 if(TASK_GRAPH_ENABLE_WGPU AND NOT EMSCRIPTEN AND NOT TASK_GRAPH_MOBILE)
     if(WIN32)
         set(WGPU_ARCH_DIR "windows-x86_64")
@@ -125,6 +128,11 @@ if(TASK_GRAPH_ENABLE_WGPU AND NOT EMSCRIPTEN AND NOT TASK_GRAPH_MOBILE)
         message(WARNING "wgpu-native not found (run scripts/fetch_wgpu.py); "
                         "wgpu backend disabled")
     endif()
+elseif(TASK_GRAPH_ENABLE_WGPU AND EMSCRIPTEN)
+    # WASM：无 wgpu-native 产物——webgpu.h 来自 emscripten（链接 -sUSE_WEBGPU），
+    # wgpu_compat.hpp 兼容层吸收 emsdk 3.1.37 旧命名。编译接线：后端编入 wasm，
+    # init 在浏览器里优雅失败（真实初始化 = 独立里程碑）。
+    add_definitions(-DTASK_GRAPH_ENABLE_WGPU)
 endif()
 
 # MNN 推理引擎（Alibaba MNN，直接编入核心库；非子模块插件）。
@@ -271,19 +279,21 @@ if(TASK_GRAPH_ENABLE_VULKAN)
     )
 endif()
 
-if(TASK_GRAPH_ENABLE_WGPU AND WGPU_LIBRARY)
+if(TASK_GRAPH_ENABLE_WGPU AND (WGPU_LIBRARY OR EMSCRIPTEN))
     target_sources(task_graph PRIVATE
         src/gpu_backends/wgpu_backend.cpp
         src/gpu_backends/wgpu_render.cpp
     )
-    target_include_directories(task_graph PRIVATE ${WGPU_INCLUDE_DIR})
-    target_link_libraries(task_graph PRIVATE ${WGPU_LIBRARY})
-    # dylib 位于 build/wgpu/install/<plat>/lib：构建树 rpath 直达（安装包
-    # 分发时随包拷贝，参照 vulkan-1.dll 的分发策略另行处理）
-    set_target_properties(task_graph PROPERTIES
-        BUILD_RPATH "${WGPU_INSTALL}/lib"
-        INSTALL_RPATH "${WGPU_INSTALL}/lib;$ENV{HOME}/.local/lib"
-    )
+    if(WGPU_LIBRARY)
+        target_include_directories(task_graph PRIVATE ${WGPU_INCLUDE_DIR})
+        target_link_libraries(task_graph PRIVATE ${WGPU_LIBRARY})
+        # dylib 位于 build/wgpu/install/<plat>/lib：构建树 rpath 直达（安装包
+        # 分发时随包拷贝，参照 vulkan-1.dll 的分发策略另行处理）
+        set_target_properties(task_graph PROPERTIES
+            BUILD_RPATH "${WGPU_INSTALL}/lib"
+            INSTALL_RPATH "${WGPU_INSTALL}/lib;$ENV{HOME}/.local/lib"
+        )
+    endif()
 endif()
 
 # MNN 推理任务（直接编入核心库；stub/真实实现由 TASK_GRAPH_MNN_AVAILABLE 决定）

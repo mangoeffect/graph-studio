@@ -77,15 +77,6 @@ int main(int argc, char* argv[])
             openRun = true;
         }
     }
-
-    // Request a 3.3 Core profile context for QOpenGLWidget (required on macOS).
-    // WASM uses OpenGL ES natively and does not need this.
-#endif
-#ifndef __EMSCRIPTEN__
-    QSurfaceFormat fmt;
-    fmt.setVersion(3, 3);
-    fmt.setProfile(QSurfaceFormat::CoreProfile);
-    QSurfaceFormat::setDefaultFormat(fmt);
 #endif
 
     QApplication app(argc, argv);

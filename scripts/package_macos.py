@@ -60,6 +60,11 @@ def build_stack(cm: CMake, root: Path, lib_build: Path, gs_dir: Path, gs_build: 
     root_defines = ["-DTASK_GRAPH_ENABLE_OPENCV=ON", "-DTASK_GRAPH_ENABLE_METAL=ON"]
     if opencv_dir and (opencv_dir / "lib").is_dir():
         root_defines.append(f"-DOpenCV_DIR={opencv_dir / 'lib'}")
+    # wgpu 默认后端（产物由 release CI 的 fetch_wgpu 预热或 actions/cache 提供；
+    # 缺失时探针 warn+跳过，回退 Metal）
+    wgpu = platform.wgpu_paths(root)
+    if wgpu:
+        root_defines.append("-DTASK_GRAPH_ENABLE_WGPU=ON")
     if cm.configure(root, lib_build, defines=root_defines, build_type=config) != 0:
         return 1
     if cm.build(lib_build, config=config, jobs=jobs,
@@ -69,6 +74,11 @@ def build_stack(cm: CMake, root: Path, lib_build: Path, gs_dir: Path, gs_build: 
     app_defines = ["-DCMAKE_PREFIX_PATH={}".format(qt_prefix)] if qt_prefix else []
     if opencv_dir and (opencv_dir / "lib").is_dir():
         app_defines.append(f"-DOpenCV_DIR={opencv_dir / 'lib'}")
+    # wgpu 产物路径传给 app 独立 configure（GpuBootstrap 默认选 wgpu）
+    if wgpu:
+        app_defines += [f"-DTASK_GRAPH_ENABLE_WGPU=ON",
+                        f"-DWGPU_INCLUDE_DIR={wgpu[0]}",
+                        f"-DWGPU_LIBRARY={wgpu[1]}"]
     app_defines += gs_sentry.cmake_defines(dsn=sentry_dsn, release=sentry_release)
     if sentry_dsn:
         console.step(f"嵌入 Sentry DSN: {sentry_dsn}")

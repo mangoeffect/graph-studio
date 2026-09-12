@@ -97,15 +97,20 @@ jobs:
           if [ "$RUNNER_OS" = "Windows" ]; then EXTRA="--download-models"; fi
           python scripts/run_all_test.py -j 3 -v --config Debug $EXTRA --mnn --wgpu
 
-      # wgpu 统一后端的渲染分支（WGSL）：非阻塞附加项（首个里程碑只
-      # macOS/Linux 验证；compute 互操作图在 wgpu 下显式 SKIP 属预期）。
-      - name: wgpu backend render tests (non-blocking)
+      # 原生后端回归（非阻塞附加项）：gpu/render 测试默认走 wgpu 统一后端
+      # （WGSL 单源），这里切回各平台原生后端对照（macOS=Metal / Linux=Vulkan）。
+      - name: Native GPU backend regression (non-blocking)
         if: runner.os != 'Windows'
         continue-on-error: true
         shell: bash
         run: |
           cd build
-          TG_RENDER_TEST_FORCE_WGPU=1 ctest -R test_render_graph --output-on-failure
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            TG_GPU_TEST_FORCE_METAL=1 TG_RENDER_TEST_FORCE_METAL=1 \
+              ctest -R "test_gpu_image_graph|test_render_graph" --output-on-failure
+          else
+            TG_RENDER_TEST_FORCE_VULKAN=1 ctest -R "test_render_graph" --output-on-failure
+          fi
 
       - name: Show test summary on failure
         if: failure()
