@@ -44,4 +44,41 @@ inline std::string resolve_path(const std::string& base_dir, const std::string& 
     return (std::filesystem::path(base_dir) / pp).lexically_normal().string();
 }
 
+// Variant for INPUT asset references (images / models / scripts / LUT files /
+// shader sources). Fixture layouts differ between the build tree, E2E staging
+// and the source tree:
+//   - build tree / E2E staging: assets copied NEXT TO the graph json
+//     (CMake file(COPY) into <bin>/graphs/, e2e_graph_cases.stage_copy)
+//   - source tree: <tests>/graphs/*.json with assets in sibling dirs of the
+//     graph's parent (<tests>/data, <tests>/models, <tests>/scripts)
+// So a relative ref is probed against base_dir and two ancestors — the same
+// order scripts/e2e_graph_cases.py uses to discover fixtures (_ANCESTORS =
+// (0,1,2)). This makes a source-tree graph.json directly runnable (drag it
+// into GraphStudio). When nothing exists the plain join is returned, so
+// missing-asset errors keep pointing at the graph dir.
+//
+// Directories count as a hit (effects_path / shader dirs are directory refs).
+// Writers (image/video output paths) must NOT use this: a probe hit would
+// silently redirect the output onto an ancestor's original asset — they keep
+// resolve_path.
+inline std::string resolve_asset_path(const std::string& base_dir, const std::string& p) {
+    if (p.empty()) return {};
+    std::filesystem::path pp(p);
+    if (pp.is_absolute() || base_dir.empty()) {
+        return pp.lexically_normal().string();
+    }
+    std::error_code ec;
+    std::filesystem::path base(base_dir);
+    for (int up = 0; up < 3 && !base.empty(); ++up) {
+        const std::filesystem::path cand = base / pp;
+        if (std::filesystem::exists(cand, ec)) {
+            return cand.lexically_normal().string();
+        }
+        const std::filesystem::path parent = base.parent_path();
+        if (parent == base) break;  // filesystem root
+        base = parent;
+    }
+    return (std::filesystem::path(base_dir) / pp).lexically_normal().string();
+}
+
 }  // namespace task_graph

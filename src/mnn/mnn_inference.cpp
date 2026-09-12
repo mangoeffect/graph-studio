@@ -141,8 +141,8 @@ bool MnnImageTaskBase::init_engine(std::string& err) {
     MnnEngineOptions opts;
     opts.model_path = find_model(config().params.get_string(kModelPath).value_or(""));
     if (opts.model_path.empty()) {
-        // ModelFinder 未命中：回退 _source_dir 相对路径解析（框架钉死的顺序）
-        opts.model_path = resolve_path(
+        // ModelFinder 未命中：回退 _source_dir 资产解析（祖先探测，框架钉死的顺序）
+        opts.model_path = resolve_asset_path(
             config().params.get_string(kSourceDirParam).value_or(""),
             config().params.get_string(kModelPath).value_or(""));
     }
@@ -249,7 +249,7 @@ void MnnImageClassifierTask::on_init() {
         const std::string found = find_model(labels_path_);
         labels_path_ = !found.empty()
                            ? found
-                           : resolve_path(
+                           : resolve_asset_path(
                                  config().params.get_string(kSourceDirParam).value_or(""),
                                  labels_path_);
     }
