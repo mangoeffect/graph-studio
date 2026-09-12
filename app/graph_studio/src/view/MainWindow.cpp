@@ -244,7 +244,7 @@ void MainWindow::InitializeLayout()
     topSplitter_->addWidget(CreateTaskPanel());
 
     CreateCanvas();
-    topSplitter_->addWidget(graphicsView_);
+    topSplitter_->addWidget(canvasHost_);
 
     topSplitter_->addWidget(CreateImageResultPanel());
     bottomSplitter_ = new QSplitter(Qt::Horizontal, mainSplitter_);
@@ -685,6 +685,18 @@ void MainWindow::CreateCanvas()
     graphicsView_->setAccessibleName("Graph Canvas");
     graphicsView_->setRenderHint(QPainter::Antialiasing);
     graphicsView_->setMinimumWidth(400);
+    // QGraphicsView 本体在 macOS AX 树不暴露（Qt 无其 accessible 接口，
+    // 只有滚动条出现），普通 QWidget 容器也会被 AX 树剪掉——包一层 flat
+    // QGroupBox（映射 AXGroup，见 "Selected Node" 同例）作为外部 E2E 的
+    // 画布几何锚点（AXTitle="Graph Canvas"）。无边框无标题，视觉零变化。
+    canvasHost_ = new QGroupBox(this);
+    canvasHost_->setObjectName("canvasHost");
+    canvasHost_->setFlat(true);
+    canvasHost_->setStyleSheet("#canvasHost { border: none; }");
+    canvasHost_->setAccessibleName("Graph Canvas");
+    auto* hostLayout = new QVBoxLayout(canvasHost_);
+    hostLayout->setContentsMargins(0, 0, 0, 0);
+    hostLayout->addWidget(graphicsView_);
 }
 
 void MainWindow::CreateStatusBar()
@@ -1251,6 +1263,13 @@ bool MainWindow::OpenGraphFile(const QString& path)
     currentFilePath_ = path;
     UpdateWindowTitle();
     return true;
+}
+
+bool MainWindow::OpenGraphAtStartup(const QString& path, bool run)
+{
+    const bool ok = OpenGraphFile(path);
+    if (ok && run) ActionRun();
+    return ok;
 }
 
 void MainWindow::UpdateWindowTitle()

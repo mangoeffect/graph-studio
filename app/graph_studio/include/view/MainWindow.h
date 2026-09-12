@@ -78,6 +78,9 @@ public:
     NodePortAnchor nodePortAnchor(const QString& nodeId, const QString& port) const;
     // 场景侧全部节点 id（对照 VM 侧，E2E 调试用）
     QStringList sceneNodeIds() const { return nodeItems_.keys(); }
+    // CLI 启动参数通道（--open <file> [--run]）：启动即打开图、可选立即执行。
+    // 失败只走 loadFromFile 的日志路径（无弹窗），返回是否打开成功。
+    bool OpenGraphAtStartup(const QString& path, bool run);
 
 protected:
     void keyPressEvent(QKeyEvent* event) override;
@@ -169,6 +172,7 @@ private:
     QSplitter* bottomSplitter_ = nullptr;
     QToolBar* toolbar_ = nullptr;
     GraphView* graphicsView_ = nullptr;
+    QGroupBox* canvasHost_ = nullptr;  // 画布 AX 锚点容器（QGraphicsView 本体不进 AX 树）
     GraphScene* scene_ = nullptr;
     QStatusBar* statusBar_ = nullptr;
 
