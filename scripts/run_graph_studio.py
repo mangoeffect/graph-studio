@@ -93,7 +93,7 @@ def build_stack(cm: CMake, root: Path, lib_build: Path, gs_dir: Path, gs_build: 
     if not disable_opencv and opencv_dir:
         app_defines.append(f"-DOpenCV_DIR={opencv_dir / 'lib'}")
     # app 是独立顶层工程，不继承核心库 configure 的探针结果——把 wgpu 产物
-    # 路径显式传入（app 侧 GpuBootstrap 默认选 wgpu；WgpuImageViewer 直连）
+    # 路径显式传入（app 侧 GpuBootstrap 默认选 wgpu）
     if wgpu:
         app_defines += [f"-DTASK_GRAPH_ENABLE_WGPU=ON",
                         f"-DWGPU_INCLUDE_DIR={wgpu[0]}",

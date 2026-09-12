@@ -226,7 +226,8 @@ QImage imageToQImage(const task_graph::Image& src) {
 }
 
 // 从 std::any 提取图像转 QImage。type-check-first：WASM -fno-exceptions 下
-// any_cast 失败会 abort，必须先用 type() 比对。
+// any_cast 失败会 abort，必须先用 type() 比对。GPU 驻留 Image 在此触发
+// ensure_cpu 下载——仅由 imageResult()（用户选中显示）按需调用。
 std::optional<QImage> anyToQImage(const std::any& v) {
     if (!v.has_value()) return std::nullopt;
     if (v.type() == typeid(cv::Mat)) {
@@ -236,6 +237,12 @@ std::optional<QImage> anyToQImage(const std::any& v) {
         return imageToQImage(std::any_cast<task_graph::Image>(v));
     }
     return std::nullopt;
+}
+
+// 结果采集阶段的类型探测（不转换、不触发 GPU→CPU 同步）。
+bool isImageAny(const std::any& v) {
+    return v.has_value() && (v.type() == typeid(task_graph::Image) ||
+                             v.type() == typeid(cv::Mat));
 }
 
 }  // namespace
@@ -957,11 +964,12 @@ void GraphViewModel::finishExecution()
     if (!executing_) return;
 
     int completed = 0, failed = 0;
-    imageResults_.clear();  // 清空上一轮结果
+    imageResults_.clear();    // 清空上一轮结果
+    imageResultCache_.clear();
     QStringList imageKeys;
     if (executor_) {
-        const auto results = executor_->get_results();
-        for (const auto& [id, result] : results) {
+        auto results = executor_->get_results();
+        for (auto& [id, result] : results) {
             const bool ok = result.is_success();
             completed += ok ? 1 : 0;
             failed += ok ? 0 : 1;
@@ -971,20 +979,23 @@ void GraphViewModel::finishExecution()
                                 .arg(QString::fromStdString(id))
                                 .arg(ms, 0, 'f', 2));
 
-            // 采集图像结果：多输出节点按端口，单输出(value)按 "out"
+            // 采集图像结果：多输出节点按端口，单输出(value)按 "out"。
+            // 只探测类型、move 原始输出——GPU 驻留（纹理）结果保持原样，
+            // 不默认同步回 CPU（选中显示时 GraphViewModel::imageResult
+            // 才按需 ensure_cpu）。
             if (ok) {
                 const QString qid = QString::fromStdString(id);
                 if (!result.outputs.empty()) {
-                    for (const auto& [port, anyVal] : result.outputs) {
-                        if (auto img = anyToQImage(anyVal)) {
+                    for (auto& [port, anyVal] : result.outputs) {
+                        if (isImageAny(anyVal)) {
                             QString key = qid + ":" + QString::fromStdString(port);
-                            imageResults_[key] = std::move(*img);
+                            imageResults_[key] = std::move(anyVal);
                             imageKeys.append(key);
                         }
                     }
-                } else if (auto img = anyToQImage(result.value)) {
+                } else if (isImageAny(result.value)) {
                     QString key = qid + ":out";
-                    imageResults_[key] = std::move(*img);
+                    imageResults_[key] = std::move(result.value);
                     imageKeys.append(key);
                 }
             }
@@ -1086,8 +1097,24 @@ QStringList GraphViewModel::imageResultKeys() const
 
 QImage GraphViewModel::imageResult(const QString& key) const
 {
+    // 已转换过直接返回缓存（GPU 驻留结果只下载一次）
+    auto cached = imageResultCache_.constFind(key);
+    if (cached != imageResultCache_.constEnd()) return cached.value();
+
     auto it = imageResults_.constFind(key);
-    return it != imageResults_.end() ? it.value() : QImage();
+    if (it == imageResults_.constEnd()) return QImage();
+
+    // 按需转换：GPU 驻留 Image 在此 ensure_cpu 同步回 CPU（全局 GpuBackend
+    // 活过 executor，懒下载安全）；QImage 经 cleanup function 零拷贝共享
+    // 下载后的像素，缓存避免重复下载。
+    QImage img;
+    if (auto converted = anyToQImage(it.value())) {
+        img = std::move(*converted);
+    }
+    if (!img.isNull()) {
+        imageResultCache_.insert(key, img);
+    }
+    return img;
 }
 
 QString GraphViewModel::profileTraceJson() const

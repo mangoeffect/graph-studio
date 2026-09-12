@@ -4,12 +4,6 @@ project(graph_studio LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# WgpuImageViewer 的 macOS surface 需要 ObjC++（CAMetalLayer）；缺编译器时
-# 静默降级（该源文件会编译失败，正常 macOS 开发机都带 clang）
-if(APPLE)
-    enable_language(OBJCXX OPTIONAL)
-endif()
-
 set(TASK_GRAPH_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../)
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
@@ -70,7 +64,7 @@ set(PROJECT_HEADERS
     include/view/GraphView.h
     include/view/GanttChart.h
     include/view/ProfilePanel.h
-    include/view/WgpuImageViewer.h
+    include/view/ImageViewer.h
     include/GpuBootstrap.h
     include/ModelBootstrap.h
     include/CrashReporter.h
@@ -92,7 +86,7 @@ set(PROJECT_SOURCES
     src/view/GraphView.cpp
     src/view/GanttChart.cpp
     src/view/ProfilePanel.cpp
-    src/view/WgpuImageViewer.cpp
+    src/view/ImageViewer.cpp
     src/platform/wasm/test_hooks.cpp
 )
 
@@ -109,14 +103,6 @@ endif()
 # CrashReporter 始终编译：未启用 sentry（含全部 WASM 构建）时内部编译为
 # no-op stub，调用方（GraphViewModel 等）无需 #ifdef 分支。
 list(APPEND PROJECT_SOURCES src/CrashReporter.cpp)
-
-if(EMSCRIPTEN)
-    # WASM：WgpuImageViewer 依赖 wgpu-native surface（浏览器路径为 WebGPU
-    # canvas，Qt wasm 整窗单 canvas 限制下暂不编译——浏览器内验证是独立
-    # 里程碑）。排除后 MainWindow 内部 __EMSCRIPTEN__ 分支为 QLabel 展示。
-    list(REMOVE_ITEM PROJECT_SOURCES src/view/WgpuImageViewer.cpp)
-    list(REMOVE_ITEM PROJECT_HEADERS include/view/WgpuImageViewer.h)
-endif()
 
 if(EMSCRIPTEN)
     # WASM：用 qt_add_executable 才能自动生成 .html + qtloader.js。
@@ -150,31 +136,16 @@ if(NOT EMSCRIPTEN)
     target_link_libraries(graph_studio PRIVATE ${OpenCV_LIBS})
 endif()
 
-# wgpu 统一后端（GpuBootstrap 默认优先选择；WgpuImageViewer 直连渲染）：
+# wgpu 统一后端（GpuBootstrap 默认优先选择）：
 # 由 run_graph_studio.py 把 TASK_GRAPH_ENABLE_WGPU/WGPU_INCLUDE_DIR/WGPU_LIBRARY
 # 作为 cache 变量传入（核心库探测成功的产物路径）
 if(TASK_GRAPH_ENABLE_WGPU AND WGPU_INCLUDE_DIR)
     target_compile_definitions(graph_studio PRIVATE TG_APP_HAS_WGPU=1)
     target_include_directories(graph_studio PRIVATE ${WGPU_INCLUDE_DIR})
     if(WGPU_LIBRARY)
-        # 查看器/Bootstrap 直连 wgpu-native C API（libtask_graph 已 PRIVATE 链接，
+        # GpuBootstrap 直连 wgpu-native C API（libtask_graph 已 PRIVATE 链接，
         # 这里为 app 自身的符号引用；运行库由打包脚本随 app 分发）
         target_link_libraries(graph_studio PRIVATE ${WGPU_LIBRARY})
-    endif()
-    # WgpuImageViewer 的平台 surface：macOS 需 ObjC++（CAMetalLayer）；
-    # Linux 在 X11 可用时启用 Xlib 路径（Wayland 会话运行时降级 QLabel）
-    if(APPLE)
-        set_source_files_properties(src/view/WgpuImageViewer.cpp
-            PROPERTIES LANGUAGE OBJCXX)
-        # CAMetalLayer（wgpu surface 的 macOS 原生层）
-        find_library(QUARTZCORE_FW QuartzCore REQUIRED)
-        target_link_libraries(graph_studio PRIVATE ${QUARTZCORE_FW})
-    elseif(UNIX AND NOT EMSCRIPTEN)
-        find_package(X11 QUIET)
-        if(X11_FOUND)
-            target_compile_definitions(graph_studio PRIVATE TG_VIEWER_X11=1)
-            target_link_libraries(graph_studio PRIVATE X11::X11)
-        endif()
     endif()
 endif()
 
@@ -364,7 +335,7 @@ qt_add_executable(test_gui
     include/view/EdgeItem.h
     include/view/GanttChart.h
     include/view/ProfilePanel.h
-    include/view/WgpuImageViewer.h
+    include/view/ImageViewer.h
     src/model/GraphModel.cpp
     src/viewmodel/GraphViewModel.cpp
     src/CrashReporter.cpp
@@ -376,7 +347,7 @@ qt_add_executable(test_gui
     src/view/EdgeItem.cpp
     src/view/GanttChart.cpp
     src/view/ProfilePanel.cpp
-    src/view/WgpuImageViewer.cpp
+    src/view/ImageViewer.cpp
 )
 target_link_libraries(test_gui PRIVATE Qt6::Widgets Qt6::Test Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets task_graph ${OpenCV_LIBS})
 add_test(NAME test_gui COMMAND test_gui)

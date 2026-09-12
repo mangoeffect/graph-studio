@@ -4,9 +4,7 @@
 #include "view/NodeItem.h"
 #include "view/EdgeItem.h"
 #include "view/ProfilePanel.h"
-#ifndef __EMSCRIPTEN__
-#include "view/WgpuImageViewer.h"
-#endif
+#include "view/ImageViewer.h"
 #include "viewmodel/GraphViewModel.h"
 
 #include <QDebug>
@@ -539,16 +537,9 @@ QWidget* MainWindow::CreateImageResultPanel()
     resultSelector_->setEnabled(false);
     layout->addWidget(resultSelector_);
 
-    // wgpu（WebGPU）surface 渲染的图像查看器（桌面；自持 wgpu 设备，与
-    // 任务图后端分离）/ QLabel 退化视图（WASM：浏览器端验证是独立里程碑）
-#ifdef __EMSCRIPTEN__
-    imageViewerFallback_ = new QLabel(tr("No image"));
-    imageViewerFallback_->setMinimumSize(300, 200);
-    imageViewerFallback_->setAlignment(Qt::AlignCenter);
-    imageViewerFallback_->setBackgroundRole(QPalette::Dark);
-    layout->addWidget(imageViewerFallback_, 1);
-#else
-    imageViewer_ = new WgpuImageViewer();
+    // 图像结果查看器：纯 QPainter 绘制（桌面/WASM 同一代码路径；GPU 侧
+    // 只在用户选中某结果时才按需同步回 CPU，见 GraphViewModel::imageResult）
+    imageViewer_ = new ImageViewer();
     imageViewer_->setMinimumSize(300, 200);
     layout->addWidget(imageViewer_, 1);
 
@@ -556,12 +547,11 @@ QWidget* MainWindow::CreateImageResultPanel()
     pixelInfoLabel_ = new QLabel("x: -, y: -");
     pixelInfoLabel_->setStyleSheet(
         "color: #d4d4d4; background-color: #2d2d30; padding: 2px 6px; "
-        "border-top: 1px solid #3c3c3c; font-family: Menlo, Consolas, monospace; font-size: 11px;");
+        "border-top: 1px #3c3c3c; font-family: Menlo, Consolas, monospace; font-size: 11px;");
     layout->addWidget(pixelInfoLabel_);
 
-    connect(imageViewer_, &WgpuImageViewer::pixelInfoChanged,
+    connect(imageViewer_, &ImageViewer::pixelInfoChanged,
             pixelInfoLabel_, &QLabel::setText);
-#endif
 
     return container;
 }
@@ -1580,23 +1570,12 @@ void MainWindow::RebuildResultSelector(const QStringList& keys)
 
 void MainWindow::ShowViewerImage(const QImage& image)
 {
-#ifndef __EMSCRIPTEN__
     if (!imageViewer_) return;
     if (image.isNull()) {
         imageViewer_->clearImage();
         return;
     }
     imageViewer_->setImage(image);
-#else
-    if (!imageViewerFallback_) return;
-    if (image.isNull()) {
-        imageViewerFallback_->setText(tr("No image"));
-        imageViewerFallback_->setPixmap(QPixmap());
-        return;
-    }
-    imageViewerFallback_->setPixmap(QPixmap::fromImage(image).scaled(
-        imageViewerFallback_->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
-#endif
 }
 
 void MainWindow::ShowResultImage(const QString& key)

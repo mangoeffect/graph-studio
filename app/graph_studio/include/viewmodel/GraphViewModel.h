@@ -11,6 +11,7 @@
 #include <QPointF>
 #include <QImage>
 
+#include <any>
 #include <memory>
 
 #include "../model/GraphModel.h"
@@ -105,6 +106,8 @@ public:
 
     // 执行后的图像结果查询。key 格式 "nodeId:port"（单输出端口名为 "out"）。
     // 仅在 finishExecution 后填充；执行前/失败节点不产生条目。
+    // 收集阶段只做类型探测、不做转换——GPU 驻留（gpu_texture）的输出保持
+    // 原样不下载；首次取某 key 时才 ensure_cpu 按需同步并缓存 QImage。
     QStringList imageResultKeys() const;
     QImage imageResult(const QString& key) const;
 
@@ -180,10 +183,14 @@ private:
     std::unique_ptr<task_graph::DAGExecutor> executor_;
     bool executing_ = false;
 
-    // 执行后采集的图像结果缓存：key="nodeId:port" -> QImage(零拷贝共享源像素)。
-    // QImage 通过 cleanup function 持有源 cv::Mat/shared_ptr 的引用计数，
-    // 析构时自动释放，无需手动管理生命周期。
-    QHash<QString, QImage> imageResults_;
+    // 执行后采集的图像结果（原始输出，未转换）：key="nodeId:port" ->
+    // std::any（task_graph::Image 或 cv::Mat）。Image 可能 GPU 驻留——保持
+    // 原输出形态（纹理不回 CPU），只在 imageResult() 被选中显示时按需
+    // ensure_cpu 下载并缓存 QImage（零拷贝共享源像素，cleanup function
+    // 持有引用计数）。GPU 纹理由 Image 内 shared_ptr<GpuTexture> 保活，
+    // 全局 GpuBackend（GpuBootstrap）活过 executor，懒下载安全。
+    QHash<QString, std::any> imageResults_;
+    mutable QHash<QString, QImage> imageResultCache_;  // 首次转换后缓存
 
     // 性能分析数据：多帧历史（每次执行追加一帧，最多 MAX_PROFILE_FRAMES）
     static constexpr int MAX_PROFILE_FRAMES = 100;
