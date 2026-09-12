@@ -4,6 +4,10 @@ build_win
 build_wasm/
 build_android/
 build_ios/
+# 移动端打包脚本的 per-slice / per-ABI 构建目录（build_ios.sh / build_android.py）
+build_ios_device/
+build_ios_sim/
+build_android_*/
 build_coretest
 submodules/*
 /AGENTS.md
