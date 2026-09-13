@@ -192,13 +192,43 @@ def patch_macos_opencv5(mp_src: Path) -> None:
     # OpenCV5 把 calib3d → calib, features2d → features
     _replace_once(build, "libopencv_calib3d.dylib", "libopencv_calib.dylib")
     _replace_once(build, "libopencv_features2d.dylib", "libopencv_features.dylib")
-    # OpenCV5 拆出 libopencv_geometry（getPerspectiveTransform 等）
+    # OpenCV5 拆出 libopencv_geometry（getPerspectiveTransform 等）。
+    # 替换目标必须是完整条目（paths.join(...) 整行）：只匹配文件名会把
+    # "lib/libopencv_imgcodecs.dylib" 从中间撕开，产生 unclosed string literal。
     if not _grep(build, "libopencv_geometry.dylib"):
-        _replace_once(build, "libopencv_imgcodecs.dylib",
-                      'libopencv_geometry.dylib\n            paths.join(PREFIX, "lib/libopencv_imgcodecs.dylib")')
+        _replace_once(build, 'paths.join(PREFIX, "lib/libopencv_imgcodecs.dylib")',
+                      'paths.join(PREFIX, "lib/libopencv_geometry.dylib"),\n'
+                      '            paths.join(PREFIX, "lib/libopencv_imgcodecs.dylib")')
 
 
 # ---- OpenCV5 API 兼容补丁（C++ 源码）----
+
+def resolve_macos_jdk(mp_build: Path) -> Optional[Path]:
+    """macOS 本机 JDK 探测，供 rules_java local_jdk 使用。
+
+    mediapipe v1.0.0（rules_java 7.10.0）坑：无本地 JDK 时 local_jdk 退化为
+    bootstrap 模板，引用已被上游移除的 @rules_java//tools/jdk —— analysis 直接
+    失败（"BUILD file not found in directory 'tools/jdk'"），与 Bazel 版本无关。
+    优先级：env JAVA_HOME > tools/jdk 下载目录 > 系统 JVM > brew LTS > Android Studio JBR。
+    """
+    if os.environ.get("JAVA_HOME"):
+        return Path(os.environ["JAVA_HOME"])
+    cands: List[Path] = []
+    jdk_root = mp_build / "tools" / "jdk"
+    if jdk_root.is_dir():
+        cands += sorted(d for d in jdk_root.iterdir() if d.is_dir())
+    jvm = Path("/Library/Java/JavaVirtualMachines")
+    if jvm.is_dir():
+        cands += sorted(p / "Contents" / "Home" for p in jvm.iterdir()
+                        if (p / "Contents" / "Home" / "bin" / "java").exists())
+    for name in ("openjdk@21", "openjdk@17"):
+        p = Path("/opt/homebrew/opt") / name
+        if (p / "bin" / "java").exists():
+            cands.append(p)
+    jbr = Path("/Applications/Android Studio.app/Contents/jbr/Contents/Home")
+    if (jbr / "bin" / "java").exists():
+        cands.append(jbr)
+    return cands[0] if cands else None
 
 def patch_opencv5_api(mp_src: Path) -> None:
     """OpenCV5 API 兼容：getPerspectiveTransform 移到 geometry/2d.hpp；boxPoints 移除。"""
@@ -825,16 +855,29 @@ def main() -> int:
         if not mp_src.is_absolute():
             mp_src = Path.cwd() / mp_src
     else:
+        # sentinel 记录 clone 时的版本：复用前比对，不符则重新克隆。
+        # （历史事故：默认版本升到 v1.0.0 后，现存 v0.10.35 旧树被静默复用，
+        #   产出的无前缀头文件与既有 Mp* dylib 混装，mediapipe_vision 编译失败。）
         mp_src = mp_build / "mediapipe-src"
-        if not (mp_src / ".git").is_dir():
+        ver_file = mp_src / ".mp-build-version"
+        reuse = (mp_src / ".git").is_dir()
+        if reuse:
+            have = (_read(ver_file) or "").strip()
+            if have != args.version:
+                console.warn(f"现有源码树 {mp_src} 版本不符"
+                             f"（记录 {have or '未知'}，请求 {args.version}），重新克隆")
+                _rm_rf(mp_src)
+                reuse = False
+        if not reuse:
             console.step(f"Cloning MediaPipe {args.version} to {mp_src}")
             mp_build.mkdir(parents=True, exist_ok=True)
             code = runner.run(["git", "clone", "--depth", "1", "--branch", args.version, MP_REPO, str(mp_src)])
             if code != 0:
                 console.fail(f"git clone MediaPipe 失败 (exit {code})")
                 return code
+            _write(ver_file, args.version + "\n")
         else:
-            print(f"==> Using existing MediaPipe source at {mp_src}")
+            print(f"==> Using existing MediaPipe source at {mp_src} ({args.version})")
 
     if not (mp_src / "WORKSPACE").is_file() and not (mp_src / "MODULE.bazel").is_file():
         console.fail(f"MediaPipe 源码不存在或非 Bazel 项目: {mp_src}")
@@ -881,6 +924,16 @@ def main() -> int:
         build_flags = ["--define=MEDIAPIPE_DISABLE_GPU=1"]
         config_flags = ["--config=macos"] if platform.is_macos() else []
         env = dict(os.environ, HERMETIC_PYTHON_VERSION="3.12")
+        if platform.is_macos():
+            # mediapipe v1.0.0 坑：无本地 JDK 时 local_jdk 走 bootstrap 模板并引用
+            # 已移除的 @rules_java//tools/jdk，analysis 直接失败（详见 resolve_macos_jdk）。
+            jdk = resolve_macos_jdk(mp_build)
+            if jdk:
+                env["JAVA_HOME"] = str(jdk)
+                console.ok(f"JAVA_HOME={jdk}")
+            else:
+                console.warn("未找到本机 JDK，rules_java local_jdk 可能解析失败"
+                             "（设 JAVA_HOME，或放 JDK 到 build/mediapipe/tools/jdk/）")
         if platform.is_windows():
             # Windows 原生配方（与实际成功构建逐项对齐，见 bazel server 日志）：
             build_flags += [
