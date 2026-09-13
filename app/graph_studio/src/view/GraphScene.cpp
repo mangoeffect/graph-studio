@@ -211,7 +211,11 @@ void GraphScene::contextMenuEvent(QGraphicsSceneContextMenuEvent* event)
         return;
     }
 
-    QMenu menu;
+    // QMenu::exec() 是嵌套事件循环——wasm 平台不支持（无 asyncify 构建时
+    // 菜单不弹或卡死，Qt 6.6 wasm.html Known Issues）。统一走非阻塞
+    // popup() + WA_DeleteOnClose，桌面行为等价（exec 本就是"弹出等选中"）。
+    QMenu* menu = new QMenu();
+    menu->setAttribute(Qt::WA_DeleteOnClose);
     QPointF pos = event->scenePos();
 
     // task 动作添加到指定的（分类）子菜单中
@@ -225,8 +229,8 @@ void GraphScene::contextMenuEvent(QGraphicsSceneContextMenuEvent* event)
     QStringList allTypes = availableTaskTypes_;
     allTypes.sort();
     if (allTypes.isEmpty()) {
-        menu.addAction("(no tasks registered)")->setEnabled(false);
-        menu.exec(event->screenPos());
+        menu->addAction("(no tasks registered)")->setEnabled(false);
+        menu->popup(event->screenPos());
         event->accept();
         return;
     }
@@ -241,11 +245,11 @@ void GraphScene::contextMenuEvent(QGraphicsSceneContextMenuEvent* event)
         bySection[s].append(t);
     }
     for (const auto& s : sections) {
-        QMenu* sub = menu.addMenu(s);
+        QMenu* sub = menu->addMenu(s);
         for (const auto& t : bySection[s]) addTask(sub, t);
     }
 
-    menu.exec(event->screenPos());
+    menu->popup(event->screenPos());
     event->accept();
 }
 

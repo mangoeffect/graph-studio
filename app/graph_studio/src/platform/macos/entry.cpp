@@ -199,6 +199,63 @@ int main(int argc, char* argv[])
             });
         }, 100);
     });
+
+    // OS 文件拖入（graph.json + 相对路径资产）：Qt 6.6 wasm 平台对浏览器
+    // 文件 drop 的交付不可靠（拖入文件的字节需异步进 MEMFS，Qt 无同步读取
+    // 通道），在 document 捕获阶段自行处理——与 ?open 通道同一套 MEMFS
+    // 落位/交换语义。dragover 必须 preventDefault 否则浏览器按"打开文件"
+    // 导航离开页面；stopImmediatePropagation 阻止 Qt 平台层再转一份
+    // QDropEvent（避免与 MainWindow::dropEvent 双开）。同 EM_ASM 约定：
+    // JS 里不能出现正则字面量。
+    EM_ASM({
+        var waitForModule = setInterval(function() {
+            if (typeof Module === 'undefined' || !Module.FS
+                || !Module.FS.writeFile || !Module._gs_wasm_open_graph) return;
+            clearInterval(waitForModule);
+            document.addEventListener('dragenter', function(e) {
+                e.preventDefault();
+            }, true);
+            document.addEventListener('dragover', function(e) {
+                e.preventDefault();
+            }, true);
+            document.addEventListener('drop', function(e) {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                // 事件返回后 DataTransferItemList 会 detach，先同步收集 File
+                var files = [];
+                for (var i = 0; i < e.dataTransfer.files.length; ++i)
+                    files.push(e.dataTransfer.files[i]);
+                if (!files.length) return;
+                // 第一个 .json 当图打开，其余按文件名落 MEMFS 根（资产，
+                // 与 ?open 的预取同语义）；资产先写、图后写（与 ?open 同序）。
+                var graphFile = null;
+                var writes = [];
+                files.forEach(function(f) {
+                    if (!graphFile && f.name.toLowerCase().endsWith('.json')) {
+                        graphFile = f;
+                        return;
+                    }
+                    writes.push(f.arrayBuffer().then(function(buf) {
+                        Module.FS.writeFile('/' + f.name, new Uint8Array(buf));
+                    }));
+                });
+                Promise.all(writes).then(function() {
+                    if (!graphFile) return null;
+                    return graphFile.text();
+                }).then(function(text) {
+                    if (text === null || text === undefined) return;
+                    var name = graphFile.name;
+                    Module.FS.writeFile('/' + name, text);
+                    Module.FS.writeFile('/tmp/gs_url_open.txt',
+                                        name + '\x1f0');
+                    if (Module._gs_wasm_open_graph() !== 1)
+                        console.error('[gs] 拖入打开失败: ' + name);
+                }).catch(function(err) {
+                    console.error('[gs] 拖入文件读取失败: ' + err.message);
+                });
+            }, true);
+        }, 100);
+    });
 #endif
 
     window.show();

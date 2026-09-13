@@ -34,6 +34,7 @@
 #include <QMessageBox>
 #include <QKeyEvent>
 #include <QShortcut>
+#include <QMouseEvent>
 #include <QDrag>
 #include <QDragEnterEvent>
 #include <QDragMoveEvent>
@@ -55,6 +56,56 @@ static QString edgeKey(const QString& from, const QString& fromPort,
 static QString edgeKey(const EdgeData& e)
 {
     return edgeKey(e.fromId, e.fromPort, e.toId, e.toPort);
+}
+
+// ---- 任务库手写拖拽（应用级事件过滤器，仅 wasm 生效）----
+// QDrag 发起需 asyncify（本构建不带）；且 wasm 平台 grabMouse 无效
+//（setMouseGrabEnabled 不支持），press 在任务库、release 在画布的跨控件
+// 序列回不到列表控件自己的 handler。改为在 qApp 上装事件过滤器全程"观察"
+// press/move/release（派发到哪个控件都能看到，不消费任何事件）。
+bool MainWindow::eventFilter(QObject* watched, QEvent* event)
+{
+#ifdef __EMSCRIPTEN__
+    const QEvent::Type type = event->type();
+    if (type == QEvent::MouseButtonPress) {
+        auto* me = static_cast<QMouseEvent*>(event);
+        if (taskList_ && watched == taskList_->viewport()
+            && me->button() == Qt::LeftButton) {
+            auto* item = taskList_->itemAt(me->position().toPoint());
+            const bool draggable = item && item->parent()
+                                   && (item->flags() & Qt::ItemIsDragEnabled);
+            tlwPressItem_ = draggable ? item->text(0) : QString();
+            tlwPressGlobal_ = me->globalPosition().toPoint();
+            tlwManualDragging_ = false;
+        }
+    } else if (type == QEvent::MouseMove) {
+        auto* me = static_cast<QMouseEvent*>(event);
+        if (!tlwManualDragging_ && !tlwPressItem_.isEmpty()
+            && (me->buttons() & Qt::LeftButton)
+            && (me->globalPosition().toPoint() - tlwPressGlobal_).manhattanLength()
+                   >= QApplication::startDragDistance()) {
+            tlwManualDragging_ = true;
+        }
+    } else if (type == QEvent::MouseButtonRelease) {
+        auto* me = static_cast<QMouseEvent*>(event);
+        if (me->button() == Qt::LeftButton && !tlwPressItem_.isEmpty()) {
+            const QString taskType = tlwPressItem_;
+            const QPoint globalPos = me->globalPosition().toPoint();
+            tlwPressItem_.clear();
+            if (tlwManualDragging_) {
+                tlwManualDragging_ = false;
+                QWidget* vp = graphicsView_ ? graphicsView_->viewport() : nullptr;
+                if (vp) {
+                    const QPoint local = vp->mapFromGlobal(globalPos);
+                    if (local.x() >= 0 && local.y() >= 0
+                        && local.x() < vp->width() && local.y() < vp->height())
+                        CreateNodeAt(taskType, graphicsView_->mapToScene(local));
+                }
+            }
+        }
+    }
+#endif  // __EMSCRIPTEN__
+    return QMainWindow::eventFilter(watched, event);
 }
 
 // 从 mime 数据里取第一个指向本地 .json 文件的路径，无则返回空。
@@ -324,6 +375,12 @@ void MainWindow::ConnectSignals()
         CreateNodeAt(item->text(0), center);
     });
 
+#ifdef __EMSCRIPTEN__
+    // wasm：任务库手写拖拽走应用级事件过滤器（见 eventFilter——QDrag 需
+    // asyncify 且 wasm 无效的 grabMouse 会让跨控件 release 回不到列表）。
+    qApp->installEventFilter(this);
+#endif
+
     // Command stack
     connect(&commandStack_, &CommandStack::canUndoChanged, this, &MainWindow::UpdateUndoRedoActions);
     connect(&commandStack_, &CommandStack::canRedoChanged, this, &MainWindow::UpdateUndoRedoActions);
@@ -450,9 +507,15 @@ QWidget* MainWindow::CreateTaskPanel()
     // 供外部 UI 自动化（E2E）稳定定位：objectName + accessibleName
     taskList_->setObjectName("taskLibrary");
     taskList_->setAccessibleName("Task Library");
+#ifdef __EMSCRIPTEN__
+    // wasm：QDrag::exec 需 asyncify（未启用），留着 dragEnabled 只会在移动时
+    // 发起注定失败的 QDrag；改走 MainWindow::eventFilter 的手写拖拽。
+    taskList_->setDragEnabled(false);
+#else
     taskList_->setDragEnabled(true);
     taskList_->setDragDropMode(QAbstractItemView::DragOnly);
     taskList_->setDefaultDropAction(Qt::CopyAction);
+#endif
     taskList_->setRootIsDecorated(true);        // 显示分类行的 +/- 展开箭头
     taskList_->setExpandsOnDoubleClick(false);  // 双击分类标题不触发展开（双击仅用于添加任务）
     taskList_->setHeaderHidden(true);           // 保持扁平外观，隐藏列头

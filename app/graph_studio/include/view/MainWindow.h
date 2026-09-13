@@ -87,6 +87,17 @@ protected:
     void dragEnterEvent(QDragEnterEvent* event) override;
     void dragMoveEvent(QDragMoveEvent* event) override;
     void dropEvent(QDropEvent* event) override;
+    bool eventFilter(QObject* watched, QEvent* event) override;
+
+private:
+#ifdef __EMSCRIPTEN__
+    // 任务库手写拖拽状态（QDrag 发起需 asyncify，本构建不带；且 wasm 平台
+    // 无效的 grabMouse 会让"跨控件 move/release"回不到列表控件，故用应用级
+    // 事件过滤器全程观察 press/move/release——见 eventFilter）。
+    QString tlwPressItem_;
+    QPoint tlwPressGlobal_;
+    bool tlwManualDragging_ = false;
+#endif
 
 private slots:
     void onTaskAdded(const NodeData& node);
