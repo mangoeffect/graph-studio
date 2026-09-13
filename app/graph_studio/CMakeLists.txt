@@ -89,6 +89,8 @@ set(PROJECT_SOURCES
     src/view/ImageViewer.cpp
     src/platform/wasm/test_hooks.cpp
 )
+# .tgp 工程包读写（miniz zip 容器）自 SDK 起编入 libtask_graph
+# （include/task_graph/project_bundle.hpp），app 只消费其 API。
 
 # ---- 崩溃上报模块（Sentry + Crashpad，仅桌面端）----
 # sentry-native 及其递归子模块 crashpad 由 scripts/fetch_sentry.py 拉取到
@@ -351,6 +353,9 @@ qt_add_executable(test_gui
 )
 target_link_libraries(test_gui PRIVATE Qt6::Widgets Qt6::Test Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets task_graph ${OpenCV_LIBS})
 add_test(NAME test_gui COMMAND test_gui)
+
+# .tgp 工程包的纯逻辑测试在主仓库 SDK 侧（tests/test_project_bundle.cpp，
+# GoogleTest）——app 不再自带 miniz/GraphProject 实现。
 
 # GraphViewModel 依赖 CrashReporter：测试目标需一并链接 sentry（拿到 sentry.h
 # 头文件路径；测试内未配置 DSN，sentry 保持 no-op，无需 crashpad_handler）。

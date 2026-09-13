@@ -226,6 +226,11 @@ def main() -> int:
                     aggregate(report, "files")
                     console.step(f"files: 执行 {count} 张图")
                     results[name] = f"files: {count} 张图"
+                elif name == "project":
+                    count = sc.project_run(browser, base_url, report, ctx)
+                    aggregate(report, "project")
+                    console.step(f"project: 执行 {count} 个工程包")
+                    results[name] = f"project: {count} 个工程包"
                 elif name == "run":
                     results[name] = sc.run_graph(browser, base_url, ctx)
                 report.record(name, "pass", str(results[name]))

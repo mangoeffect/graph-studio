@@ -333,6 +333,28 @@ if(TASK_GRAPH_ENABLE_MNN)
     endif()
 endif()
 
+# ---- miniz（vendored，public domain，third_party/miniz）：.tgp 工程包
+# （src/project_bundle.cpp，include/task_graph/project_bundle.hpp）的 zip
+# 读写。源码直接编入 task_graph 目标：桌面 SHARED 构建对 .c 以
+# -fvisibility=hidden 编译（miniz 符号不进导出表，不与消费者的 miniz 冲突）；
+# 移动端/WASM STATIC 构建产物天然自含，libtask_graph 合并脚本无需改动。
+set(MINIZ_ROOT "${PROJECT_SOURCE_DIR}/third_party/miniz")
+set(MINIZ_SOURCES
+    "${MINIZ_ROOT}/miniz.c"
+    "${MINIZ_ROOT}/miniz_tdef.c"
+    "${MINIZ_ROOT}/miniz_tinfl.c"
+    "${MINIZ_ROOT}/miniz_zip.c"
+)
+target_sources(task_graph PRIVATE
+    src/project_bundle.cpp
+    ${MINIZ_SOURCES}
+)
+target_include_directories(task_graph PRIVATE "${MINIZ_ROOT}")
+if(NOT MSVC)
+    set_source_files_properties(${MINIZ_SOURCES} PROPERTIES
+        COMPILE_FLAGS "-fvisibility=hidden")
+endif()
+
 target_include_directories(task_graph
     PUBLIC
         $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
@@ -442,6 +464,13 @@ add_tg_test(test_profiler)
 add_tg_test(test_type_registry)
 add_tg_test(test_logger)
 add_tg_test(test_model_finder)
+
+# .tgp 工程包（pack/open/zip-slip 防护）单元测试。测试自身用 miniz writer
+# 构造恶意包（等长字节替换绕过 writer 的写侧防护）与超限包，需要 miniz
+# 头与源码（测试进程内自有副本；核心库的 miniz 符号是 hidden 的）。
+add_tg_test(test_project_bundle)
+target_sources(test_project_bundle PRIVATE ${MINIZ_SOURCES})
+target_include_directories(test_project_bundle PRIVATE "${MINIZ_ROOT}")
 
 add_tg_test(test_plugin)
 

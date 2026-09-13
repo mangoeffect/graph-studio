@@ -65,6 +65,38 @@ extern "C" EMSCRIPTEN_KEEPALIVE int gs_wasm_open_graph()
                 + missingAssets.replace(QLatin1Char('\n'), QStringLiteral(", ")));
     return ok ? 1 : 0;
 }
+
+// .tgp 工程包打开通道（drop/URL 两通道共用；工具栏同进程直调
+// OpenProjectFile）：包字节从 /tmp/gs_project_open.bin 读，run 标志复用
+// /tmp/gs_url_open.txt 交换（"\x1f0|1"，path 段为空；文件缺失视为 run=0），
+// 展示名可选经 /tmp/gs_project_display.txt 传入（交换文件名不该露给用户）。
+// 解包进会话临时目录并加载。返回 1 成功 / 0 失败。
+extern "C" EMSCRIPTEN_KEEPALIVE int gs_wasm_open_project()
+{
+    if (!g_urlOpenWindow) return 0;
+    bool run = false;
+    std::ifstream flag(kUrlOpenPath, std::ios::binary);
+    if (flag) {
+        const std::string payload((std::istreambuf_iterator<char>(flag)),
+                                  std::istreambuf_iterator<char>());
+        const auto sep = payload.find('\x1f');
+        if (sep != std::string::npos && sep + 1 < payload.size())
+            run = payload[sep + 1] == '1';
+        std::remove(kUrlOpenPath);
+    }
+    QString displayName;
+    std::ifstream nameFile("/tmp/gs_project_display.txt", std::ios::binary);
+    if (nameFile) {
+        const std::string name((std::istreambuf_iterator<char>(nameFile)),
+                               std::istreambuf_iterator<char>());
+        displayName = QString::fromStdString(name);
+        std::remove("/tmp/gs_project_display.txt");
+    }
+    const bool ok = g_urlOpenWindow->OpenProjectFile("/tmp/gs_project_open.bin",
+                                                     run, displayName);
+    std::remove("/tmp/gs_project_open.bin");
+    return ok ? 1 : 0;
+}
 #endif
 
 int main(int argc, char* argv[])
@@ -157,8 +189,26 @@ int main(int argc, char* argv[])
             var dir = clean.slice(0, clean.lastIndexOf('/') + 1);
             fetch(open).then(function(r) {
                 if (!r.ok) throw new Error('HTTP ' + r.status);
-                return r.text();
-            }).then(function(text) {
+                return r.arrayBuffer();
+            }).then(function(ab) {
+                var u8 = new Uint8Array(ab);
+                // .tgp 工程包（.tgp 扩展名或 PK 魔数）：单包自带全部依赖，
+                // 无需相对资产预取，直接走工程打开通道。
+                var isProj = name.toLowerCase().endsWith('.tgp')
+                    || (u8.length >= 4 && u8[0] === 0x50 && u8[1] === 0x4b
+                        && ((u8[2] === 3 && u8[3] === 4)
+                            || (u8[2] === 5 && u8[3] === 6)
+                            || (u8[2] === 7 && u8[3] === 8)));
+                if (isProj) {
+                    Module.FS.writeFile('/tmp/gs_project_open.bin', u8);
+                    Module.FS.writeFile('/tmp/gs_url_open.txt',
+                                        '\x1f' + (run ? '1' : '0'));
+                    Module.FS.writeFile('/tmp/gs_project_display.txt', name);
+                    if (Module._gs_wasm_open_project() !== 1)
+                        console.error('[gs] ?open 工程包打开失败: ' + open);
+                    return;
+                }
+                var text = new TextDecoder().decode(u8);
                 Module.FS.writeFile('/' + name, text);
                 // 相对路径资产预取（启发式与 scripts/e2e_graph_cases.py /
                 // 桌面落位一致：路径形态 + 资产扩展名，写出型任务的
@@ -387,6 +437,29 @@ int main(int argc, char* argv[])
                     }
                 }
                 if (!loose.length && !dirRoots.length) return;
+                // 松散 .tgp 工程包：自带全部依赖，直接走工程打开通道并短路
+                // （不参与 json 选择与资产配对）。
+                var looseProject = null;
+                for (var pi = 0; pi < loose.length; ++pi) {
+                    if (loose[pi].name.toLowerCase().endsWith('.tgp')) {
+                        looseProject = loose[pi];
+                        break;
+                    }
+                }
+                if (looseProject) {
+                    looseProject.arrayBuffer().then(function(buf) {
+                        // FS.writeFile 只收 Uint8Array/string（ArrayBuffer 抛
+                        // "Unsupported data type"）
+                        Module.FS.writeFile('/tmp/gs_project_open.bin',
+                                            new Uint8Array(buf));
+                        Module.FS.writeFile('/tmp/gs_project_display.txt',
+                                            looseProject.name);
+                        if (Module._gs_wasm_open_project() !== 1)
+                            console.error('[gs] 拖入工程包打开失败: '
+                                          + looseProject.name);
+                    });
+                    return;
+                }
                 var looseGraph = null;
                 var looseAssets = [];
                 loose.forEach(function(f) {

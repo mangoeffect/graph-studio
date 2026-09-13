@@ -6,6 +6,7 @@
 #include "view/ProfilePanel.h"
 #include "view/ImageViewer.h"
 #include "viewmodel/GraphViewModel.h"
+#include "task_graph/project_bundle.hpp"
 
 #include <QDebug>
 #include <QMenu>
@@ -108,15 +109,17 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event)
     return QMainWindow::eventFilter(watched, event);
 }
 
-// 从 mime 数据里取第一个指向本地 .json 文件的路径，无则返回空。
-static QString firstLocalJsonPath(const QMimeData* mime)
+// 从 mime 数据里取第一个指向本地图文件（.json 或 .tgp 工程包）的路径，
+// 无则返回空。
+static QString firstLocalGraphPath(const QMimeData* mime)
 {
     if (!mime || !mime->hasUrls()) return {};
     const auto urls = mime->urls();
     for (const QUrl& url : urls) {
         if (!url.isLocalFile()) continue;
         const QString path = url.toLocalFile();
-        if (QFileInfo(path).suffix().compare("json", Qt::CaseInsensitive) == 0)
+        const QString suf = QFileInfo(path).suffix().toLower();
+        if (suf == "json" || suf == "tgp")
             return path;
     }
     return {};
@@ -412,6 +415,7 @@ void MainWindow::CreateMenuBar()
     connect(fileMenu->addAction("Open..."), &QAction::triggered, this, &MainWindow::ActionOpen);
     connect(fileMenu->addAction("Save"), &QAction::triggered, this, &MainWindow::ActionSave);
     connect(fileMenu->addAction("Save As..."), &QAction::triggered, this, &MainWindow::ActionSaveAs);
+    connect(fileMenu->addAction("Export Project..."), &QAction::triggered, this, &MainWindow::ActionExportProject);
     fileMenu->addSeparator();
     connect(fileMenu->addAction("Exit"), &QAction::triggered, this, &QMainWindow::close);
 
@@ -1285,6 +1289,10 @@ void MainWindow::ActionNew()
     vm_.clear();
     commandStack_.clear();
     currentFilePath_.clear();
+    // 离开工程态：解包目录释放即自动清理
+    projectMode_ = false;
+    projectDir_.reset();
+    projectGraphPath_.clear();
     UpdateWindowTitle();
 }
 
@@ -1292,10 +1300,33 @@ void MainWindow::ActionOpen()
 {
 #ifdef __EMSCRIPTEN__
     // WASM：浏览器不允许同步模态文件选择，必须异步回调。
-    // 上传内容写到 MEMFS 临时文件，再交给 VM 加载。
-    QFileDialog::getOpenFileContent("JSON Files (*.json);;All Files (*)",
+    // 上传内容写到 MEMFS 临时文件，再交给 VM 加载；.tgp 工程包走
+    // gs_wasm_open_project（单文件即自带全部依赖，单选 picker 恰好够用）。
+    QFileDialog::getOpenFileContent(
+        "Graph Project (*.tgp);;JSON Files (*.json);;All Files (*)",
         [this](const QString& fileName, const QByteArray& content) {
             if (fileName.isEmpty() || content.isEmpty()) return;
+            const bool tgp = fileName.endsWith(".tgp", Qt::CaseInsensitive)
+                             || (!fileName.endsWith(".json", Qt::CaseInsensitive)
+                                 && task_graph::has_project_magic(
+                                     reinterpret_cast<const unsigned char*>(
+                                         content.constData()),
+                                     size_t(content.size())));
+            if (tgp) {
+                const QString binPath = "/tmp/gs_project_open.bin";
+                {
+                    QFile f(binPath);
+                    if (!f.open(QIODevice::WriteOnly)) return;
+                    f.write(content);
+                }
+                // 同进程直接打开（不经 entry.cpp 的导出函数——那是给 JS
+                // 通道用的）；展示名用用户选择的文件名而非交换文件名
+                if (!OpenProjectFile(binPath, false, fileName))
+                    PostLog(int(task_graph::LogLevel::ERROR),
+                            QStringLiteral("Failed to open project: %1").arg(fileName));
+                QFile::remove(binPath);
+                return;
+            }
             const QString tmpPath = "/tmp/_graph_studio_loaded.json";
             {
                 QFile f(tmpPath);
@@ -1308,18 +1339,80 @@ void MainWindow::ActionOpen()
             }
         });
 #else
-    QString path = QFileDialog::getOpenFileName(this, "Open Graph", QString(), "JSON Files (*.json);;All Files (*)");
+    QString path = QFileDialog::getOpenFileName(this, "Open Graph", QString(), "Graph Project (*.tgp);;JSON Files (*.json);;All Files (*)");
     if (path.isEmpty())
         return;
     OpenGraphFile(path);
 #endif
 }
 
+// SDK 工程包 API（std::string）与 Qt 展示类型的薄转换
+static QStringList ToQStringList(const std::vector<std::string>& v)
+{
+    QStringList l;
+    for (const std::string& s : v) l << QString::fromStdString(s);
+    return l;
+}
+
 bool MainWindow::OpenGraphFile(const QString& path)
 {
+    // 工程包（.tgp/PK 魔数）分流：桌面 File→Open / mime 拖入 / --open CLI
+    // 三通道在此统一嗅探。普通图则离开工程态。
+    if (task_graph::is_project_file(path.toStdString()))
+        return OpenProjectFile(path);
+    projectMode_ = false;
+    projectDir_.reset();
+    projectGraphPath_.clear();
     if (!vm_.loadFromFile(path)) return false;
     currentFilePath_ = path;
     UpdateWindowTitle();
+    return true;
+}
+
+bool MainWindow::OpenProjectFile(const QString& tgpPath, bool runAfterLoad,
+                                 const QString& displayName)
+{
+    // 解包目录由会话持有；再开工程/New 普通图时经 unique_ptr 重置自动清理
+    auto dir = std::make_unique<QTemporaryDir>();
+    if (!dir->isValid()) {
+        PostLog(int(task_graph::LogLevel::ERROR),
+                QStringLiteral("cannot create temp dir for project extraction"));
+        return false;
+    }
+    task_graph::OpenedProject proj;
+    std::string err;
+    if (!task_graph::open_project(tgpPath.toStdString(), dir->path().toStdString(),
+                                  &proj, &err)) {
+        PostLog(int(task_graph::LogLevel::ERROR),
+                QStringLiteral("Open project failed: %1")
+                    .arg(QString::fromStdString(err)));
+        return false;
+    }
+    projectDir_ = std::move(dir);
+    projectGraphPath_ = QString::fromStdString(proj.graph_path);
+    projectMode_ = true;
+    if (!vm_.loadFromFile(projectGraphPath_)) {
+        projectMode_ = false;
+        projectDir_.reset();
+        projectGraphPath_.clear();
+        return false;
+    }
+    // 展示身份：wasm 交换通道传入用户文件名；桌面为 .tgp 真实路径
+    const QString shown = displayName.isEmpty() ? tgpPath : displayName;
+    currentFilePath_ = shown;
+    UpdateWindowTitle();
+    if (!proj.manifest.missing.empty()) {
+        PostLog(int(task_graph::LogLevel::WARN),
+                QStringLiteral("Project bundle missing referenced files: %1")
+                    .arg(ToQStringList(proj.manifest.missing).join(", ")));
+    } else {
+        PostLog(int(task_graph::LogLevel::INFO),
+                QStringLiteral("Project opened: %1 (%2 asset(s))")
+                    .arg(QFileInfo(shown).fileName())
+                    .arg(int(proj.manifest.assets.size())));
+    }
+    if (runAfterLoad)
+        ActionRun();
     return true;
 }
 
@@ -1391,7 +1484,7 @@ MainWindow::NodePortAnchor MainWindow::nodePortAnchor(const QString& nodeId,
 
 void MainWindow::dragEnterEvent(QDragEnterEvent* event)
 {
-    if (!firstLocalJsonPath(event->mimeData()).isEmpty()) {
+    if (!firstLocalGraphPath(event->mimeData()).isEmpty()) {
         event->acceptProposedAction();
         return;
     }
@@ -1400,7 +1493,7 @@ void MainWindow::dragEnterEvent(QDragEnterEvent* event)
 
 void MainWindow::dragMoveEvent(QDragMoveEvent* event)
 {
-    if (!firstLocalJsonPath(event->mimeData()).isEmpty()) {
+    if (!firstLocalGraphPath(event->mimeData()).isEmpty()) {
         event->acceptProposedAction();
         return;
     }
@@ -1409,7 +1502,7 @@ void MainWindow::dragMoveEvent(QDragMoveEvent* event)
 
 void MainWindow::dropEvent(QDropEvent* event)
 {
-    const QString path = firstLocalJsonPath(event->mimeData());
+    const QString path = firstLocalGraphPath(event->mimeData());
     if (!path.isEmpty()) {
         OpenGraphFile(path);
         event->acceptProposedAction();
@@ -1420,6 +1513,11 @@ void MainWindow::dropEvent(QDropEvent* event)
 
 void MainWindow::ActionSave()
 {
+    // 工程态（打开的是 .tgp）：v1 工程只读，保存=重新导出新包
+    if (projectMode_) {
+        ActionExportProject();
+        return;
+    }
     if (currentFilePath_.isEmpty()) {
         ActionSaveAs();
     } else {
@@ -1434,6 +1532,11 @@ void MainWindow::ActionSave()
 
 void MainWindow::ActionSaveAs()
 {
+    // 工程态：另存普通 JSON 会丢失包内资产联动，统一转工程导出
+    if (projectMode_) {
+        ActionExportProject();
+        return;
+    }
 #ifdef __EMSCRIPTEN__
     // WASM：先写 MEMFS 临时文件，再读出来触发浏览器下载
     const QString tmpPath = "/tmp/_graph_studio_save.json";
@@ -1455,6 +1558,82 @@ void MainWindow::ActionSaveAs()
         UpdateWindowTitle();  // E2E 发现：另存后标题未更新（与 Open 行为不一致）
     }
 #endif
+}
+
+void MainWindow::ActionExportProject()
+{
+    // 打包源：工程态用解包目录里的图（先把当前 VM 状态存回去，资产也在该
+    // 目录）；普通图先落盘再按其目录解析依赖。未保存的新图没有解析基准，
+    // 提示先保存。
+    QString graphPath, graphDir;
+    if (projectMode_) {
+        if (!vm_.saveToFile(projectGraphPath_)) {
+            PostLog(int(task_graph::LogLevel::ERROR),
+                    QStringLiteral("cannot serialize graph before export"));
+            return;
+        }
+        graphPath = projectGraphPath_;
+        graphDir = QFileInfo(projectGraphPath_).absolutePath();
+    } else if (!currentFilePath_.isEmpty() && QFile::exists(currentFilePath_)) {
+        // WASM 工具栏打开的普通图 currentFilePath_ 只是展示名（无真实文件），
+        // 此处以文件存在性统一过滤；drop/?open 通道的 MEMFS 路径可正常导出。
+        if (!vm_.saveToFile(currentFilePath_)) {
+            PostLog(int(task_graph::LogLevel::ERROR),
+                    QStringLiteral("cannot save graph before export"));
+            return;
+        }
+        graphPath = currentFilePath_;
+        graphDir = QFileInfo(currentFilePath_).absolutePath();
+    } else {
+        PostLog(int(task_graph::LogLevel::WARN),
+                QStringLiteral("save the graph before exporting a project bundle"));
+        return;
+    }
+    const QString suggested =
+        QFileInfo(graphPath).completeBaseName() + QStringLiteral(".tgp");
+
+    task_graph::PackReport rep;
+#ifdef __EMSCRIPTEN__
+    rep = task_graph::pack_project(graphPath.toStdString(),
+                                   graphDir.toStdString(), {}, "GraphStudio");
+    if (rep.ok)
+        QFileDialog::saveFileContent(
+            QByteArray(reinterpret_cast<const char*>(rep.bytes.data()),
+                       int(rep.bytes.size())),
+            suggested);
+#else
+    QString out = QFileDialog::getSaveFileName(
+        this, "Export Project", suggested,
+        "Graph Studio Project (*.tgp);;All Files (*)");
+    if (out.isEmpty())
+        return;
+    if (!out.endsWith(".tgp", Qt::CaseInsensitive))
+        out += ".tgp";
+    rep = task_graph::pack_project(graphPath.toStdString(),
+                                   graphDir.toStdString(), out.toStdString(),
+                                   "GraphStudio");
+#endif
+    if (!rep.ok) {
+        PostLog(int(task_graph::LogLevel::ERROR),
+                QStringLiteral("Export project failed: %1")
+                    .arg(QString::fromStdString(rep.error)));
+        return;
+    }
+    if (!rep.missing.empty())
+        PostLog(int(task_graph::LogLevel::WARN),
+                QStringLiteral("Project bundle missing referenced files "
+                               "(not resolvable at export): %1")
+                    .arg(ToQStringList(rep.missing).join(", ")));
+    if (!rep.skipped_dirs.empty())
+        PostLog(int(task_graph::LogLevel::WARN),
+                QStringLiteral("Directory references not bundled: %1")
+                    .arg(ToQStringList(rep.skipped_dirs).join(", ")));
+    PostLog(int(task_graph::LogLevel::INFO),
+            QStringLiteral("Project exported: %1 asset(s) -> %2")
+                .arg(int(rep.packed.size()))
+                .arg(rep.out_path.empty()
+                         ? suggested
+                         : QString::fromStdString(rep.out_path)));
 }
 
 void MainWindow::ActionAutoLayout()

@@ -265,4 +265,54 @@ def run_graph(browser: CdpBrowser, base_url: str, ctx: dict) -> str:
     return f"run OK（?open+run: Execution finished: {ok} ok, {failed} failed）"
 
 
-SCENARIOS = ["boot", "core", "files", "run"]
+# ---------- .tgp 工程包：单文件自带全部依赖 ----------
+
+def project_run(browser: CdpBrowser, base_url: str, report, ctx: dict) -> int:
+    """工程包 URL 冷启动执行：挑 WASM 可跑且带资产引用的夹具图，经
+    scripts/pack_graph_project.py 的同一打包逻辑（zip+manifest+按引用路径
+    落位）打成单个 .tgp，?open=<url>.tgp&run=1 冷启动断言 0 failed——
+    单文件包不需任何资产预取/配对，是 .tgp 的核心价值验证。每包一个用例
+    project/graph:<module>/<name>。"""
+    import pack_graph_project as pgp  # scripts/ 已在 sys.path（同 gc）
+    serve_root: Path = ctx["serve_root"]
+    artifacts: Path = ctx["artifacts"]
+
+    candidates = sorted(
+        (e for e in gc.discover_graphs()
+         if e["module"] not in WASM_UNSUPPORTED_MODULES
+         and not e["missing"] and e["refs"]),
+        key=lambda e: (e["module"], e["name"]))
+    if not candidates:
+        report.record("project", "skip", "没有带资产引用的可跑夹具图")
+        return 0
+    # 控制时长：每包一次 tab 冷启动（~15s），取前 2 张（跨模块时按序自然分散）
+    candidates = candidates[:2]
+
+    proj_dir = serve_root / "projects"
+    proj_dir.mkdir(parents=True, exist_ok=True)
+    ran = 0
+    for e in candidates:
+        full = f"project/graph:{e['module']}/{e['name']}"
+        report.begin(full)
+        try:
+            tgp = proj_dir / (Path(e["name"]).stem + ".tgp")
+            if pgp.pack(Path(e["path"]), tgp) != 0:
+                raise ScenarioError(f"打包失败: {tgp}")
+            graph_url = "/e2e/projects/" + tgp.name
+            ok, failed = url_graph_case(
+                browser, base_url, graph_url,
+                nodes=len(e["tasks"]), edges=len(e["edges"]),
+                timeout=120, artifacts=artifacts,
+                shot_name=f"{e['name']}_tgp_failure.png")
+            if failed != 0:
+                raise ScenarioError(f"执行有 {failed} 个任务失败（ok={ok}）")
+            report.record(full, "pass", f".tgp 单文件 ok={ok} failed={failed}")
+        except Exception as ex:
+            report.record(full, "fail", f"{type(ex).__name__}: {ex}",
+                          artifacts=list(getattr(ex, "artifacts", []) or []),
+                          exc=ex, app_state=getattr(ex, "snapshot", None) or {})
+        ran += 1
+    return ran
+
+
+SCENARIOS = ["boot", "core", "files", "run", "project"]

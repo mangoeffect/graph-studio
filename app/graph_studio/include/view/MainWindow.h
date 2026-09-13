@@ -15,6 +15,9 @@
 #include <QMimeData>
 #include <QComboBox>
 #include <QTabWidget>
+#include <QTemporaryDir>
+
+#include <memory>
 
 #include "view/GraphView.h"
 #include "viewmodel/GraphViewModel.h"
@@ -81,6 +84,12 @@ public:
     // CLI 启动参数通道（--open <file> [--run]）：启动即打开图、可选立即执行。
     // 失败只走 loadFromFile 的日志路径（无弹窗），返回是否打开成功。
     bool OpenGraphAtStartup(const QString& path, bool run);
+    // 打开 .tgp 工程包（wasm 交换通道 / 嗅探后的 File→Open 共用）：
+    // 解包到会话临时目录并加载内部图；manifest.missing 非空时 WARN 进日志
+    // 面板。displayName 非空时用于日志/标题（wasm 交换通道的包字节在临时
+    // 文件里，展示名须由通道传入）。返回是否成功。
+    bool OpenProjectFile(const QString& tgpPath, bool runAfterLoad = false,
+                         const QString& displayName = QString());
     // 从 UI 之外（wasm 交换通道等）向日志面板追加一条：level 取
     // task_graph::LogLevel 的 int 值，与 logMessage 信号同语义（面板 + [gs] 镜像）。
     void PostLog(int level, const QString& msg);
@@ -158,6 +167,7 @@ private:
     void ActionOpen();
     void ActionSave();
     void ActionSaveAs();
+    void ActionExportProject();
     void ActionAutoLayout();
     void ActionZoomIn();
     void ActionZoomOut();
@@ -221,6 +231,13 @@ private:
     QHash<QString, NodeItem*> nodeItems_;
 
     QString currentFilePath_;
+
+    // ---- .tgp 工程包会话态：打开工程时解包目录由会话持有（New/Open 普通
+    // 图/再开工程时释放即自动清理）；projectMode_ 下 Save/Save As 转为
+    // 重新导出新包（v1 工程只读，不做就地回写）。
+    bool projectMode_ = false;
+    std::unique_ptr<QTemporaryDir> projectDir_;
+    QString projectGraphPath_;  // 解包出的图 JSON 路径（导出时的打包源）
 
     CommandStack commandStack_;
     QAction* undoAction_ = nullptr;

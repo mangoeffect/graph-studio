@@ -14,7 +14,8 @@ using namespace graph_studio;
 
 namespace {
 
-// 从 mime 数据里取第一个指向本地 .json 文件的路径，无则返回空。
+// 从 mime 数据里取第一个指向本地图文件（.json 或 .tgp 工程包）的路径，
+// 无则返回空。
 QString firstJsonPath(const QMimeData* mime)
 {
     if (!mime || !mime->hasUrls()) return {};
@@ -22,7 +23,8 @@ QString firstJsonPath(const QMimeData* mime)
     for (const QUrl& url : urls) {
         if (!url.isLocalFile()) continue;
         const QString path = url.toLocalFile();
-        if (QFileInfo(path).suffix().compare("json", Qt::CaseInsensitive) == 0)
+        const QString suf = QFileInfo(path).suffix().toLower();
+        if (suf == "json" || suf == "tgp")
             return path;
     }
     return {};
