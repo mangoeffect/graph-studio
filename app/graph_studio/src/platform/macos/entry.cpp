@@ -48,8 +48,22 @@ extern "C" EMSCRIPTEN_KEEPALIVE int gs_wasm_open_graph()
     if (sep == std::string::npos || sep + 2 > payload.size()) return 0;
     const QString path = QString::fromUtf8(payload.c_str(), int(sep));
     const bool run = payload[sep + 1] == '1';
+    // 可选第三段（drop 通道写入）：拖入时缺失的资产清单，\n 分隔——打进
+    // 日志面板（JS 的 console.warn 用户平时不看，缺资产要在 app 内可见）。
+    QString missingAssets;
+    const auto sep2 = payload.find('\x1f', sep + 2);
+    if (sep2 != std::string::npos)
+        missingAssets = QString::fromUtf8(payload.c_str() + sep2 + 1,
+                                          int(payload.size() - sep2 - 1));
     std::remove(kUrlOpenPath);
-    return g_urlOpenWindow->OpenGraphAtStartup(path, run) ? 1 : 0;
+    const bool ok = g_urlOpenWindow->OpenGraphAtStartup(path, run);
+    if (!missingAssets.isEmpty())
+        g_urlOpenWindow->PostLog(
+            int(task_graph::LogLevel::WARN),
+            "Graph references files not dropped (drop the graph together "
+            "with its assets, or drop the containing folder): "
+                + missingAssets.replace(QLatin1Char('\n'), QStringLiteral(", ")));
+    return ok ? 1 : 0;
 }
 #endif
 
@@ -200,24 +214,150 @@ int main(int argc, char* argv[])
         }, 100);
     });
 
-    // OS 文件拖入（graph.json + 资产）：Qt 6.6 wasm 平台对浏览器文件 drop
-    // 的交付不可靠（拖入文件的字节需异步进 MEMFS，Qt 无同步读取通道），
-    // 在 document 捕获阶段自行处理——与 ?open 通道同一套 MEMFS 交换语义。
-    // dragover 必须 preventDefault 否则浏览器按"打开文件"导航离开页面；
-    // stopImmediatePropagation 阻止 Qt 平台层再转一份 QDropEvent（避免与
-    // MainWindow::dropEvent 双开）。同 EM_ASM 约定：JS 里不能出现正则字面量。
+    // OS 文件拖入（graph.json + 资产 / 图所在文件夹）：Qt 6.6 wasm 平台对
+    // 浏览器文件 drop 的交付不可靠（拖入文件的字节需异步进 MEMFS，Qt 无同步
+    // 读取通道），在 document 捕获阶段自行处理——与 ?open 通道同一套 MEMFS
+    // 交换语义。dragover 必须 preventDefault 否则浏览器按"打开文件"导航离开
+    // 页面；stopImmediatePropagation 阻止 Qt 平台层再转一份 QDropEvent（避免
+    // 与 MainWindow::dropEvent 双开）。同 EM_ASM 约定：JS 里不能出现正则
+    // 字面量。
     //
-    // 资产不能平铺进 MEMFS 根：图里引用的是相对路径（data/test.png，C++ 侧
-    // resolve_asset_path 按图目录探测 /data/test.png）甚至是 configure_file
-    // 烘焙的宿主机绝对路径（@DATA_DIR@ 产物，绝对引用原样使用）。先读图
-    // 文本解析引用清单（启发式与 ?open 预取同源，额外收绝对路径），资产按
-    // basename 与引用配对写到引用所指路径（MEMFS 可承载任意绝对路径），
-    // 未配对的才落根；只拖了 json 时 console.warn 列出缺失的资产。
+    // 资产落位（"拖图后图片路径读不出"的根因是平铺进 MEMFS 根，而图里引用
+    // 的是相对路径 data/test.png、甚至 configure_file 烘焙的宿主机绝对路径）：
+    //   - 文件夹拖入：dataTransfer.files 不含目录，走 items[].webkitGetAsEntry
+    //     递归遍历，整树按原相对结构落 MEMFS——树内图 _source_dir 即其所在
+    //     目录，resolve_asset_path 的"图目录+两级祖先"探测天然命中（与源码
+    //     树直接拖 json 进桌面 Studio 同构）。树内首个（按名排序）json 当图。
+    //   - 松散多文件：第一个 .json 当图（显式意图优先于树内图），其余资产按
+    //     basename 与图内引用配对写到引用所指路径（相对 → /+引用；绝对 →
+    //     原绝对路径，MEMFS 可承载），未配对才落根。
+    // 缺失的引用清单经交换文件第三段带回 C++ 打进日志面板（console.warn
+    // 用户平时不看）。遍历/配对算法暴露在 window.__gsDrop 供 E2E 复测——
+    // 合成 DragEvent 造不出 FileSystemEntry，算法只能这样单测。
     EM_ASM({
         var waitForModule = setInterval(function() {
             if (typeof Module === 'undefined' || !Module.FS
                 || !Module.FS.writeFile || !Module._gs_wasm_open_graph) return;
             clearInterval(waitForModule);
+            var ASSET_EXT = ['.png', '.jpg', '.jpeg', '.webp', '.bmp',
+                             '.mp4', '.avi', '.mov', '.js', '.json',
+                             '.cube', '.task', '.tflite', '.mnn',
+                             '.onnx', '.metal', '.vert', '.frag', '.wgsl'];
+            // 与 ?open 预取同源的启发式（scripts/e2e_graph_cases.py 对齐），
+            // 额外收绝对路径（拖入的本地文件可原样落进 MEMFS）；排除
+            // writer 任务的出参（file_path/out_path）与 URL。
+            function collectRefs(text) {
+                var refs = [];
+                try {
+                    var g = JSON.parse(text);
+                    (g.tasks || []).forEach(function(t) {
+                        var ty = t.type || '';
+                        var writer = ty.endsWith('_write')
+                                  || ty.endsWith('video_writer');
+                        Object.keys(t.params || {}).forEach(function(k) {
+                            var v = t.params[k];
+                            if (typeof v !== 'string' || !v) return;
+                            if (v.indexOf('://') >= 0) return;
+                            var looksPath = v.charAt(0) === '/'
+                                || v.indexOf('/') >= 0
+                                || ASSET_EXT.some(function(ext) {
+                                    return v.toLowerCase().endsWith(ext);
+                                });
+                            if (!looksPath) return;
+                            if (writer && (k === 'file_path'
+                                           || k === 'out_path')) return;
+                            if (refs.indexOf(v) < 0) refs.push(v);
+                        });
+                    });
+                } catch (err) { /* 非 JSON：无引用可配对 */ }
+                return refs;
+            }
+            function fsExists(p) {
+                try { return Module.FS.analyzePath(p).exists; }
+                catch (err) { return false; }
+            }
+            function parentOf(p) {
+                if (p === '/' || p === '') return p;
+                var q = p.slice(0, p.lastIndexOf('/'));
+                return q === '' ? '/' : q;
+            }
+            // 镜像 C++ resolve_asset_path 的探测序（图目录+两级祖先，
+            // 绝对引用原样探测），判定引用在本次拖入后是否仍缺失。
+            function refMissing(graphDir, ref) {
+                if (ref.charAt(0) === '/') return !fsExists(ref);
+                var base = graphDir;
+                for (var up = 0; up < 3 && base; ++up) {
+                    if (fsExists((base === '/' ? '' : base) + '/' + ref))
+                        return false;
+                    var parent = parentOf(base);
+                    if (parent === base) break;
+                    base = parent;
+                }
+                return true;
+            }
+            // readEntries 每批最多 100 项，须读到空批为止
+            function readAllEntries(reader) {
+                return new Promise(function(res, rej) {
+                    var all = [];
+                    var step = function() {
+                        reader.readEntries(function(batch) {
+                            if (!batch.length) { res(all); return; }
+                            for (var i = 0; i < batch.length; ++i)
+                                all.push(batch[i]);
+                            step();
+                        }, rej);
+                    };
+                    step();
+                });
+            }
+            // 目录树递归 -> [{name, path(根下相对路径), file}]；
+            // 每层按名排序保证"首个 json"确定性。
+            function walkEntry(entry, prefix) {
+                if (entry.isFile) {
+                    return new Promise(function(res, rej) {
+                        entry.file(function(f) {
+                            res([{name: entry.name,
+                                  path: prefix + entry.name, file: f}]);
+                        }, rej);
+                    });
+                }
+                return readAllEntries(entry.createReader()).then(function(kids) {
+                    kids.sort(function(a, b) {
+                        return a.name < b.name ? -1
+                             : (a.name > b.name ? 1 : 0);
+                    });
+                    return Promise.all(kids.map(function(k) {
+                        return walkEntry(k, prefix + entry.name + '/');
+                    })).then(function(lists) {
+                        var out = [];
+                        lists.forEach(function(l) { out = out.concat(l); });
+                        return out;
+                    });
+                });
+            }
+            function memfsPath(ref) {
+                return ref.charAt(0) === '/' ? ref : '/' + ref;
+            }
+            function ensureDir(path) {
+                var dir = path.slice(0, path.lastIndexOf('/'));
+                if (dir.length > 1) {
+                    try {
+                        Module.FS.createPath('/', dir.slice(1), true, true);
+                    } catch (err) { /* 已存在 */ }
+                }
+            }
+            function writeBytes(path, data) {
+                // FS.writeFile 只收 Uint8Array/string，ArrayBuffer 须包一层
+                //（否则抛 "Unsupported data type"）
+                var bytes = (typeof data === 'string' || data instanceof Uint8Array)
+                          ? data : new Uint8Array(data);
+                ensureDir(path);
+                Module.FS.writeFile(path, bytes);
+            }
+            window.__gsDrop = {
+                walk: walkEntry, collectRefs: collectRefs,
+                refMissing: refMissing
+            };
             document.addEventListener('dragenter', function(e) {
                 e.preventDefault();
             }, true);
@@ -227,104 +367,113 @@ int main(int argc, char* argv[])
             document.addEventListener('drop', function(e) {
                 e.preventDefault();
                 e.stopImmediatePropagation();
-                // 事件返回后 DataTransferItemList 会 detach，先同步收集 File
-                var files = [];
+                // 事件返回后 DataTransferItemList 会 detach，目录项与
+                // File 都须同步收集；files[] 不含目录（文件夹拖入全靠
+                // entries），file entry 与 files[] 一一对应、只从 files[] 读
+                //（避免双写）。
+                var loose = [];
+                var dirRoots = [];
                 for (var i = 0; i < e.dataTransfer.files.length; ++i)
-                    files.push(e.dataTransfer.files[i]);
-                if (!files.length) return;
-                // 第一个 .json 当图打开，其余当资产
-                var graphFile = null;
-                var assets = [];
-                files.forEach(function(f) {
-                    if (!graphFile && f.name.toLowerCase().endsWith('.json')) {
-                        graphFile = f;
+                    loose.push(e.dataTransfer.files[i]);
+                var items = e.dataTransfer.items;
+                if (items) {
+                    for (var j = 0; j < items.length; ++j) {
+                        var en = null;
+                        try {
+                            en = items[j].webkitGetAsEntry
+                              && items[j].webkitGetAsEntry();
+                        } catch (err0) { en = null; }
+                        if (en && en.isDirectory) dirRoots.push(en);
+                    }
+                }
+                if (!loose.length && !dirRoots.length) return;
+                var looseGraph = null;
+                var looseAssets = [];
+                loose.forEach(function(f) {
+                    if (!looseGraph
+                        && f.name.toLowerCase().endsWith('.json')) {
+                        looseGraph = f;
                         return;
                     }
-                    assets.push(f);
+                    looseAssets.push(f);
                 });
-                var ASSET_EXT = ['.png', '.jpg', '.jpeg', '.webp', '.bmp',
-                                 '.mp4', '.avi', '.mov', '.js', '.json',
-                                 '.cube', '.task', '.tflite', '.mnn',
-                                 '.onnx', '.metal', '.vert', '.frag', '.wgsl'];
-                function collectRefs(text) {
-                    var refs = [];
-                    try {
-                        var g = JSON.parse(text);
-                        (g.tasks || []).forEach(function(t) {
-                            var ty = t.type || '';
-                            var writer = ty.endsWith('_write')
-                                      || ty.endsWith('video_writer');
-                            Object.keys(t.params || {}).forEach(function(k) {
-                                var v = t.params[k];
-                                if (typeof v !== 'string' || !v) return;
-                                if (v.indexOf('://') >= 0) return;
-                                var looksPath = v.charAt(0) === '/'
-                                    || v.indexOf('/') >= 0
-                                    || ASSET_EXT.some(function(ext) {
-                                        return v.toLowerCase().endsWith(ext);
-                                    });
-                                if (!looksPath) return;
-                                if (writer && (k === 'file_path'
-                                               || k === 'out_path')) return;
-                                if (refs.indexOf(v) < 0) refs.push(v);
+                Promise.all(dirRoots.map(function(r) {
+                    return walkEntry(r, '').catch(function() { return []; });
+                })).then(function(lists) {
+                    var treeFiles = [];
+                    lists.forEach(function(l) {
+                        treeFiles = treeFiles.concat(l);
+                    });
+                    // 图选择：显式松散 json 优先；否则树内首个（排序序）json
+                    var graphPath = null;
+                    var graphTextPromise = null;
+                    if (looseGraph) {
+                        graphPath = '/' + looseGraph.name;
+                        graphTextPromise = looseGraph.text();
+                    } else {
+                        for (var k = 0; k < treeFiles.length; ++k) {
+                            if (treeFiles[k].name.toLowerCase()
+                                    .endsWith('.json')) {
+                                graphPath = '/' + treeFiles[k].path;
+                                graphTextPromise = treeFiles[k].file.text();
+                                break;
+                            }
+                        }
+                    }
+                    var treeWrites = treeFiles.map(function(rec) {
+                        return rec.file.arrayBuffer().then(function(buf) {
+                            writeBytes('/' + rec.path, buf);
+                        });
+                    });
+                    return Promise.all(treeWrites)
+                        .then(function() { return graphTextPromise; })
+                        .then(function(text) {
+                        var refs = text ? collectRefs(text) : [];
+                        var used = [];
+                        var looseWrites = looseAssets.map(function(f) {
+                            return f.arrayBuffer().then(function(buf) {
+                                var target = null;
+                                for (var r = 0; r < refs.length; ++r) {
+                                    if (used.indexOf(r) >= 0) continue;
+                                    var base = refs[r].slice(
+                                        refs[r].lastIndexOf('/') + 1);
+                                    if (base === f.name
+                                        || base.toLowerCase()
+                                               === f.name.toLowerCase()) {
+                                        target = memfsPath(refs[r]);
+                                        used.push(r);
+                                        break;
+                                    }
+                                }
+                                if (target === null) target = '/' + f.name;
+                                writeBytes(target, buf);
                             });
                         });
-                    } catch (err) { /* 非 JSON：无引用可配对，全部平铺 */ }
-                    return refs;
-                }
-                function memfsPath(ref) {
-                    return ref.charAt(0) === '/' ? ref : '/' + ref;
-                }
-                function ensureDir(path) {
-                    var dir = path.slice(0, path.lastIndexOf('/'));
-                    if (dir.length > 1) {
-                        try {
-                            Module.FS.createPath('/', dir.slice(1), true, true);
-                        } catch (err) { /* 已存在 */ }
-                    }
-                }
-                (graphFile ? graphFile.text() : Promise.resolve(null))
-                    .then(function(text) {
-                    var refs = text === null ? [] : collectRefs(text);
-                    var used = [];
-                    var writes = assets.map(function(f) {
-                        return f.arrayBuffer().then(function(buf) {
-                            var target = null;
-                            for (var r = 0; r < refs.length; ++r) {
-                                if (used.indexOf(r) >= 0) continue;
-                                var base = refs[r].slice(
-                                    refs[r].lastIndexOf('/') + 1);
-                                if (base === f.name
-                                    || base.toLowerCase()
-                                           === f.name.toLowerCase()) {
-                                    target = memfsPath(refs[r]);
-                                    used.push(r);
-                                    break;
-                                }
+                        return Promise.all(looseWrites).then(function() {
+                            if (!text) return;  // 只拖资产/无 json：落位即可
+                            writeBytes(graphPath, text);
+                            var graphDir = graphPath.slice(
+                                0, graphPath.lastIndexOf('/')) || '/';
+                            var missing = refs.filter(function(ref) {
+                                return refMissing(graphDir, ref);
+                            });
+                            var exchange = graphPath + '\x1f0';
+                            if (missing.length) {
+                                console.warn('[gs] 拖入缺少资产文件（与图一并'
+                                             + '拖入或拖入所在文件夹即可）: '
+                                             + missing.join(', '));
+                                exchange += '\x1f' + missing.join('\n');
                             }
-                            if (target === null) target = '/' + f.name;
-                            ensureDir(target);
-                            Module.FS.writeFile(target, new Uint8Array(buf));
+                            Module.FS.writeFile('/tmp/gs_url_open.txt',
+                                                exchange);
+                            if (Module._gs_wasm_open_graph() !== 1)
+                                console.error('[gs] 拖入打开失败: '
+                                              + graphPath);
                         });
-                    });
-                    return Promise.all(writes).then(function() {
-                        if (text === null) return;  // 只拖资产：无图可开
-                        var name = graphFile.name;
-                        Module.FS.writeFile('/' + name, text);
-                        var missing = refs.filter(function(ref) {
-                            return !Module.FS.analyzePath(memfsPath(ref))
-                                        .exists;
-                        });
-                        if (missing.length)
-                            console.warn('[gs] 拖入缺少资产文件（与图一并拖入'
-                                         + '即可）: ' + missing.join(', '));
-                        Module.FS.writeFile('/tmp/gs_url_open.txt',
-                                            name + '\x1f0');
-                        if (Module._gs_wasm_open_graph() !== 1)
-                            console.error('[gs] 拖入打开失败: ' + name);
                     });
                 }).catch(function(err) {
-                    console.error('[gs] 拖入文件读取失败: ' + err.message);
+                    console.error('[gs] 拖入文件读取失败: '
+                                  + (err && err.message ? err.message : err));
                 });
             }, true);
         }, 100);

@@ -858,6 +858,11 @@ void MainWindow::onGraphReset()
     ClearPropertyPanel();
 }
 
+void MainWindow::PostLog(int level, const QString& msg)
+{
+    onLogMessage(level, msg);
+}
+
 void MainWindow::onLogMessage(int level, const QString& msg)
 {
     // 镜像进 Qt 日志通道：WASM 上经 emscripten 打到浏览器 console、桌面进

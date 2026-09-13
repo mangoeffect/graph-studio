@@ -81,6 +81,9 @@ public:
     // CLI 启动参数通道（--open <file> [--run]）：启动即打开图、可选立即执行。
     // 失败只走 loadFromFile 的日志路径（无弹窗），返回是否打开成功。
     bool OpenGraphAtStartup(const QString& path, bool run);
+    // 从 UI 之外（wasm 交换通道等）向日志面板追加一条：level 取
+    // task_graph::LogLevel 的 int 值，与 logMessage 信号同语义（面板 + [gs] 镜像）。
+    void PostLog(int level, const QString& msg);
 
 protected:
     void keyPressEvent(QKeyEvent* event) override;
