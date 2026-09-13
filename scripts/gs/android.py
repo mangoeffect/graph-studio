@@ -26,6 +26,11 @@ def ndk_toolchain(ndk: Path) -> Optional[Path]:
 
 def find_llvm_ar(ndk: Path) -> Optional[Path]:
     """在 NDK 的 prebuilt/<host>/bin/ 里找 llvm-ar（兼容 .exe）。"""
+    return find_llvm_tool(ndk, "llvm-ar")
+
+
+def find_llvm_tool(ndk: Path, name: str) -> Optional[Path]:
+    """在 NDK 的 prebuilt/<host>/bin/ 里找任意 llvm 工具（llvm-strip 等）。"""
     prebuilt = ndk / "toolchains" / "llvm" / "prebuilt"
     if not prebuilt.is_dir():
         return None
@@ -33,8 +38,8 @@ def find_llvm_ar(ndk: Path) -> Optional[Path]:
         bin_dir = d / "bin"
         if not bin_dir.is_dir():
             continue
-        for name in ("llvm-ar", "llvm-ar.exe"):
-            f = bin_dir / name
+        for n in (name, f"{name}.exe"):
+            f = bin_dir / n
             if f.is_file():
                 return f
     return None

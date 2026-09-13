@@ -15,6 +15,7 @@
   python scripts/build_android.py --api 24              # Android API level（默认 21）
   python scripts/build_android.py --no-opencv           # 跳过 OpenCV 子模块
   python scripts/build_android.py --also-x86-64         # 同时构建 x86_64（模拟器调试）
+  python scripts/build_android.py --e2e                 # 附带构建 graph E2E runner
   python scripts/build_android.py --clean               # 清空构建目录
   python scripts/build_android.py -j <N>                # 并行编译线程数
 
@@ -22,6 +23,15 @@
   - ANDROID_NDK 或 ANDROID_NDK_HOME 环境变量指向 NDK 根目录
   - CMake 3.16+
   - (可选) scripts/build_opencv_android.py 已执行，产出 build_android/opencv/install/
+
+--e2e（Android graph E2E 的 runner）:
+  额外构建 tests/android/ 的 tg_e2e_runner（EXCLUDE_FROM_ALL 目标）到
+  build_android_<abi>/tests/android/tg_e2e_runner——Android 侧无 app 壳，
+  e2e 的图执行载体是这个 console 程序，由 scripts/run_e2e_android.py 经
+  adb push 到设备逐图执行（契约见 dev-docs/e2e-android.md）。runner 构建
+  失败只警告，不影响 dist SDK 产物。同时产出 tg_e2e_runner.stripped
+  （llvm-strip）：带 -g 的二进制 137MB，而模拟器 /data 往往只有几百 MB，
+  驱动默认推送去符号副本（14MB），原文件留给崩溃符号化。
 """
 
 import argparse
@@ -108,7 +118,8 @@ def merge_static_libs(build_dir: Path, dist_dir: Path, llvm_ar: Path, opencv_ava
 
 
 def build_abi(abi: str, root: Path, cmake: CMake, toolchain_file: Path, api_level: str,
-              jobs: int, opencv_available: bool, llvm_ar: Path) -> int:
+              jobs: int, opencv_available: bool, llvm_ar: Path, ndk: Path,
+              e2e: bool = False) -> int:
     build_dir = root / f"build_android_{abi}"
     dist_dir = root / "dist" / "android" / abi
 
@@ -141,7 +152,47 @@ def build_abi(abi: str, root: Path, cmake: CMake, toolchain_file: Path, api_leve
         if code != 0:
             console.warn(f"子模块 {sub} 构建失败（忽略，不影响其余产物）")
 
+    build_e2e_runner(build_dir, cmake, jobs, abi, opencv_available, e2e, ndk)
+
     return merge_static_libs(build_dir, dist_dir, llvm_ar, opencv_available, root, abi)
+
+
+def build_e2e_runner(build_dir: Path, cmake: CMake, jobs: int, abi: str,
+                     opencv_available: bool, e2e: bool, ndk: Path) -> None:
+    """--e2e：构建 tg_e2e_runner（Android graph E2E 的图执行载体，见文件头）。
+
+    cmake --build <build> --target tg_e2e_runner 会一并构建其依赖（task_graph
+    + 子模块静态库 + MNN）。失败只警告：runner 是测试设施，不应阻塞 SDK 产物。
+
+    另产出去符号副本 `tg_e2e_runner.stripped`（llvm-strip）：带 -g 的二进制
+    实测 137MB，而模拟器 /data 分区往往只有几百 MB（且 e2e 每次运行都要推一份）
+    ——驱动默认推送 stripped 副本，原文件保留给崩溃符号化。
+    """
+    if not e2e:
+        return
+    if not opencv_available:
+        console.warn("--e2e 需要 OpenCV 预编译库（先运行 scripts/build_opencv_android.py），跳过 runner 构建")
+        return
+    code = cmake.build(build_dir, target="tg_e2e_runner", jobs=jobs,
+                       what=f"构建 e2e runner ({abi})")
+    runner_bin = build_dir / "tests" / "android" / "tg_e2e_runner"
+    if code != 0 or not runner_bin.is_file():
+        console.warn(f"e2e runner 构建失败（忽略，不影响 SDK 产物）: {runner_bin}")
+        return
+    console.ok(f"e2e runner: {runner_bin}")
+
+    stripped = runner_bin.with_suffix(".stripped")
+    llvm_strip = android.find_llvm_tool(ndk, "llvm-strip")
+    if not llvm_strip:
+        console.warn("找不到 llvm-strip，跳过去符号副本（设备空间紧张时需手动 strip）")
+        return
+    code = runner.check([str(llvm_strip), "--strip-debug", "-o", str(stripped), str(runner_bin)],
+                        what="生成 runner 去符号副本")
+    if code == 0 and stripped.is_file():
+        console.ok(f"推送用副本（无调试信息）: {stripped}")
+    else:
+        console.warn(f"llvm-strip 失败（exit {code}），e2e 将直接推送带调试信息的 runner")
+
 
 
 def main() -> int:
@@ -151,6 +202,8 @@ def main() -> int:
     ap.add_argument("--api", default="21", help="Android API level（默认 21）")
     ap.add_argument("--no-opencv", action="store_true", help="跳过 OpenCV 子模块")
     ap.add_argument("--also-x86-64", action="store_true", help="同时构建 x86_64（模拟器调试）")
+    ap.add_argument("--e2e", action="store_true",
+                    help="附带构建 graph E2E runner（tests/android/tg_e2e_runner）")
     ap.add_argument("--clean", action="store_true", help="清空构建目录")
     ap.add_argument("-j", "--jobs", type=int, default=0, help="并行编译线程数（默认 CPU 核数）")
     args = ap.parse_args()
@@ -210,12 +263,14 @@ def main() -> int:
             if code != 0 or not mnn_lib.is_file():
                 console.warn(f"MNN Android ({abi}) 构建失败，task_graph 以 stub 降级（仅影响 MNN 任务）")
 
-    code = build_abi(args.abi, root, cm, toolchain_file, args.api, jobs, opencv_available, llvm_ar)
+    code = build_abi(args.abi, root, cm, toolchain_file, args.api, jobs, opencv_available, llvm_ar,
+                     ndk, e2e=args.e2e)
     if code != 0:
         return code
 
     if args.also_x86_64:
-        code = build_abi("x86_64", root, cm, toolchain_file, args.api, jobs, opencv_available, llvm_ar)
+        code = build_abi("x86_64", root, cm, toolchain_file, args.api, jobs, opencv_available,
+                         llvm_ar, ndk, e2e=args.e2e)
         if code != 0:
             return code
 
@@ -239,6 +294,8 @@ def main() -> int:
     if args.also_x86_64:
         print("    dist/android/x86_64/libtask_graph.a")
     print("    dist/android/include/")
+    if args.e2e:
+        print(f"    build_android_{args.abi}/tests/android/tg_e2e_runner")
     return 0
 
 

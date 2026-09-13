@@ -236,6 +236,41 @@ python scripts/run_e2e_windows.py --only files --graphs gpu      # 按路径过�
 
 ---
 
+## run_e2e_android.py — Android graph E2E（adb + 无头 runner，仅本地跑）
+
+Android 侧没有 GraphStudio 的 app 形态（仓库只产出 `dist/android/<abi>/
+libtask_graph.a` 静态库 SDK，无 APK 工程），因此本轨道对齐 macOS/WASM E2E 的
+**图执行机制**：把子模块单测图（`submodules/**/tests/graphs/*.json`）经 adb 推到
+设备的 `/data/local/tmp/gs_e2e/<时间戳>/`，由 NDK 交叉编译的 console runner
+（`tests/android/tg_e2e_runner`，由 `build_android.py --e2e` 构建）逐图冷启动执行
+——等价于桌面 `graph_studio --open <json> --run`，断言与另两端同一契约：`[gs]
+Execution finished: N ok, M failed` 日志行。图发现/落位/裁剪（`e2e_graph_cases.py`）
+与报告（`e2e_report.py`）是三端共享模块。设计文档 `dev-docs/e2e-android.md`。
+
+```bash
+export ANDROID_NDK=$HOME/Library/Android/sdk/ndk/<ver>   # gs.android 只读环境变量
+python3 scripts/build_opencv_android.py                  # 首次（OpenCV Android 预编译）
+emulator -avd <arm64-avd>                                # 或 USB 真机（可用 --serial 指定）
+python3 scripts/run_e2e_android.py                       # 全场景（runner 缺失时自动构建）
+python3 scripts/run_e2e_android.py --scenario boot,run
+python3 scripts/run_e2e_android.py --max-graphs 10
+python3 scripts/run_e2e_android.py --graphs image_filtering
+python3 scripts/run_e2e_android.py --serial emulator-5554
+```
+
+场景：`boot`（设备就绪 + runner ABI 与设备一致 + 插件注册断言 `--selfcheck`）、
+`run`（单图冒烟 → 1 ok / 0 failed）、`files`（可跑子模块图逐张冷启动；gpu /
+render / mediapipe / video_io 按模块记 skip）、`crash`（`--test-crash` 预期
+SIGSEGV）。报告落 `dist/e2e_android/<时间戳>/`（summary.json/md + app_logs/
+子模块图副本）；退出码 0=全通过 / 1=有失败 / 2=环境不就绪（无 adb / 无设备 /
+推送失败）。
+
+> macOS 安装态 E2E（`run_e2e_macos.py`，AXAPI + CGEvent）与 WASM 浏览器 E2E
+> （`run_e2e_wasm.py`，CDP）同样只本地跑，见 `dev-docs/e2e-macos.md` 与
+> AGENTS.md 的「GraphStudio 自动化测试（五轨道）」。
+
+---
+
 ## Windows 脚本（`*.ps1`，已退化为 thin shim）
 
 > **注意**：自跨平台 Python 脚本上线后，`*.ps1` 与 `*.sh` 都已退化为 thin shim，仅转发到同名 `.py`（下个版本删除）。Windows 上**推荐直接用 Python**：`python scripts\run_tests.py`、`python scripts\run_graph_studio.py` 等。下方历史用法仍可工作（shim 会自动转发），但参数风格为旧 PowerShell 形式。

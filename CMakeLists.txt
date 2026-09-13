@@ -518,6 +518,16 @@ if(TASK_GRAPH_BUILD_SUBMODULES)
     endforeach()
 endif()
 
+# ============================================================
+# Android 无头 graph E2E runner（tests/android/，仅 Android 构建；
+# 目标 EXCLUDE_FROM_ALL，由 scripts/build_android.py --e2e 显式构建——
+# Android 侧没有 GraphStudio app 壳，图执行的 e2e 载体是这个 console 程序，
+# 契约见 dev-docs/e2e-android.md）。
+# ============================================================
+if(TASK_GRAPH_ANDROID)
+    add_subdirectory(tests/android)
+endif()
+
 if(NOT TASK_GRAPH_MOBILE)
 
 # ============================================================
