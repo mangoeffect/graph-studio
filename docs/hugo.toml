@@ -2,7 +2,7 @@
 # 站点源码在 docs/，由 .github/workflows/website.yml 构建部署。
 # 本地开发：python scripts/fetch_releases.py && hugo server -s docs
 
-baseURL = "https://mangoeffect.github.io/graph-studio/"
+baseURL = "https://studio.mangoeffect.net/"
 title = "task_graph · GraphStudio"
 theme = "PaperMod"
 defaultContentLanguage = "zh"
