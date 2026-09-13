@@ -13,7 +13,7 @@ from pathlib import Path
 
 from . import console, repo_root
 
-MODELS_REL = "submodules/mediapipe/mediapipe_vision/tests/models"
+MODELS_REL = "tests/models/mediapipe"
 MODEL_EXTS = {".task", ".tflite"}
 
 

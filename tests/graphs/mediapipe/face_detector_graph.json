@@ -1,0 +1,30 @@
+{
+  "version": "2.0",
+  "_comment": "model_path carries the model NAME only; the host-registered ModelFinder (task_graph::set_model_finder) maps it to a file path at runtime. Without a finder it falls back to _source_dir-relative resolution (see include/task_graph/path_utils.hpp).",
+  "tasks": [
+    {
+      "id": "image_src",
+      "type": "opencv_image_read",
+      "params": {
+        "file_path": "../../models/mediapipe/portrait.jpg"
+      }
+    },
+    {
+      "id": "face_detector",
+      "type": "mp_face_detector",
+      "params": {
+        "model_path": "face_detector.tflite",
+        "delegate": 0,
+        "running_mode": 1
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "image_src",
+      "from_port": "out",
+      "to": "face_detector",
+      "to_port": "image"
+    }
+  ]
+}

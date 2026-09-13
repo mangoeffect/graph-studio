@@ -36,6 +36,11 @@ TypeRegistry& TypeRegistry::instance() {
     extern void pull_mnn_tasks();
     pull_mnn_tasks();
 #endif
+#ifdef TASK_GRAPH_MEDIAPIPE_AVAILABLE
+    // 同上：强制拉入 src/mediapipe/mediapipe_registry.cpp。
+    extern void pull_mediapipe_tasks();
+    pull_mediapipe_tasks();
+#endif
     // 同上：强制拉入 src/sdk.cpp 的 io_input/io_output 内置任务注册。
     extern void pull_sdk_tasks();
     pull_sdk_tasks();

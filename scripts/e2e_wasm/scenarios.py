@@ -26,11 +26,11 @@ FINISHED_RE = re.compile(r"\[gs\] Execution finished:\s*(\d+)\s*ok,\s*(\d+)\s*fa
 # wasm 侧不可执行的子模块（二进制 strings 实测的任务注册为准）：
 #   image_processing = gpu 子模块（module 叶子名），GPU compute 的 WGSL
 #   kernel 未移植，任务类型未注册；render_task 的 wasm 构建门未开；
-#   mediapipe_vision 在 wasm 是无 libvision 的 stub。
+#   mp_* 任务在 wasm 是无 libvision 预编译的 stub（任务已并入核心库）.
 WASM_UNSUPPORTED_MODULES = {
     "image_processing": "gpu 子模块未在 wasm 注册（compute WGSL 未移植）",
     "render_task": "render 子模块 wasm 构建门未开（任务类型未注册）",
-    "mediapipe_vision": "wasm 为 libvision stub（模型推理不可用）",
+    "mediapipe": "wasm 为 libvision stub（模型推理不可用）",
 }
 
 

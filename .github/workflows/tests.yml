@@ -116,7 +116,7 @@ jobs:
         if: failure()
         shell: bash
         run: |
-          echo "::notice::run_all_test 阶段汇总见上方日志；若 GPU/Metal 阶段被跳过属预期（无 GPU runner）。mediapipe 在 Windows 应真实执行（非跳过）。"
+          echo "::notice::run_all_test 阶段汇总见上方日志；若 GPU/Metal 阶段被跳过属预期（无 GPU runner）。mp_* 用例在 Windows 应真实执行（非跳过）。"
 
   # ------------------------------------------------------------------ iOS SDK
   # 交叉编译验证 + 产出 libtask_graph.xcframework（device + simulator 双 slice）。

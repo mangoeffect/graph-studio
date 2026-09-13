@@ -127,7 +127,7 @@ python3 scripts/run_e2e_macos.py --app /Applications/GraphStudio.app
 
 dev .app 需要插件时入口脚本自动设 `TASK_GRAPH_PLUGINS_PATH` /
 `GRAPH_STUDIO_MODELS_DIR` / `DYLD_LIBRARY_PATH`（复刻 run_graph_studio.py；
-mediapipe 插件对裸 install name 的 libvision.dylib 靠自身 LC_RPATH 解析）。
+mp_* 任务已并入核心库，libtask_graph.dylib 经 @rpath+install_name_tool 解析 libvision.dylib）。
 
 ## 报告（scripts/e2e_report.py，对齐 e2e_windows/report.py；macOS/WASM 共享）
 

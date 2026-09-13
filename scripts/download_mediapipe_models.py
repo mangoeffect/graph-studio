@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """download_mediapipe_models.py — 下载 MediaPipe 测试模型到
-submodules/mediapipe/mediapipe_vision/tests/models/（跨平台）。
+tests/models/mediapipe/（跨平台）。
 
 取代 scripts/download_mediapipe_models.sh。模型文件不入库（大体积二进制走下载更干净）。
 测试在模型缺失时 SKIP，不强制依赖。用标准库 urllib 替代 curl，三平台通用。
@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from gs import console, repo_root  # noqa: E402
 
-MODELS_REL = "submodules/mediapipe/mediapipe_vision/tests/models"
+MODELS_REL = "tests/models/mediapipe"
 
 URLS = {
     "object_detector": "https://storage.googleapis.com/mediapipe-tasks/object_detector/efficientdet_lite0_uint8.tflite",

@@ -19,7 +19,7 @@ ctest 面板（gpu 仅 macOS/Metal、js_task 非 MSVC、mediapipe 需预编译�
   python scripts/run_all_submodules_test.py -j <N>       # 并行编译线程数（默认 CPU 核数）
   python scripts/run_all_submodules_test.py --config <C> # 构建配置（默认 Debug；VS 多配置传 -C）
   python scripts/run_all_submodules_test.py -S image_filtering                       # 只跑某个子模块
-  python scripts/run_all_submodules_test.py -S image_reader -S mediapipe_vision      # 跑多个子模块
+  python scripts/run_all_submodules_test.py -S image_reader -S gpu_image_processing  # 跑多个子模块
   python scripts/run_all_submodules_test.py --download-models                        # 先下载 mediapipe 模型再跑
   python scripts/run_all_submodules_test.py --disable-opencv   # 关闭 OpenCV（多数子模块测试会消失）
   python scripts/run_all_submodules_test.py -v            # ctest 详细输出
@@ -57,7 +57,6 @@ SUBMODULE_TESTS = {
     "image_geometry": r"test_image_geometry_graph",
     "gpu_image_processing": r"test_gpu_image_graph",
     "js_task": r"test_js_script_graph",
-    "mediapipe_vision": r"test_mediapipe_.*",
 }
 
 

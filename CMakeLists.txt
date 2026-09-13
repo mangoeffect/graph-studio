@@ -182,6 +182,82 @@ if(TASK_GRAPH_ENABLE_MNN)
     endif()
 endif()
 
+# MediaPipe Vision 引擎（Google MediaPipe，直接编入核心库；原 submodules/
+# mediapipe 插件已迁移至此，任务层与引擎 API 均为主框架公共能力）。依赖
+# scripts/build_mediapipe.py 产出的预构建 C API 库（macOS/Linux:
+# libvision.dylib|so，iOS/Android/WASM: libmediapipe_vision_c.a，Windows:
+# vision.dll + vision.lib）。找到库时定义 TASK_GRAPH_MEDIAPIPE_AVAILABLE
+#（真实推理）；默认开启但未找到库时任务照常注册（图可反序列化/编辑），
+# execute 返回 FAILED 并给出可读错误。桌面预构建恒为 CPU-only
+#（MEDIAPIPE_DISABLE_GPU——桌面 GPU 官方仅支持 Linux），额外定义
+# TASK_GRAPH_MEDIAPIPE_CPU_ONLY 供引擎提前拦截 GPU delegate 请求
+#（CPU-only 构建上请求 GPU 不报错而是挂死 graph 创建）。
+option(TASK_GRAPH_ENABLE_MEDIAPIPE "Enable Google MediaPipe vision tasks" ON)
+if(TASK_GRAPH_ENABLE_MEDIAPIPE)
+    if(TASK_GRAPH_IOS)
+        set(MP_CANDIDATES "${CMAKE_SOURCE_DIR}/build_ios/mediapipe/install")
+    elseif(TASK_GRAPH_ANDROID)
+        # build_mediapipe.py 按 ABI 分目录安装（install/<abi>/），优先当前 ABI
+        set(MP_CANDIDATES
+            "${CMAKE_SOURCE_DIR}/build_android/mediapipe/install/${ANDROID_ABI}"
+            "${CMAKE_SOURCE_DIR}/build_android/mediapipe/install")
+    elseif(EMSCRIPTEN)
+        set(MP_CANDIDATES "${CMAKE_SOURCE_DIR}/build_wasm/mediapipe/install")
+    else()
+        set(MP_CANDIDATES "${CMAKE_SOURCE_DIR}/build/mediapipe/install")
+    endif()
+
+    set(MP_INSTALL "")
+    foreach(mp_dir IN LISTS MP_CANDIDATES)
+        if(EXISTS "${mp_dir}/include/mediapipe/tasks/c/vision/core/image.h")
+            set(MP_INSTALL "${mp_dir}")
+            break()
+        endif()
+    endforeach()
+
+    if(MP_INSTALL)
+        if(EXISTS "${MP_INSTALL}/lib/libvision.dylib")
+            add_library(mediapipe_vision_c SHARED IMPORTED)
+            set_target_properties(mediapipe_vision_c PROPERTIES
+                IMPORTED_LOCATION "${MP_INSTALL}/lib/libvision.dylib"
+                INTERFACE_INCLUDE_DIRECTORIES "${MP_INSTALL}/include")
+            set(TASK_GRAPH_MEDIAPIPE_AVAILABLE ON)
+        elseif(EXISTS "${MP_INSTALL}/lib/libmediapipe_vision_c.a")
+            add_library(mediapipe_vision_c STATIC IMPORTED)
+            set_target_properties(mediapipe_vision_c PROPERTIES
+                IMPORTED_LOCATION "${MP_INSTALL}/lib/libmediapipe_vision_c.a"
+                INTERFACE_INCLUDE_DIRECTORIES "${MP_INSTALL}/include")
+            set(TASK_GRAPH_MEDIAPIPE_AVAILABLE ON)
+        elseif(EXISTS "${MP_INSTALL}/lib/libvision.so")
+            add_library(mediapipe_vision_c SHARED IMPORTED)
+            set_target_properties(mediapipe_vision_c PROPERTIES
+                IMPORTED_LOCATION "${MP_INSTALL}/lib/libvision.so"
+                INTERFACE_INCLUDE_DIRECTORIES "${MP_INSTALL}/include")
+            set(TASK_GRAPH_MEDIAPIPE_AVAILABLE ON)
+        elseif(EXISTS "${MP_INSTALL}/lib/vision.lib" AND EXISTS "${MP_INSTALL}/bin/vision.dll")
+            add_library(mediapipe_vision_c SHARED IMPORTED)
+            set_target_properties(mediapipe_vision_c PROPERTIES
+                IMPORTED_LOCATION "${MP_INSTALL}/bin/vision.dll"
+                IMPORTED_IMPLIB "${MP_INSTALL}/lib/vision.lib"
+                INTERFACE_INCLUDE_DIRECTORIES "${MP_INSTALL}/include")
+            set(TASK_GRAPH_MEDIAPIPE_AVAILABLE ON)
+            set(MEDIAPIPE_MP_DLL "${MP_INSTALL}/bin/vision.dll")
+        endif()
+        if(TASK_GRAPH_MEDIAPIPE_AVAILABLE)
+            message(STATUS "MediaPipe vision enabled: ${MP_INSTALL}")
+        else()
+            message(WARNING "TASK_GRAPH_ENABLE_MEDIAPIPE=ON but prebuilt lib not found "
+                            "in ${MP_INSTALL}/lib (expected libvision.dylib|so / "
+                            "libmediapipe_vision_c.a / vision.dll); building stub — "
+                            "run scripts/build_mediapipe.py")
+        endif()
+    else()
+        message(WARNING "TASK_GRAPH_ENABLE_MEDIAPIPE=ON but no prebuilt install found "
+                        "(candidates: build{,_ios,_android,_wasm}/mediapipe/install); "
+                        "building stub — run scripts/build_mediapipe.py")
+    endif()
+endif()
+
 # 桌面平台默认把 submodules/ 内置插件一起构建进同一棵构建树（供 scripts/run_tests.py
 # 与 GraphStudio 开发工作流使用）。关闭后主仓库完全独立编译，插件改为运行时 dlopen：
 #   cmake -S . -B build -DTASK_GRAPH_BUILD_SUBMODULES=OFF
@@ -329,6 +405,63 @@ if(TASK_GRAPH_ENABLE_MNN)
                 ${MNN_FOUNDATION_FW}
                 ${MNN_ACCELERATE_FW}
             )
+        endif()
+    endif()
+endif()
+
+# MediaPipe Vision 任务（直接编入核心库；stub/真实实现由
+# TASK_GRAPH_MEDIAPIPE_AVAILABLE 决定；Mp* C API 调用全部封在
+# src/mediapipe/vision_engine.cpp 的 pimpl 内，公共头零泄漏）
+if(TASK_GRAPH_ENABLE_MEDIAPIPE)
+    target_sources(task_graph PRIVATE
+        src/mediapipe/vision_engine.cpp
+        src/mediapipe/vision_tasks.cpp
+        src/mediapipe/mediapipe_registry.cpp
+    )
+    if(TASK_GRAPH_MEDIAPIPE_AVAILABLE)
+        if(MSVC)
+            # 同 MNN/shaderc 先例：MediaPipe 预构建仅 Release（/MD），MSVC Debug
+            #（/MDd）链它 = LNK2038。Debug 配置退化为 stub，测试门控同步收窄。
+            target_link_libraries(task_graph PRIVATE
+                "$<$<NOT:$<CONFIG:Debug>>:mediapipe_vision_c>")
+            target_compile_definitions(task_graph PRIVATE
+                "$<$<NOT:$<CONFIG:Debug>>:TASK_GRAPH_MEDIAPIPE_AVAILABLE>"
+                "$<$<NOT:$<CONFIG:Debug>>:TASK_GRAPH_MEDIAPIPE_CPU_ONLY>")
+        else()
+            target_link_libraries(task_graph PRIVATE mediapipe_vision_c)
+            target_compile_definitions(task_graph PRIVATE
+                TASK_GRAPH_MEDIAPIPE_AVAILABLE
+                TASK_GRAPH_MEDIAPIPE_CPU_ONLY)
+        endif()
+        if(APPLE)
+            # libvision.dylib 是 bare install name（非 @rpath），dyld 对裸名不查
+            # LC_RPATH（只解析 @rpath/ 前缀依赖）。两步组合（链接器不支持在
+            # -dynamiclib 上用 -change 改写依赖记录，只能 POST_BUILD 用
+            # install_name_tool 改）：
+            #   1) 链接后把 libtask_graph.dylib 的依赖记录从裸名改为
+            #      @rpath/libvision.dylib；
+            #   2) LC_RPATH=@loader_path 让 dyld 以"声明依赖的镜像"自己所在目录
+            #      解析 —— 测试 exe（build/）与子模块插件（build/submodules/*，
+            #      dlopen 加载 libtask_graph）都能命中，旧子模块时代的
+            #      per-test symlink hack 随之消亡。
+            set_property(TARGET task_graph APPEND PROPERTY BUILD_RPATH "@loader_path")
+            add_custom_command(TARGET task_graph POST_BUILD
+                COMMAND install_name_tool
+                    -change libvision.dylib @rpath/libvision.dylib
+                    "$<TARGET_FILE:task_graph>"
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${MP_INSTALL}/lib/libvision.dylib"
+                    "$<TARGET_FILE_DIR:task_graph>/libvision.dylib"
+                COMMENT "Rewriting libvision dependency to @rpath and copying it next to libtask_graph")
+        endif()
+        if(WIN32 AND MEDIAPIPE_MP_DLL)
+            # Windows loader 不搜索被 LoadLibrary 的 DLL 自己所在目录；拷到
+            # libtask_graph.dll 旁（exe 目录标准搜索序的第一站）。
+            add_custom_command(TARGET task_graph POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${MEDIAPIPE_MP_DLL}"
+                    "$<TARGET_FILE_DIR:task_graph>/vision.dll"
+                COMMENT "Copying vision.dll next to libtask_graph")
         endif()
     endif()
 endif()
@@ -512,6 +645,21 @@ if(TASK_GRAPH_ENABLE_MNN AND TASK_GRAPH_MNN_AVAILABLE
     )
 endif()
 
+# MediaPipe Vision 图驱动测试（原子模块 10 个驱动合并为一个 gtest 二进制）。
+# 门控对齐 test_mnn_inference：引擎真实编入才注册（模型缺失时用例内软跳过）；
+# MSVC 多配置生成器 Debug 下是 stub（/MD vs /MDd），不注册。
+# 图引用 opencv_image_read 做图像源——主仓测试本不依赖子模块注册顺序，
+# 但这里图 JSON 需要，image_reader 是 subnode.json 首位子节点（链接期目标
+# 必先存在），TARGET 判定在 subnode.json 解析之后求值（CMake 惰性 if）。
+# 注意：本块必须位于 parse_subnode_json 之后才能引用 image_reader 目标，
+# 故放在子模块 add_subdirectory 之后（见下方 TASK_GRAPH_BUILD_SUBMODULES 块）。
+set(TG_BUILD_MP_VISION_TESTS OFF)
+if(TASK_GRAPH_BUILD_TESTS AND NOT EMSCRIPTEN AND TASK_GRAPH_ENABLE_MEDIAPIPE
+        AND TASK_GRAPH_MEDIAPIPE_AVAILABLE AND TASK_GRAPH_ENABLE_OPENCV
+        AND NOT (MSVC AND CMAKE_CONFIGURATION_TYPES))
+    set(TG_BUILD_MP_VISION_TESTS ON)
+endif()
+
 endif() # NOT EMSCRIPTEN AND TASK_GRAPH_BUILD_TESTS
 
 # ============================================================
@@ -545,6 +693,22 @@ if(TASK_GRAPH_BUILD_SUBMODULES)
     foreach(submodule ${SUBMODULES})
         add_subnode_module(${submodule})
     endforeach()
+endif()
+
+# MediaPipe Vision 图驱动测试（定义延后到子模块之后：图引用 opencv_image_read，
+# 需要 image_reader 目标已存在——见上方 TG_BUILD_MP_VISION_TESTS 门控注释）。
+if(TG_BUILD_MP_VISION_TESTS AND TARGET image_reader)
+    add_executable(test_mediapipe_vision tests/test_mediapipe_vision.cpp)
+    target_include_directories(test_mediapipe_vision PRIVATE
+        "${CMAKE_SOURCE_DIR}/include")
+    target_link_libraries(test_mediapipe_vision PRIVATE
+        task_graph image_reader GTest::gtest_main)
+    target_compile_definitions(test_mediapipe_vision PRIVATE
+        TG_TEST_MP_DIR="${CMAKE_SOURCE_DIR}/tests")
+    gtest_discover_tests(test_mediapipe_vision
+        DISCOVERY_MODE PRE_TEST
+        TEST_PREFIX "test_mediapipe_vision."
+    )
 endif()
 
 # ============================================================

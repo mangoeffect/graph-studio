@@ -1,13 +1,18 @@
 ﻿#pragma once
 
-// MNN 引擎 pimpl 包装（内部头——真实 MNN 头文件只出现在 src/mnn/ 下，
-// 不随 SDK 公共头安装，对 SDK 消费者零依赖）。
+// MNN（Alibaba）推理引擎 —— 主框架公共引擎 API。
 //
-// 编译期三态：
-//   TASK_GRAPH_ENABLE_MNN=OFF                  -> 本文件不参与编译
-//   ENABLE=ON、找到预编译库 -> 定义 TASK_GRAPH_MNN_AVAILABLE，真实推理
-//   ENABLE=ON、未找到库                        -> stub：create() 恒失败，
-//                                                 任务 execute 上报可读错误
+// 供后续待实现的具体子模块直接调用（图像 → 预处理 → 推理 → 全部输出张量），
+// 无需自行绑定 MNN C++ API。真实 MNN 头文件只出现在 src/mnn/ 下（pimpl），
+// 对 SDK 消费者零依赖。
+//
+// 编译期三态（CMake TASK_GRAPH_ENABLE_MNN）：
+//   OFF                    -> 本文件不参与编译
+//   ON、找到预编译库       -> 定义 TASK_GRAPH_MNN_AVAILABLE，真实推理
+//   ON、未找到库           -> stub：create() 恒失败，任务 execute 上报可读错误
+//
+// 线程约束：同一实例不可并发调用（MNN Interpreter/Session 无跨线程官方保证，
+// 上游 issue #592/#2419）；DAG 并行分支请各持独立实例。
 
 #include <cstdint>
 #include <memory>
@@ -42,10 +47,14 @@ public:
     const std::vector<int>& input_shape() const;
 
     // 单帧推理：uint8 图像 → 预处理（缩放/格式转换/mean/std 归一化）→ 推理
-    // → 全部输出张量拷回 host。线程约束：同一实例不可并发调用
-    //（MNN Interpreter/Session 无跨线程官方保证）。
+    // → 全部输出张量拷回 host。
     bool run(const uint8_t* data, int width, int height, MnnSourceFormat format,
              std::vector<MnnTensorData>& outputs, std::string& err);
+
+    // 便捷重载：直接吃框架 Image（内部 ensure_cpu 后按 pixel_format 推导
+    // source_format）。
+    bool run(const Image& image, std::vector<MnnTensorData>& outputs,
+             std::string& err);
 
 private:
     MnnEngine();

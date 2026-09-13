@@ -55,12 +55,12 @@ ANDROID_MODULES = [
 # 对齐 WASM 的 WASM_UNSUPPORTED_MODULES 机制）：
 #   image_processing = gpu 子模块（无 Android GPU 后端：wgpu 无 android 产物、
 #   Vulkan 走桌面 SDK 的 find_package）；render_task 的 Android 构建门未开；
-#   mediapipe_vision 无 Android libvision 预编译库（任务是 stub）；
+#   mp_* 任务无 Android libvision 预编译库（任务是 stub，已并入核心库）；
 #   video_io 依赖 opencv_videoio（build_opencv_android.py 的 BUILD_LIST 未含）。
 ANDROID_UNSUPPORTED_MODULES = {
     "image_processing": "gpu 子模块无 Android GPU 后端（wgpu 无 android 产物）",
     "render_task": "render 子模块 Android 构建门未开（任务类型未注册）",
-    "mediapipe_vision": "无 Android libvision 预编译库（mediapipe_vision 为 stub）",
+    "mediapipe": "无 Android libvision 预编译库（mp_* 为 stub）",
     "video_io": "OpenCV Android BUILD_LIST 无 videoio 模块（video_io 未编入）",
 }
 

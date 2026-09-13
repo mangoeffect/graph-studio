@@ -119,7 +119,7 @@ mnn_image_classifier（MNN）。
   只有 win/macos/linux，Vulkan 走桌面 SDK 的 `find_package`，其 CMakeLists 在
   `TASK_GRAPH_MOBILE` 下直接 `return()`；
 - `render_task`：同上（Android 构建门未开）；
-- `mediapipe_vision`：无 Android libvision 预编译库（`build_mediapipe.py` 无
+- `mp_*`（核心库）：无 Android libvision 预编译库（`build_mediapipe.py` 无
   Android 支持），任务是 stub；
 - `video_io`：OpenCV Android 预编译的 `BUILD_LIST` 只有 core/imgproc/imgcodecs。
 
@@ -176,7 +176,7 @@ python3 scripts/run_e2e_android.py --serial emulator-5554
   （Android 无 app 可驱动）。若将来做 APK，图输入通道建议沿用 intent extra +
   同一个 `OpenGraphAtStartup`，断言通道仍走 `[gs]` 行（logcat/tombstone 侧）。
 - **gpu/render/mediapipe 的 Android 后端化**未做（wgpu 需 android 产物或
-  Vulkan-on-Android 接线；mediapipe 需 Android 交叉编译 libvision）——这四类
+  Vulkan-on-Android 接线；mp_* 需 Android 交叉编译 libvision）——这四类
   模块的图在 Android 记 skip，不是"失败"。
 - **CI 未接线**：对齐 WASM/macOS E2E 的本地轨道定位；进 CI 需要 runner 无设备
   运行（host 侧跑不了 aarch64 二进制）或引入模拟器 action，未评估。

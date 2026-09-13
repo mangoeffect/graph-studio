@@ -143,7 +143,7 @@ def launch_env(root: Path, config: str) -> dict:
     plugin_dirs = sdk.plugin_build_dirs(lib_build, config)
     if plugin_dirs:
         env["TASK_GRAPH_PLUGINS_PATH"] = os.pathsep.join(str(p) for p in plugin_dirs)
-    dev_models = root / "submodules" / "mediapipe" / "mediapipe_vision" / "tests" / "models"
+    dev_models = root / "tests" / "models" / "mediapipe"
     if dev_models.is_dir():
         env["GRAPH_STUDIO_MODELS_DIR"] = str(dev_models)
     lib_env = platform.runtime_lib_env()

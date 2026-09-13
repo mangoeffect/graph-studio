@@ -1,4 +1,4 @@
-﻿#include "mnn_engine.hpp"
+#include <task_graph/mnn/mnn_engine.hpp>
 
 #include <algorithm>
 
@@ -259,3 +259,36 @@ bool MnnEngine::run(const uint8_t*, int, int, MnnSourceFormat,
 }  // namespace task_graph
 
 #endif  // TASK_GRAPH_MNN_AVAILABLE
+
+// Image 便捷重载：两态共用（只转发的公共 API），pixel_format → source 通道序。
+namespace task_graph {
+
+namespace {
+MnnSourceFormat image_source_format(const Image& img) {
+    switch (img.channels) {
+        case 1: return MnnSourceFormat::GRAY;
+        case 4: return MnnSourceFormat::RGBA;
+        case 3:
+        default:
+            return img.pixel_format == PixelFormat::RGB ? MnnSourceFormat::RGB
+                                                        : MnnSourceFormat::BGR;
+    }
+}
+}  // namespace
+
+bool MnnEngine::run(const Image& image, std::vector<MnnTensorData>& outputs,
+                    std::string& err) {
+    if (!image.data) {
+        err = "MNN: empty image";
+        return false;
+    }
+    Image copy = image;  // ensure_cpu 需要 non-const
+    if (!copy.ensure_cpu() || !copy.valid()) {
+        err = "MNN: image not available on CPU";
+        return false;
+    }
+    return run(copy.data->data(), copy.width, copy.height,
+               image_source_format(copy), outputs, err);
+}
+
+}  // namespace task_graph

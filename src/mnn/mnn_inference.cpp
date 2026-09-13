@@ -10,7 +10,7 @@
 #include <task_graph/data_types.hpp>
 #include <task_graph/path_utils.hpp>
 
-#include "mnn_engine.hpp"
+#include <task_graph/mnn/mnn_engine.hpp>
 
 #ifdef TASK_GRAPH_ENABLE_OPENCV
 #include <opencv2/opencv.hpp>
