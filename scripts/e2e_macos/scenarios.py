@@ -179,23 +179,9 @@ def files_run(runner, report, ctx: dict) -> int:
             continue
         runnable.append(e)
 
-    if graphs_filter:
-        runnable = [e for e in runnable if graphs_filter in str(e["path"]).lower()]
-    elif max_graphs > 0:
-        # 代表性小图优先，再跨模块轮转补足到 max_graphs（避免单一模块占满）
-        by_name = {e["name"]: e for e in runnable}
-        selected = [by_name[n] for n in gc.PRIORITY_GRAPHS if n in by_name]
-        rest = [e for e in runnable if e["name"] not in gc.PRIORITY_GRAPHS]
-        by_mod: dict[str, list] = {}
-        for e in sorted(rest, key=lambda e: e["name"]):
-            by_mod.setdefault(e["module"], []).append(e)
-        while len(selected) < max_graphs and any(by_mod.values()):
-            for m in sorted(by_mod):
-                if len(selected) >= max_graphs:
-                    break
-                if by_mod[m]:
-                    selected.append(by_mod[m].pop(0))
-        runnable = selected
+    # 裁剪：--graphs 子串过滤优先，否则 --max-graphs 按 PRIORITY + 跨模块轮转选取
+    # （规则见 e2e_graph_cases.select_graphs，三端 E2E 共用）
+    runnable = gc.select_graphs(runnable, max_graphs, graphs_filter)
 
     # GPU 可用性：CGEvent 注入已要求真实 GUI 会话，macOS 侧 Metal 必在；
     # 且 GpuBootstrap 的初始化日志早于 VM 日志 sink 注册、不会出现在 Log

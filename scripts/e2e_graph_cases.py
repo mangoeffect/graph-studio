@@ -91,6 +91,34 @@ def is_gpu_graph(entry: dict) -> bool:
     return "submodules/gpu/" in str(entry["path"]).replace("\\", "/")
 
 
+def select_graphs(entries: list[dict], max_graphs: int = 0,
+                  substring: str = "") -> list[dict]:
+    """从候选图里选出本次要跑的集合（macOS/WASM/Android 三端共用的裁剪规则）。
+
+    - substring 非空：按路径子串过滤（--graphs，优先于 max_graphs）；
+    - 否则 max_graphs > 0：PRIORITY_GRAPHS 优先（代表性小图），其余按名排序
+      后跨模块轮转补足——避免单一模块占满名额；
+    - max_graphs <= 0：全量。
+    """
+    if substring:
+        return [e for e in entries if substring in str(e["path"]).lower()]
+    if max_graphs <= 0:
+        return list(entries)
+    by_name = {e["name"]: e for e in entries}
+    selected = [by_name[n] for n in PRIORITY_GRAPHS if n in by_name]
+    rest = [e for e in entries if e["name"] not in PRIORITY_GRAPHS]
+    by_mod: dict[str, list] = {}
+    for e in sorted(rest, key=lambda e: e["name"]):
+        by_mod.setdefault(e["module"], []).append(e)
+    while len(selected) < max_graphs and any(by_mod.values()):
+        for m in sorted(by_mod):
+            if len(selected) >= max_graphs:
+                break
+            if by_mod[m]:
+                selected.append(by_mod[m].pop(0))
+    return selected
+
+
 def _find_ref_src(graph_path: Path, ref: str) -> Path | None:
     """引用文件的源路径（多级祖先探测，与 _resolve_ref 同序）。"""
     for up in _ANCESTORS:
