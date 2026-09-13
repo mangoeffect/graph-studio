@@ -4,11 +4,14 @@
 localhost 是 secure context，HTTP + COOP/COEP 即可启用 SharedArrayBuffer。
 支持 brotli/gzip 预压缩文件（.br/.gz）：若请求的 .wasm/.js/.html 旁有同名 .br/.gz，
 按 Accept-Encoding 优先返回压缩版，省网络带宽。
+设 OPEN_URL 环境变量时，server 起来后自动用默认浏览器打开该地址
+（run_graph_studio_wasm.py 传入，含 --no-browser 时不设）。
 """
-import http.server, socketserver, sys, os
+import http.server, socketserver, sys, os, webbrowser
 
 PORT = int(os.environ.get("PORT", "8000"))
 ROOT = sys.argv[1] if len(sys.argv) > 1 else os.getcwd()
+OPEN_URL = os.environ.get("OPEN_URL", "")
 
 class COOPHandler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
@@ -47,9 +50,21 @@ class COOPHandler(http.server.SimpleHTTPRequestHandler):
 class ReuseTCPServer(socketserver.TCPServer):
     allow_reuse_address = True
 
-with ReuseTCPServer(("", PORT), COOPHandler) as httpd:
+try:
+    httpd = ReuseTCPServer(("", PORT), COOPHandler)
+except OSError as e:
+    # 常见于上次运行残留的 dev server 还占着端口
+    print(f"错误: 端口 {PORT} 绑定失败（{e}）。"
+          f"用 lsof -nP -iTCP:{PORT} -sTCP:LISTEN 查看占用进程，"
+          f"或设 PORT 环境变量换端口。", file=sys.stderr)
+    sys.exit(1)
+
+with httpd:
     print(f"WASM dev server (COOP+COEP enabled) serving {ROOT}")
     print(f"  http://localhost:{PORT}/graph_studio.html")
+    if OPEN_URL:
+        # 此刻 socket 已 bind+listen（内核 accept 队列兜底），打开浏览器无竞态
+        webbrowser.open(OPEN_URL)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

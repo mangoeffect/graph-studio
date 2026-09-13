@@ -14,8 +14,21 @@ from typing import Optional
 from .platform import is_windows
 
 
+def _is_emsdk_root(p: Path) -> bool:
+    """emsdk 根目录特征：upstream/emscripten 工具链 + 激活脚本。
+
+    Homebrew 的 emscripten 两者皆无（binary 在 <ver>/bin，配置在 libexec），
+    which 反推时用它排除伪装。
+    """
+    return ((p / "upstream" / "emscripten").is_dir()
+            and ((p / "emsdk_env.sh").is_file() or (p / "emsdk_env.bat").is_file()))
+
+
 def find_emsdk_root(hint: Optional[str] = None) -> Optional[Path]:
-    """解析 emsdk 根目录：显式 hint -> $EMSDK_ROOT -> $EMSDK -> emcmake 反推。"""
+    """解析 emsdk 根目录：显式 hint -> $EMSDK_ROOT -> $EMSDK
+    -> 默认安装位置 ~/emsdk -> emcmake 反推（校验确为 emsdk 布局——
+    PATH 上 Homebrew emscripten 抢先时，反推出的 Cellar 目录没有
+    upstream/ 与 emsdk_env.sh，不能再当 emsdk 用）。"""
     for key in (("__hint__", hint), ("env", "EMSDK_ROOT"), ("env", "EMSDK")):
         kind, val = key
         if kind == "__hint__" and val:
@@ -26,24 +39,30 @@ def find_emsdk_root(hint: Optional[str] = None) -> Optional[Path]:
             v = os.environ.get(val)
             if v and Path(v).is_dir():
                 return Path(v)
+    # emsdk 官方文档的标准安装位置；本仓库 wasm 工具链（Qt 6.6.3 +
+    # emsdk 3.1.37）按此布局安装
+    default = Path.home() / "emsdk"
+    if _is_emsdk_root(default):
+        return default
     # emcmake 在 PATH 上时反推：通常在 <emsdk>/upstream/emscripten/emcmake
     found = shutil.which("emcmake")
     if found:
-        return Path(found).resolve().parents[2]
+        cand = Path(found).resolve().parents[2]
+        if _is_emsdk_root(cand):
+            return cand
     return None
 
 
 def find_emcmake(emsdk_root: Optional[Path] = None) -> Optional[Path]:
-    """emcmake 可执行文件：PATH -> <emsdk>/upstream/emscripten/emcmake(.bat)。"""
-    found = shutil.which("emcmake")
-    if found:
-        return Path(found)
+    """emcmake 可执行文件：<emsdk>/upstream/emscripten/emcmake(.bat)
+    -> PATH。root 优先——PATH 上 Homebrew emscripten 抢先时不能取
+    （其 libc++ 与钉版工具链不兼容）。"""
     if emsdk_root:
         name = "emcmake.bat" if is_windows() else "emcmake"
         cand = emsdk_root / "upstream" / "emscripten" / name
         if cand.is_file():
             return cand
-    return None
+    return Path(shutil.which("emcmake")) if shutil.which("emcmake") else None
 
 
 def activate(emsdk_root: Path) -> bool:

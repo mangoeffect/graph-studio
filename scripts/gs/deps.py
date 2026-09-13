@@ -53,6 +53,62 @@ def find_qt(hint: Optional[str] = None) -> Optional[Path]:
     return None
 
 
+def find_qt_wasm(hint: Optional[str] = None) -> Optional[Path]:
+    """探测 Qt wasm 交叉前缀（wasm_multithread）。
+
+    顺序：--qt-wasm-root -> $QT_WASM_ROOT -> Qt 在线安装器默认布局
+    ~/Qt/<ver>/wasm_multithread（Windows 另探 C:/Qt；取最高版本，
+    以 bin/qt-cmake 存在为准）。找不到返回 None。
+    """
+    if hint:
+        return Path(hint)
+    env = os.environ.get("QT_WASM_ROOT")
+    if env:
+        return Path(env)
+    qt_cmake = "qt-cmake.bat" if is_windows() else "qt-cmake"
+    bases = [Path.home() / "Qt"]
+    if is_windows():
+        bases.append(Path("C:/Qt"))
+    best: Optional[Path] = None
+    best_ver = (0, 0, 0)
+    for base in bases:
+        if not base.is_dir():
+            continue
+        for d in base.iterdir():
+            if not d.is_dir() or not re.match(r"^\d+\.", d.name):
+                continue
+            cand = d / "wasm_multithread"
+            ver = tuple(int(x) for x in re.findall(r"\d+", d.name)[:3])
+            if (cand / "bin" / qt_cmake).is_file() and ver > best_ver:
+                best, best_ver = cand, ver
+    return best
+
+
+def find_qt_host(hint: Optional[str] = None,
+                 wasm_root: Optional[Path] = None) -> Optional[Path]:
+    """探测 wasm 交叉构建所需的本机 Qt 前缀（QT_HOST_PATH 指向它）。
+
+    顺序：--qt-host-root -> $QT_HOST_ROOT（本仓库约定）-> $QT_HOST_PATH
+    （Qt 官方变量名）-> wasm 前缀同版本目录下的本机 kit
+    （macos / gcc_64 / clang_64 / msvc*）。找不到返回 None。
+    """
+    if hint:
+        return Path(hint)
+    for env in ("QT_HOST_ROOT", "QT_HOST_PATH"):
+        val = os.environ.get(env)
+        if val:
+            return Path(val)
+    if wasm_root is not None and wasm_root.parent.is_dir():
+        kits = (["macos"] if is_macos()
+                else ["gcc_64", "clang_64"] if is_linux()
+                else ["msvc2022_64", "msvc2019_64"])
+        for name in kits:
+            cand = wasm_root.parent / name
+            if validate_qt(cand):
+                return cand
+    return None
+
+
 def find_opencv(hint: Optional[str] = None) -> Optional[Path]:
     """探测 OpenCV 安装前缀。
 
