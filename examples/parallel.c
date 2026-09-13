@@ -39,23 +39,25 @@ static int c_report(tg_task_ctx* ctx) {
     return 0;
 }
 
-static const char* kGraph = R"({
-  "version": "2.0",
-  "tasks": [
-    { "id": "src",      "type": "io_input", "params": { "data_type": "int" } },
-    { "id": "health",   "type": "c_health" },
-    { "id": "analysis", "type": "c_analysis" },
-    { "id": "report",   "type": "c_report" },
-    { "id": "dst",      "type": "io_output" }
-  ],
-  "edges": [
-    { "from": "src",      "from_port": "out", "to": "health",   "to_port": "in" },
-    { "from": "src",      "from_port": "out", "to": "analysis", "to_port": "in" },
-    { "from": "health",   "from_port": "out", "to": "report",   "to_port": "health" },
-    { "from": "analysis", "from_port": "out", "to": "report",   "to_port": "analysis" },
-    { "from": "report",   "from_port": "out", "to": "dst",      "to_port": "in" }
-  ]
-})";
+/* 纯 C 没有 raw string literal,用相邻字面量拼接保持 JSON 可读 */
+static const char* kGraph =
+    "{\n"
+    "  \"version\": \"2.0\",\n"
+    "  \"tasks\": [\n"
+    "    { \"id\": \"src\",      \"type\": \"io_input\", \"params\": { \"data_type\": \"int\" } },\n"
+    "    { \"id\": \"health\",   \"type\": \"c_health\" },\n"
+    "    { \"id\": \"analysis\", \"type\": \"c_analysis\" },\n"
+    "    { \"id\": \"report\",   \"type\": \"c_report\" },\n"
+    "    { \"id\": \"dst\",      \"type\": \"io_output\" }\n"
+    "  ],\n"
+    "  \"edges\": [\n"
+    "    { \"from\": \"src\",      \"from_port\": \"out\", \"to\": \"health\",   \"to_port\": \"in\" },\n"
+    "    { \"from\": \"src\",      \"from_port\": \"out\", \"to\": \"analysis\", \"to_port\": \"in\" },\n"
+    "    { \"from\": \"health\",   \"from_port\": \"out\", \"to\": \"report\",   \"to_port\": \"health\" },\n"
+    "    { \"from\": \"analysis\", \"from_port\": \"out\", \"to\": \"report\",   \"to_port\": \"analysis\" },\n"
+    "    { \"from\": \"report\",   \"from_port\": \"out\", \"to\": \"dst\",      \"to_port\": \"in\" }\n"
+    "  ]\n"
+    "}";
 
 int main(void) {
     printf("=== Parallel DAG Example (pure C consumer API) ===\n\n");

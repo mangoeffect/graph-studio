@@ -29,22 +29,24 @@ static int c_stats(tg_task_ctx* ctx) {
     return 0;
 }
 
-static const char* kGraph = R"({
-  "version": "2.0",
-  "tasks": [
-    { "id": "src",   "type": "io_input", "params": { "data_type": "task_graph::Image" } },
-    { "id": "ann",   "type": "c_annotate" },
-    { "id": "stats", "type": "c_stats" },
-    { "id": "img",   "type": "io_output" },
-    { "id": "area",  "type": "io_output" }
-  ],
-  "edges": [
-    { "from": "src",   "from_port": "out", "to": "ann",   "to_port": "in" },
-    { "from": "src",   "from_port": "out", "to": "stats", "to_port": "in" },
-    { "from": "ann",   "from_port": "out", "to": "img",   "to_port": "in" },
-    { "from": "stats", "from_port": "out", "to": "area",  "to_port": "in" }
-  ]
-})";
+/* 纯 C 没有 raw string literal,用相邻字面量拼接保持 JSON 可读 */
+static const char* kGraph =
+    "{\n"
+    "  \"version\": \"2.0\",\n"
+    "  \"tasks\": [\n"
+    "    { \"id\": \"src\",   \"type\": \"io_input\", \"params\": { \"data_type\": \"task_graph::Image\" } },\n"
+    "    { \"id\": \"ann\",   \"type\": \"c_annotate\" },\n"
+    "    { \"id\": \"stats\", \"type\": \"c_stats\" },\n"
+    "    { \"id\": \"img\",   \"type\": \"io_output\" },\n"
+    "    { \"id\": \"area\",  \"type\": \"io_output\" }\n"
+    "  ],\n"
+    "  \"edges\": [\n"
+    "    { \"from\": \"src\",   \"from_port\": \"out\", \"to\": \"ann\",   \"to_port\": \"in\" },\n"
+    "    { \"from\": \"src\",   \"from_port\": \"out\", \"to\": \"stats\", \"to_port\": \"in\" },\n"
+    "    { \"from\": \"ann\",   \"from_port\": \"out\", \"to\": \"img\",   \"to_port\": \"in\" },\n"
+    "    { \"from\": \"stats\", \"from_port\": \"out\", \"to\": \"area\",  \"to_port\": \"in\" }\n"
+    "  ]\n"
+    "}";
 
 int main(void) {
     printf("=== Multi-Output Example (pure C consumer API) ===\n\n");

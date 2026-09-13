@@ -35,20 +35,22 @@ static int c_save(tg_task_ctx* ctx) {
     return 0;
 }
 
-static const char* kGraph = R"({
-  "version": "2.0",
-  "tasks": [
-    { "id": "src",     "type": "io_input", "params": { "data_type": "std::string" } },
-    { "id": "process", "type": "c_process", "params": { "suffix": "_processed" } },
-    { "id": "save",    "type": "c_save" },
-    { "id": "dst",     "type": "io_output" }
-  ],
-  "edges": [
-    { "from": "src",     "from_port": "out", "to": "process", "to_port": "in" },
-    { "from": "process", "from_port": "out", "to": "save",    "to_port": "in" },
-    { "from": "save",    "from_port": "out", "to": "dst",     "to_port": "in" }
-  ]
-})";
+/* 纯 C 没有 raw string literal,用相邻字面量拼接保持 JSON 可读 */
+static const char* kGraph =
+    "{\n"
+    "  \"version\": \"2.0\",\n"
+    "  \"tasks\": [\n"
+    "    { \"id\": \"src\",     \"type\": \"io_input\", \"params\": { \"data_type\": \"std::string\" } },\n"
+    "    { \"id\": \"process\", \"type\": \"c_process\", \"params\": { \"suffix\": \"_processed\" } },\n"
+    "    { \"id\": \"save\",    \"type\": \"c_save\" },\n"
+    "    { \"id\": \"dst\",     \"type\": \"io_output\" }\n"
+    "  ],\n"
+    "  \"edges\": [\n"
+    "    { \"from\": \"src\",     \"from_port\": \"out\", \"to\": \"process\", \"to_port\": \"in\" },\n"
+    "    { \"from\": \"process\", \"from_port\": \"out\", \"to\": \"save\",    \"to_port\": \"in\" },\n"
+    "    { \"from\": \"save\",    \"from_port\": \"out\", \"to\": \"dst\",     \"to_port\": \"in\" }\n"
+    "  ]\n"
+    "}";
 
 int main(void) {
     printf("=== Basic DAG Example (pure C consumer API) ===\n\n");
