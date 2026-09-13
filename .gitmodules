@@ -17,3 +17,7 @@
 [submodule "docs/themes/PaperMod"]
 	path = docs/themes/PaperMod
 	url = https://github.com/adityatelange/hugo-PaperMod.git
+[submodule "submodules/render"]
+	path = submodules/render
+	url = https://github.com/mangoeffect/plugin-render.git
+	branch = main
