@@ -25,7 +25,6 @@ set(TG_E2E_SUBMODULES
     image_geometry
     image_color
     image_color_grading
-    js_task
 )
 set(_e2e_libs "")
 foreach(_sub ${TG_E2E_SUBMODULES})

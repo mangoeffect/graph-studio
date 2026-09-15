@@ -2,7 +2,7 @@
 """run_all_submodules_test.py — 自动收集并运行 task_graph 全部子模块测试（跨平台）。
 
 子模块测试由每个 leaf 子模块的 CMakeLists.txt 通过 add_test 注册进根 build/ 的
-ctest 面板（gpu 仅 macOS/Metal、js_task 非 MSVC、mediapipe 需预编译库+模型否则软跳过）。
+ctest 面板（gpu 仅 macOS/Metal、mediapipe 需预编译库+模型否则软跳过）。
 本脚本读取 subnode.json 枚举已声明子模块，运行 ctest -N 拿到实际注册的测试，再按
 "子模块名 → 测试名正则" 表筛选出属于子模块的测试并一次性运行。
 
@@ -56,7 +56,6 @@ SUBMODULE_TESTS = {
     "image_filtering": r"test_image_filtering_graph",
     "image_geometry": r"test_image_geometry_graph",
     "gpu_image_processing": r"test_gpu_image_graph",
-    "js_task": r"test_js_script_graph",
 }
 
 

@@ -333,6 +333,10 @@ add_library(task_graph ${TASK_GRAPH_LIB_TYPE}
     src/task_manager.cpp
     src/task_params.cpp
     src/profiler.cpp
+    src/js/js_engine.cpp
+    src/js/js_bindings.cpp
+    src/js/js_task.cpp
+    src/js/js_registry.cpp
 )
 
 # 核心类（INode/DAG/DAGExecutor 等）没有显式 __declspec(dllexport)。
@@ -341,6 +345,60 @@ add_library(task_graph ${TASK_GRAPH_LIB_TYPE}
 # 内部对象（TypeRegistry 等）由此也可被测试程序正常导入。
 if(WIN32 AND TASK_GRAPH_LIB_TYPE STREQUAL "SHARED")
     set_target_properties(task_graph PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
+endif()
+
+# ============================================================
+# JS 脚本引擎（QuickJS，in-tree 纯 C，直接编入核心库——对照 src/mnn/ 先例）。
+# 无 option / stub：源码在树内恒可用（miniz 同类），默认开启编译。
+# 公共 API：include/task_graph/js/{js_engine,js_bindings}.hpp（保留给
+# render 等子模块消费）；js_script 任务注册见 src/js/js_registry.cpp。
+#
+# vendored QuickJS 原生支持 GCC/Clang/MSVC（MSVC 适配见 third_party/quickjs
+# 的 _MSC_VER 段：cutils.h 的 __forceinline/位扫描 intrinsic、quickjs.c 的
+# gettimeofday 与 CONFIG_ATOMICS 禁用）。libbf.c 的 __int128 仅出现在
+# LIMB_BITS==64 分支，MSVC 无 __SIZEOF_INT128__ 自动回退 32-bit limb，代码
+# 被编译剔除。quickjs.c 无条件引用约 37 个 bf_* 符号，必须定义
+# CONFIG_BIGNUM 让 libbf.c 编入 decimal 段（缺失=链接失败）。
+# quickjs-libc 拖 OS 设施且 MSVC/WASM 不可用：维持排除。
+# ============================================================
+set(QUICKJS_ROOT "${PROJECT_SOURCE_DIR}/third_party/quickjs")
+set(QUICKJS_SOURCES
+    "${QUICKJS_ROOT}/quickjs.c"
+    "${QUICKJS_ROOT}/libregexp.c"
+    "${QUICKJS_ROOT}/libunicode.c"
+    "${QUICKJS_ROOT}/cutils.c"
+    "${QUICKJS_ROOT}/libbf.c"
+)
+if(NOT EMSCRIPTEN AND NOT MSVC)
+    list(APPEND QUICKJS_SOURCES "${QUICKJS_ROOT}/quickjs-libc.c")
+endif()
+target_sources(task_graph PRIVATE ${QUICKJS_SOURCES})
+set_source_files_properties(${QUICKJS_SOURCES} PROPERTIES
+    COMPILE_DEFINITIONS "CONFIG_VERSION=\"2024-01-13\";_GNU_SOURCE;CONFIG_BIGNUM")
+if(APPLE)
+    set_property(SOURCE "${QUICKJS_ROOT}/quickjs.c" APPEND PROPERTY
+        COMPILE_DEFINITIONS DUMP_LEAKS)
+endif()
+if(UNIX)
+    target_link_libraries(task_graph PRIVATE m dl)
+endif()
+# JsEngine 公共 API 以 JSContext*/JSValue 为参数/返回值 -> quickjs 头必须
+# PUBLIC（SDK 安装规则同步拷贝，见文件尾 install 块）
+target_include_directories(task_graph PUBLIC
+    $<BUILD_INTERFACE:${QUICKJS_ROOT}>
+    $<INSTALL_INTERFACE:include>)
+
+# JS 的 OpenCV 绑定（MatWrapper + cv.*）：随核心库 OpenCV 门控
+if(TASK_GRAPH_ENABLE_OPENCV)
+    target_sources(task_graph PRIVATE
+        src/js/js_mat_wrapper.cpp
+        src/js/js_cv_bindings.cpp
+    )
+endif()
+# js_bindings.cpp 使用 M_PI；MSVC 的 <cmath> 把 M_PI 关在 _USE_MATH_DEFINES 后
+if(MSVC)
+    set_source_files_properties(src/js/js_bindings.cpp PROPERTIES
+        COMPILE_DEFINITIONS _USE_MATH_DEFINES)
 endif()
 
 # Add GPU backend sources
@@ -616,6 +674,9 @@ add_tg_test(test_type_registry)
 add_tg_test(test_logger)
 add_tg_test(test_model_finder)
 
+# JS 引擎契约（核心库公共 API，无外部依赖）
+add_tg_test(test_js_engine)
+
 # .tgp 工程包（pack/open/zip-slip 防护）单元测试。测试自身用 miniz writer
 # 构造恶意包（等长字节替换绕过 writer 的写侧防护）与超限包，需要 miniz
 # 头与源码（测试进程内自有副本；核心库的 miniz 符号是 hidden 的）。
@@ -729,6 +790,22 @@ if(TG_BUILD_MP_VISION_TESTS AND TARGET image_reader)
     )
 endif()
 
+# js_script 图驱动测试（js_script 已编入核心库；图引用 opencv_image_read，
+# 需 image_reader 子模块目标 + OpenCV 的 MatWrapper/cv 绑定）。
+if(TASK_GRAPH_ENABLE_OPENCV AND TARGET image_reader)
+    add_executable(test_js_script tests/test_js_script.cpp)
+    target_include_directories(test_js_script PRIVATE
+        "${CMAKE_SOURCE_DIR}/include")
+    target_link_libraries(test_js_script PRIVATE
+        task_graph image_reader GTest::gtest_main)
+    target_compile_definitions(test_js_script PRIVATE
+        TG_TEST_JS_DIR="${CMAKE_SOURCE_DIR}/tests")
+    gtest_discover_tests(test_js_script
+        DISCOVERY_MODE PRE_TEST
+        TEST_PREFIX "test_js_script."
+    )
+endif()
+
 # ============================================================
 # Android 无头 graph E2E runner（tests/android/，仅 Android 构建；
 # 目标 EXCLUDE_FROM_ALL，由 scripts/build_android.py --e2e 显式构建——
@@ -776,6 +853,13 @@ install(DIRECTORY include/
 install(DIRECTORY api/include/
     DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
     FILES_MATCHING PATTERN "*.hpp" PATTERN "*.h"
+)
+
+# quickjs 头随 SDK 安装：include/task_graph/js/js_engine.hpp 的 API 面暴露
+# JSContext*/JSValue，外部消费者（子模块独立编译）需要 <quickjs.h> 可解析
+install(DIRECTORY third_party/quickjs/
+    DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+    FILES_MATCHING PATTERN "*.h"
 )
 
 # task_graphConfig.cmake：反射安装目标 + 自带 use_task_graph_sdk() 函数

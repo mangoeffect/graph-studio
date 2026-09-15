@@ -154,7 +154,7 @@ def main() -> int:
                     help="files 场景纳入的子模块图数量上限（默认 0=全部，"
                          "read_image/unicode 优先）")
     ap.add_argument("--graphs", default="",
-                    help="files 场景按路径子串过滤子模块图（如 opencv、js_task）")
+                    help="files 场景按路径子串过滤子模块图（如 opencv、render）")
     args = ap.parse_args()
 
     root = repo_root()

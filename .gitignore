@@ -19,12 +19,13 @@ submodules/*
 app/graph_studio/build/
 app/graph_studio/build_wasm/profiler_trace.json
 app/graph_studio/third_party/
-# 根 third_party：miniz 是提交入库的 vendored 源码（.tgp 工程包 zip 读写，
-# 编入 libtask_graph），其余未来 fetch 产物不入库。必须用 /* 通配而非
-# "third_party/"——整目录排除后 git 不再下钻，"!third_party/miniz/" 永不
-# 生效（app 侧旧写法即踩此坑）。
+# 根 third_party：miniz / quickjs 是提交入库的 vendored 源码（miniz 编入
+# .tgp 工程包 zip 读写；quickjs 编入核心库 JS 引擎，见 src/js/），其余未来
+# fetch 产物不入库。必须用 /* 通配而非 "third_party/"——整目录排除后 git
+# 不再下钻，"!third_party/miniz/" 永不生效（app 侧旧写法即踩此坑）。
 third_party/*
 !third_party/miniz/
+!third_party/quickjs/
 
 # Python (cross-platform scripts under scripts/)
 __pycache__/

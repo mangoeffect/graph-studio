@@ -1,0 +1,11 @@
+{
+  "version": "2.0",
+  "tasks": [
+    {
+      "id": "arith",
+      "type": "js_script",
+      "params": { "script_path": "scripts/engine_arith.js", "a": 10, "b": 30 }
+    }
+  ],
+  "edges": []
+}

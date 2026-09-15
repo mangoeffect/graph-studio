@@ -43,12 +43,12 @@ SELFCHECK_RE = re.compile(r"\[gs\] selfcheck:\s*abi=(\S+)\s+tasks=(\d+)")
 TASK_RE = re.compile(r"\[gs\] task:\s+(\S+)")
 
 # subnode.json 里参与 Android e2e 的模块（= tests/android/CMakeLists.txt 的
-# TG_E2E_SUBMODULES；build_android.py 的 SUBMODULE_TARGETS 是同一集合去掉
-# js_task——js_task 只在 runner 里链入，不进 dist SDK 合并包）。
+# TG_E2E_SUBMODULES；build_android.py 的 SUBMODULE_TARGETS 是同一集合）。
+# js_script 已编入核心库（src/js/，随 libtask_graph 注册），不再是子模块；
+# 其图夹具迁至主仓库 tests/graphs/js（桌面 ctest 覆盖，不进 e2e 发现树）。
 ANDROID_MODULES = [
     "image_reader", "image_filtering", "image_writer",
     "image_geometry", "image_color", "image_color_grading",
-    "js_task",
 ]
 
 # Android 侧不可执行的子模块（按 gc.discover_graphs 的 module 叶子名记 skip；

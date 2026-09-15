@@ -144,15 +144,6 @@
         "render_dilate_dir",
         "render_erode_dir"
       ]
-    },
-    {
-      "name": "js_task",
-      "url": "./submodules/scripting/js_task",
-      "ref": "main",
-      "type": "local",
-      "tasks": [
-        "js_script"
-      ]
     }
   ]
 }

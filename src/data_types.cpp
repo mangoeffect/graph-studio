@@ -44,6 +44,10 @@ TypeRegistry& TypeRegistry::instance() {
     // 同上：强制拉入 src/sdk.cpp 的 io_input/io_output 内置任务注册。
     extern void pull_sdk_tasks();
     pull_sdk_tasks();
+    // 同上：强制拉入 src/js/js_registry.cpp（js_script 任务）。quickjs 在树内
+    // 恒可用，锚点无条件（无需 MNN 式 AVAILABLE 门控）。
+    extern void pull_js_tasks();
+    pull_js_tasks();
     static TypeRegistry r;
     return r;
 }
