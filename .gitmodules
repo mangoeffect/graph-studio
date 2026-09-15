@@ -17,3 +17,8 @@
 	path = submodules/face
 	url = https://github.com/mangoeffect/plugin-face.git
 	branch = main
+
+[submodule "submodules/matting"]
+	path = submodules/matting
+	url = https://github.com/mangoeffect/plugin-matting.git
+	branch = main

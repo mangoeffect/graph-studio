@@ -52,9 +52,10 @@ OPENCV_INSTALL_REL = "build_android/opencv/install"
 SUBMODULE_TARGETS = [
     "image_filtering", "image_reader", "image_writer",
     "image_geometry", "image_color", "image_color_grading",
-    # face_detect：引擎 API 在核心库，android 照常编译（STATIC；引擎产物缺失时
-    # 任务注册但运行时报可读错误——stub 语义由核心库承载）
+    # face_detect / matting：引擎 API 在核心库，android 照常编译（STATIC；引擎
+    # 产物缺失时任务注册但运行时报可读错误——stub 语义由核心库承载）
     "face_detect",
+    "matting",
 ]
 
 
@@ -153,10 +154,11 @@ def build_abi(abi: str, root: Path, cmake: CMake, toolchain_file: Path, api_leve
         return code
 
     # 子模块（OpenCV 系：无 OpenCV 预编译库时整组跳过；Metal 不可用，
-    # gpu_image_processing 不在此列；face_detect 不依赖 OpenCV，恒构建）；
+    # gpu_image_processing 不在此列；face_detect/matting 不依赖 OpenCV，恒构建）；
     # 失败不致命但必须可见
+    NO_OPENCV_OK = ("face_detect", "matting")
     for sub in SUBMODULE_TARGETS:
-        if not opencv_available and sub != "face_detect":
+        if not opencv_available and sub not in NO_OPENCV_OK:
             continue
         code = cmake.build(build_dir, target=sub, jobs=jobs, what=f"构建子模块 {sub}")
         if code != 0:

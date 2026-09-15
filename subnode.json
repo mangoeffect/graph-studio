@@ -20,6 +20,15 @@
       ]
     },
     {
+      "name": "matting",
+      "url": "./submodules/matting/matting",
+      "ref": "main",
+      "type": "local",
+      "tasks": [
+        "matting"
+      ]
+    },
+    {
       "name": "image_filtering",
       "url": "./submodules/opencv/image_processing/image_filtering",
       "ref": "main",
