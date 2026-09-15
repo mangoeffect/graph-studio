@@ -89,17 +89,42 @@ engine->run(image, vision_result, err);
 的缓存冷构建。核心库链接 vision.dll+vision.lib，POST_BUILD 拷 vision.dll 到
 libtask_graph.dll 旁。Release-only + Debug genex。
 
-### 4.3 Linux（待产物）
-docker ubuntu-22.04 gcc-11（= CI 工具链）跑 `build_mediapipe.py`（Bazel linux 配
-置），产出 `libvision.so`（探针已支持 `.so` 形态）。风险：桌面 Linux 可开 GPU
-delegate（官方唯一支持平台），当前仍按 CPU-only 构建，后续可评估。
+### 4.3 Linux（✅ 链路闭环，产物待 CI 缓存）
+`build_mediapipe.py`（Linux 本机原生 bazelisk；macOS 宿主上 `--platform linux` 走
+ubuntu:22.04 Docker，容器内 apt JDK+libopencv-dev、bazelisk 按宿主架构下载、
+`--output_user_root` 指到挂载目录）→ `libvision.so`（探针已支持 `.so` 形态）。
+非 Linux 宿主的 Docker 产物装 `build/mediapipe/install-linux`（不踩桌面 install）。
+CI：tests.yml ubuntu job 已加 `mediapipe-linux-*` 缓存 + 冷构建步骤
+（libopencv-dev + JAVA_HOME_17_X64 + 钉版 bazelisk），mp 用例随 `--download-models`
+真实执行。风险：桌面 Linux 可开 GPU delegate（官方唯一支持平台），当前仍按
+CPU-only 构建，后续可评估。
 
-### 4.4 iOS / Android（stub → 交叉构建）
-- CMake 探针已就位（iOS `build_ios/mediapipe/install`、Android per-ABI
-  `build_android/mediapipe/install/<abi>`，期望 `libmediapipe_vision_c.a` 静态形
-  态；`build_mediapipe.py` 的 `--config=ios` / NDK toolchain 交叉构建为后续工作，
-  产出后合并进 `libtask_graph_full.a` / `dist/android/<abi>/libtask_graph.a`，镜像
-  MNN 的 build_ios.sh / build_android.py 合并逻辑）。
+### 4.4 iOS / Android（✅ 交叉构建已落地）
+- `build_mediapipe.py --platform ios` / `--platform android --android-abi <abi>`：
+  构建 `libvision.dylib`/`libvision.so` cc_binary（目标平台配置）强制物化全部传递
+  依赖，再收集合并为 `libmediapipe_vision_c.a`（iOS libtool / Android NDK
+  llvm-ar MRI）。安装根 `build_ios/mediapipe/install`、
+  `build_android/mediapipe/install/<abi>`，CMake 探针已就位。
+- **iOS 三个实测坑**：
+  1. apple 工具链下 cc_library 产物是 `.lo` 单对象而非 `.a`（直接 build cc_library
+     目标只会物化顶层 .lo，传递依赖不归档）——必须构建 cc_binary 触发链接，
+     然后从 `bazel-out/ios_arm64-opt` 收集全部 `.lo`/`.a`；
+  2. 打包 `ios_opencv`（3.2 静态 framework）是五架构胖子——`lipo -thin arm64`
+     后再并入，否则合并库被撑成 fat；
+  3. 合并后 `strip -S` 去调试段（1.3GB → 87MB）。C API 命中 OpenCV 3.2 的旧签名
+     （`getPerspectiveTransform` 2 参、`points(Point2f[])`），源码补丁按
+     `CV_VERSION_MAJOR` 版本自适应（>=5 / >=4 / 3.x 三态）。
+- **Android**：WORKSPACE 追加官方配方（`android_ndk_repository` + `bind
+  android/crosstool → @androidndk//:toolchain` + `register_toolchains`）——bzlmod
+  下上游 WORKSPACE 的 ndk 仓库声明标了 `@unused` 从未注册，`--config=android_arm64`
+  直接 "Unable to find a CC toolchain"。
+- 合并库不带系统依赖：CMake 静态导入目标补 INTERFACE（Android `-llog -landroid`；
+  iOS Foundation/CoreGraphics/CoreMedia/CoreImage/Accelerate/AssetsLibrary/
+  AVFoundation/QuartzCore/CoreVideo，即 opencv_ios.BUILD 的 linkopts 清单）。
+- 平台脚本已接线（warn-tolerant ensure + 合并）：build_ios.sh（device 并入
+  `libtask_graph_full.a`，sim slice 显式 `-DTASK_GRAPH_ENABLE_MEDIAPIPE=OFF`——
+  库是 device-only）、build_android.py（并入 `dist/android/<abi>/libtask_graph.a`）。
+  CI ios/android job 已加 mediapipe 缓存 + 前置构建步骤。
 - 官方 xcframework/AAR 只能作为**对照基准或模型格式参考**，不能直接当链接输入。
 
 ### 4.5 WASM（判据化降级）

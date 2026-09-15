@@ -76,6 +76,12 @@ def merge_static_libs(build_dir: Path, dist_dir: Path, llvm_ar: Path, opencv_ava
         mnn_lib = root / "build_android" / "mnn" / "install" / abi / "lib" / "libMNN.a"
         if mnn_lib.is_file():
             libs.append(mnn_lib)
+        # MediaPipe C API（build_mediapipe.py --platform android 按 ABI 分目录）——
+        # 官方 AAR 无 Mp* C API，自建静态库是唯一通道；缺失时 stub 降级
+        mp_lib = (root / "build_android" / "mediapipe" / "install" / abi
+                  / "lib" / "libmediapipe_vision_c.a")
+        if mp_lib.is_file():
+            libs.append(mp_lib)
 
     if opencv_available:
         # build_opencv_android.py 产出 OpenCV 官方 Android SDK 布局：
@@ -262,6 +268,21 @@ def main() -> int:
             )
             if code != 0 or not mnn_lib.is_file():
                 console.warn(f"MNN Android ({abi}) 构建失败，task_graph 以 stub 降级（仅影响 MNN 任务）")
+
+    # MediaPipe C API 预编译库（CMake 按 ANDROID_ABI 探测
+    # build_android/mediapipe/install/<abi>/；缺失时 mp_* 任务 stub 降级）。
+    for abi in android_abis:
+        mp_lib = (root / "build_android" / "mediapipe" / "install" / abi
+                  / "lib" / "libmediapipe_vision_c.a")
+        if not mp_lib.is_file():
+            console.step(f"构建 MediaPipe Android 静态库（{abi}，build_mediapipe.py）")
+            code = runner.check(
+                [sys.executable, str(root / "scripts" / "build_mediapipe.py"),
+                 "--platform", "android", "--android-abi", abi, "-j", str(jobs)],
+                cwd=str(root), what=f"构建 MediaPipe ({abi})",
+            )
+            if code != 0 or not mp_lib.is_file():
+                console.warn(f"MediaPipe Android ({abi}) 构建失败，task_graph 以 stub 降级（仅影响 mp_* 任务）")
 
     code = build_abi(args.abi, root, cm, toolchain_file, args.api, jobs, opencv_available, llvm_ar,
                      ndk, e2e=args.e2e)

@@ -78,6 +78,38 @@ jobs:
           path: build/wgpu/install
           key: wgpu-native-${{ runner.os }}-${{ hashFiles('scripts/fetch_wgpu.py') }}
 
+      # MediaPipe C API（Linux：ubuntu 本机 bazelisk 构建 libvision.so；Windows 走
+      # setup-build-deps 内的 mediapipe-win 缓存/构建；macOS 由 run_all_test 按需）。
+      # 冷构建约 1.5~3h（全量 bazel + 外部仓库下载），缓存命中时跳过。
+      - name: Restore MediaPipe cache (Linux)
+        if: runner.os == 'Linux'
+        id: mp-cache
+        uses: actions/cache@v4
+        with:
+          path: build/mediapipe/install
+          key: mediapipe-linux-${{ hashFiles('scripts/build_mediapipe.py') }}
+
+      - name: Build MediaPipe C API (Linux)
+        if: runner.os == 'Linux' && steps.mp-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          # runner 未预装 bazelisk 时显式下载（钉 v1.19.0，与 Docker 路径一致）
+          command -v bazelisk >/dev/null 2>&1 || {
+            sudo curl -fsSL \
+              https://github.com/bazelbuild/bazelisk/releases/download/v1.19.0/bazelisk-linux-amd64 \
+              -o /usr/local/bin/bazelisk
+            sudo chmod +x /usr/local/bin/bazelisk
+          }
+          # linux_opencv 仓库指向 /usr 的系统 OpenCV（third_party/opencv_linux.BUILD）
+          # gcc-13（PPA）：v1.0.0 api3 的 class NTTP + deleted copy-ctor 在
+          # gcc-11/12 与 clang-14(+gcc11/12 头) 下都编不过
+          sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libopencv-dev g++-13
+          export JAVA_HOME="${JAVA_HOME_17_X64:-${JAVA_HOME}}"
+          export CC=/usr/bin/gcc-13 CXX=/usr/bin/g++-13
+          python3 scripts/build_mediapipe.py -j 3
+
       # Windows 的 Ninja 需要 cl.exe 在 PATH（vcvars），只影响后续 MNN 构建，
       # 主构建走 VS 生成器不受影响。
       - name: Setup MSVC env (Windows, for MNN Ninja build)
@@ -87,14 +119,15 @@ jobs:
       - name: Run all tests (framework + submodules + UI)
         shell: bash
         run: |
-          # Windows：下载 MediaPipe 模型（~35MB，GCS）让 test_mediapipe_* 真实执行；
+          # Windows/Linux：下载 MediaPipe 模型（~35MB，GCS）让 test_mediapipe_* 真实执行；
           # 下载必须先于 cmake configure（configure 期 file(COPY) 把模型进构建树）。
-          # macOS/Linux 无预构建 dylib/.a，mediapipe 仍为 stub，下载无意义。
+          # macOS 无本机预构建链路（dylib 由本地 build/mediapipe/install 提供，
+          # CI 上 mediapipe 为 stub），下载无意义。
           # --mnn：构建/复用 MNN 引擎（macOS/Linux Debug 测试真实执行；
           # Windows Debug 与 MNN Release 运行库不匹配（/MDd vs /MD，同 shaderc），
           # run_all_test 内部构建失败仅告警、测试侧按配置门控，不阻塞。
           EXTRA=""
-          if [ "$RUNNER_OS" = "Windows" ]; then EXTRA="--download-models"; fi
+          if [ "$RUNNER_OS" != "macOS" ]; then EXTRA="--download-models"; fi
           python scripts/run_all_test.py -j 3 -v --config Debug $EXTRA --mnn --wgpu
 
       # 原生后端回归（非阻塞附加项）：gpu/render 测试默认走 wgpu 统一后端
@@ -173,6 +206,18 @@ jobs:
       - name: Build MNN iOS (on cache miss)
         shell: bash
         run: python3 scripts/build_mnn.py --platform ios -j 3
+
+      # MediaPipe C API iOS 静态库（build_ios.sh 内的 ensure 步骤为 warn-tolerant，
+      # 这里显式前置 + 失败即失败，保证 CI 上 mp_* 任务真实编入而非 stub）
+      - name: Restore MediaPipe iOS cache
+        uses: actions/cache@v4
+        with:
+          path: build_ios/mediapipe/install
+          key: mediapipe-ios-${{ hashFiles('scripts/build_mediapipe.py') }}
+
+      - name: Build MediaPipe iOS (on cache miss)
+        shell: bash
+        run: python3 scripts/build_mediapipe.py --platform ios -j 3
 
       - name: Build iOS SDK (device + simulator xcframework)
         shell: bash
@@ -253,6 +298,30 @@ jobs:
       - name: Build MNN Android (on cache miss)
         shell: bash
         run: python3 scripts/build_mnn.py --platform android --abis arm64-v8a -j 4
+
+      # MediaPipe C API Android 静态库（build_android.py 内的 ensure 步骤为
+      # warn-tolerant，这里显式前置 + 失败即失败，保证 CI 上 mp_* 真实编入）
+      - name: Restore MediaPipe Android cache
+        uses: actions/cache@v4
+        with:
+          path: build_android/mediapipe/install
+          key: mediapipe-android-arm64-v8a-${{ hashFiles('scripts/build_mediapipe.py') }}
+
+      - name: Build MediaPipe Android (on cache miss)
+        shell: bash
+        run: |
+          command -v bazelisk >/dev/null 2>&1 || {
+            sudo curl -fsSL \
+              https://github.com/bazelbuild/bazelisk/releases/download/v1.19.0/bazelisk-linux-amd64 \
+              -o /usr/local/bin/bazelisk
+            sudo chmod +x /usr/local/bin/bazelisk
+          }
+          # gcc-13（PPA）：同桌面 Linux 步骤（api3 的 class NTTP 要求）
+          sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
+          sudo apt-get update -qq && sudo apt-get install -y -qq libopencv-dev g++-13
+          export JAVA_HOME="${JAVA_HOME_17_X64:-${JAVA_HOME}}"
+          export CC=/usr/bin/gcc-13 CXX=/usr/bin/g++-13
+          python3 scripts/build_mediapipe.py --platform android --android-abi arm64-v8a -j 4
 
       - name: Build Android SDK (arm64-v8a)
         shell: bash

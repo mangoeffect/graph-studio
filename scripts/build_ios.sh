@@ -139,6 +139,23 @@ if [[ ! -f "${MNN_LIB}" ]]; then
         || echo "${C_RED}==> MNN iOS 构建失败，task_graph 以 stub 降级（仅影响 MNN 任务）${C_RESET}" >&2
 fi
 
+# MediaPipe C API 预编译库（build_mediapipe.py --platform ios 产 arm64 device-only
+# 静态库；缺失时 mp_* 任务照常注册，execute 报错降级）。
+MP_LIB="${ROOT_DIR}/build_ios/mediapipe/install/lib/libmediapipe_vision_c.a"
+if [[ ! -f "${MP_LIB}" ]]; then
+    echo "${C_BOLD}==> 构建 MediaPipe iOS 静态库（build_mediapipe.py --platform ios）${C_RESET}"
+    python3 "${SCRIPT_DIR}/build_mediapipe.py" --platform ios -j "${JOBS}" \
+        || echo "${C_RED}==> MediaPipe iOS 构建失败，task_graph 以 stub 降级（仅影响 mp_* 任务）${C_RESET}" >&2
+fi
+# device-only 静态库：sim slice 必须显式关闭（否则模拟器产物引用无法解析的
+# Mp* 符号，同 MNN 的 sim 处理）。
+MP_SIM_FLAG="-DTASK_GRAPH_ENABLE_MEDIAPIPE=OFF"
+if [[ ! -f "${MP_LIB}" ]]; then
+    MP_SIM_FLAG=""
+elif [[ "${DEVICE_ONLY}" -eq 0 ]]; then
+    echo "${C_BOLD}==> libmediapipe_vision_c.a 为 device-only，模拟器产物禁用 MediaPipe${C_RESET}"
+fi
+
 # libMNN 平台探测：build_mnn.py --platform ios 目前只产出 device slice。
 # 只有模拟器版 libMNN 才允许并入 sim slice；否则 sim slice 必须 -DTASK_GRAPH_ENABLE_MNN=OFF，
 # 否则模拟器产物会引用无法解析的 MNN 符号（且 device 平台对象混入会让
@@ -182,6 +199,7 @@ build_slice() {
     local mnn_flag="${6:-}"
     local opencv_flag="${7:-}"
     local opencv_ok="${8:-0}"
+    local mp_flag="${9:-}"
 
     echo "${C_BOLD}==> 构建 iOS ${slice_name} (${arch}, ${platform}, sysroot=${sysroot})${C_RESET}"
 
@@ -197,6 +215,7 @@ build_slice() {
         ${METAL_FLAG}
         ${opencv_flag}
         ${mnn_flag}
+        ${mp_flag}
     )
 
     cmake "${cmake_args[@]}"
@@ -226,7 +245,7 @@ if [[ "${DEVICE_ONLY}" -eq 0 ]]; then
         SIM_MNN_FLAG="-DTASK_GRAPH_ENABLE_MNN=OFF"
         echo "${C_BOLD}==> libMNN.a 为 device-only（无 IOSSIMULATOR slice），模拟器产物禁用 MNN${C_RESET}"
     fi
-    build_slice "simulator" "${SIM_BUILD}" "${SIM_ARCH}" "Simulator" "iphonesimulator" "${SIM_MNN_FLAG}" "${OPENCV_SIM_FLAG}" "${OPENCV_SIM_OK}"
+    build_slice "simulator" "${SIM_BUILD}" "${SIM_ARCH}" "Simulator" "iphonesimulator" "${SIM_MNN_FLAG}" "${OPENCV_SIM_FLAG}" "${OPENCV_SIM_OK}" "${MP_SIM_FLAG}"
 fi
 
 # ============================================================
@@ -236,6 +255,7 @@ merge_static_libs() {
     local build_dir="$1"
     local include_mnn="$2"
     local opencv_install="${3:-}"
+    local include_mp="${4:-0}"
     local output="${build_dir}/libtask_graph_full.a"
     local libs=("${build_dir}/libtask_graph.a")
 
@@ -258,6 +278,12 @@ merge_static_libs() {
         libs+=("${ROOT_DIR}/build_ios/mnn/install/lib/libMNN.a")
     fi
 
+    # MediaPipe C API 静态库——device-only（build_mediapipe.py --platform ios），
+    # 只并入 device slice；sim slice 已在 CMake 侧禁用 MediaPipe
+    if [[ "${include_mp}" -eq 1 && -f "${ROOT_DIR}/build_ios/mediapipe/install/lib/libmediapipe_vision_c.a" ]]; then
+        libs+=("${ROOT_DIR}/build_ios/mediapipe/install/lib/libmediapipe_vision_c.a")
+    fi
+
     echo "${C_BOLD}==> 合并静态库 -> ${output##*/} (${#libs[@]} 个库)${C_RESET}"
     libtool -static -o "${output}" "${libs[@]}" 2>/dev/null
 }
@@ -267,9 +293,9 @@ DEV_OC_DIR=""
 SIM_OC_DIR=""
 [[ "${OPENCV_SIM_OK}" -eq 1 ]] && SIM_OC_DIR="${OPENCV_SIM_INSTALL}"
 
-merge_static_libs "${DEVICE_BUILD}" 1 "${DEV_OC_DIR}"
+merge_static_libs "${DEVICE_BUILD}" 1 "${DEV_OC_DIR}" 1
 if [[ "${DEVICE_ONLY}" -eq 0 ]]; then
-    merge_static_libs "${SIM_BUILD}" "${MNN_SIM_OK}" "${SIM_OC_DIR}"
+    merge_static_libs "${SIM_BUILD}" "${MNN_SIM_OK}" "${SIM_OC_DIR}" 0
 fi
 
 # ============================================================

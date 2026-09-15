@@ -222,11 +222,28 @@ if(TASK_GRAPH_ENABLE_MEDIAPIPE)
                 IMPORTED_LOCATION "${MP_INSTALL}/lib/libvision.dylib"
                 INTERFACE_INCLUDE_DIRECTORIES "${MP_INSTALL}/include")
             set(TASK_GRAPH_MEDIAPIPE_AVAILABLE ON)
+            set(MEDIAPIPE_MP_DYLIB ON)
         elseif(EXISTS "${MP_INSTALL}/lib/libmediapipe_vision_c.a")
             add_library(mediapipe_vision_c STATIC IMPORTED)
             set_target_properties(mediapipe_vision_c PROPERTIES
                 IMPORTED_LOCATION "${MP_INSTALL}/lib/libmediapipe_vision_c.a"
                 INTERFACE_INCLUDE_DIRECTORIES "${MP_INSTALL}/include")
+            # 合并静态库不含系统依赖：absl/XNNPACK 在 Android 需要 log/android，
+            # iOS 侧 MediaPipe 计算器引用 Foundation/CoreGraphics 等（GPU 已禁用）
+            if(ANDROID)
+                set_property(TARGET mediapipe_vision_c APPEND PROPERTY
+                    INTERFACE_LINK_LIBRARIES log android)
+            elseif(TASK_GRAPH_IOS)
+                # ios_opencv 静态 framework 的 linkopts 清单（third_party/opencv_ios.BUILD）
+                # + MediaPipe 自身依赖的 Foundation
+                set_property(TARGET mediapipe_vision_c APPEND PROPERTY
+                    INTERFACE_LINK_LIBRARIES
+                    "-framework Foundation" "-framework CoreFoundation"
+                    "-framework CoreGraphics" "-framework CoreVideo"
+                    "-framework CoreMedia" "-framework CoreImage"
+                    "-framework Accelerate" "-framework AssetsLibrary"
+                    "-framework AVFoundation" "-framework QuartzCore")
+            endif()
             set(TASK_GRAPH_MEDIAPIPE_AVAILABLE ON)
         elseif(EXISTS "${MP_INSTALL}/lib/libvision.so")
             add_library(mediapipe_vision_c SHARED IMPORTED)
@@ -433,7 +450,7 @@ if(TASK_GRAPH_ENABLE_MEDIAPIPE)
                 TASK_GRAPH_MEDIAPIPE_AVAILABLE
                 TASK_GRAPH_MEDIAPIPE_CPU_ONLY)
         endif()
-        if(APPLE)
+        if(APPLE AND MEDIAPIPE_MP_DYLIB)
             # libvision.dylib 是 bare install name（非 @rpath），dyld 对裸名不查
             # LC_RPATH（只解析 @rpath/ 前缀依赖）。两步组合（链接器不支持在
             # -dynamiclib 上用 -change 改写依赖记录，只能 POST_BUILD 用
@@ -444,6 +461,7 @@ if(TASK_GRAPH_ENABLE_MEDIAPIPE)
             #      解析 —— 测试 exe（build/）与子模块插件（build/submodules/*，
             #      dlopen 加载 libtask_graph）都能命中，旧子模块时代的
             #      per-test symlink hack 随之消亡。
+            # 仅 macOS dylib 形态（MEDIAPIPE_MP_DYLIB）：iOS 静态库无 POST_BUILD。
             set_property(TARGET task_graph APPEND PROPERTY BUILD_RPATH "@loader_path")
             add_custom_command(TARGET task_graph POST_BUILD
                 COMMAND install_name_tool
