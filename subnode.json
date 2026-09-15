@@ -11,6 +11,15 @@
       ]
     },
     {
+      "name": "face_detect",
+      "url": "./submodules/face/face_detect",
+      "ref": "main",
+      "type": "local",
+      "tasks": [
+        "face_detect"
+      ]
+    },
+    {
       "name": "image_filtering",
       "url": "./submodules/opencv/image_processing/image_filtering",
       "ref": "main",

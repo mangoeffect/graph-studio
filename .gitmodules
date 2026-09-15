@@ -13,3 +13,7 @@
 	path = submodules/render
 	url = https://github.com/mangoeffect/plugin-render.git
 	branch = main
+[submodule "submodules/face"]
+	path = submodules/face
+	url = https://github.com/mangoeffect/plugin-face.git
+	branch = main

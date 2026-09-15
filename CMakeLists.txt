@@ -792,7 +792,10 @@ endif()
 
 # js_script 图驱动测试（js_script 已编入核心库；图引用 opencv_image_read，
 # 需 image_reader 子模块目标 + OpenCV 的 MatWrapper/cv 绑定）。
-if(TASK_GRAPH_ENABLE_OPENCV AND TARGET image_reader)
+# 门控对齐 mp 测试块（移动端/WASM/关测试时不注册——GTest 未拉取，
+# gtest_discover_tests 不可用；iOS+OpenCV 交叉构建曾在此断言配置失败）。
+if(NOT TASK_GRAPH_MOBILE AND NOT EMSCRIPTEN AND TASK_GRAPH_BUILD_TESTS
+        AND TASK_GRAPH_ENABLE_OPENCV AND TARGET image_reader)
     add_executable(test_js_script tests/test_js_script.cpp)
     target_include_directories(test_js_script PRIVATE
         "${CMAKE_SOURCE_DIR}/include")

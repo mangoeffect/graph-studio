@@ -227,6 +227,9 @@ build_slice() {
         for sub in ${OPENCV_SUBMODULES}; do submodules+=("${sub}"); done
     fi
     [[ "${NO_METAL}" -eq 0 ]] && submodules+=(gpu_image_processing)
+    # face_detect：引擎 API 在核心库，mobile 照常编译（STATIC；引擎产物缺失时
+    # 任务注册但运行时报可读错误——stub 语义由核心库承载）
+    submodules+=(face_detect)
 
     for sub in "${submodules[@]}"; do
         cmake --build "${build_dir}" --target "${sub}" -j "${JOBS}" \
@@ -260,7 +263,7 @@ merge_static_libs() {
     local libs=("${build_dir}/libtask_graph.a")
 
     # 子模块 .a 在 add_subdirectory 的二进制目录 submodules/<name>/ 下（顶层没有）
-    for sub in ${OPENCV_SUBMODULES} gpu_image_processing; do
+    for sub in ${OPENCV_SUBMODULES} gpu_image_processing face_detect; do
         local lib="${build_dir}/submodules/${sub}/lib${sub}.a"
         [[ -f "${lib}" ]] || lib="${build_dir}/lib${sub}.a"
         [[ -f "${lib}" ]] && libs+=("${lib}")

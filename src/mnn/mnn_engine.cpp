@@ -172,8 +172,13 @@ bool MnnEngine::run(const uint8_t* data, int width, int height,
     const int input_h = impl.input_tensor->height();
     const int input_w = impl.input_tensor->width();
     MNN::CV::Matrix matrix;
-    matrix.setScale(static_cast<float>(input_w) / static_cast<float>(width),
-                    static_cast<float>(input_h) / static_cast<float>(height));
+    // 方向：源坐标 = 矩阵 × 目标坐标（MNN 内部对矩阵求逆后做 dest→src 采样），
+    // 缩放比必须取 src/dst = width/input_w。此前误用 input_w/width（dst/src），
+    // 非等比缩放下采样错位（UltraFace 人脸检测上表现为置信度塌缩、框贴边；
+    // 2026-09 face 子模块接入时实测定位：identity 矩阵 + 预缩放输入正常，
+    // 倒置 scale 后与 identity 结果一致）。
+    matrix.setScale(static_cast<float>(width) / static_cast<float>(input_w),
+                    static_cast<float>(height) / static_cast<float>(input_h));
     process->setMatrix(matrix);
 
     // host 输入张量与 session 输入同 shape/同 layout（CAFFE_C4 等），
