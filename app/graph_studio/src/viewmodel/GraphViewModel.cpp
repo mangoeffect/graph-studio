@@ -1,4 +1,4 @@
-﻿#include "viewmodel/GraphViewModel.h"
+#include "viewmodel/GraphViewModel.h"
 
 #include <QFile>
 #include <QFileInfo>
@@ -657,6 +657,9 @@ QString GraphViewModel::classifyTask(const QString& type)
     if (type.startsWith("gpu_"))   return QStringLiteral("GPU");
     if (type.startsWith("mp_"))    return QStringLiteral("MediaPipe");
     if (type.startsWith("mnn_"))   return QStringLiteral("MNN");
+    // 视觉 AI 子模块（face/matting 独立子库任务；后续同类任务在此追加）
+    if (type == QStringLiteral("face_detect") || type == QStringLiteral("matting"))
+        return QStringLiteral("Vision");
     if (type == QStringLiteral("js_script")) return QStringLiteral("Scripting");
 
     // 宽松启发式兜底

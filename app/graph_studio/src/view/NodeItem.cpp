@@ -1,4 +1,4 @@
-﻿#include "view/NodeItem.h"
+#include "view/NodeItem.h"
 #include "view/EdgeItem.h"
 #include "viewmodel/GraphViewModel.h"
 
@@ -232,6 +232,9 @@ void NodeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, 
     } else if (category == QStringLiteral("MediaPipe")) {
         bodyColor = QColor(60, 40, 60);
         accentColor = QColor(186, 104, 200);
+    } else if (category == QStringLiteral("Vision")) {
+        bodyColor = QColor(38, 52, 48);
+        accentColor = QColor(0, 200, 150);
     } else if (category == QStringLiteral("Scripting")) {
         bodyColor = QColor(60, 55, 40);
         accentColor = QColor(255, 193, 7);

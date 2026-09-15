@@ -1,4 +1,4 @@
-﻿#ifndef GRAPH_VIEW_MODEL_H
+#ifndef GRAPH_VIEW_MODEL_H
 #define GRAPH_VIEW_MODEL_H
 
 #include <QObject>
@@ -83,7 +83,9 @@ public:
     Q_INVOKABLE QStringList availableTaskTypes() const;
     Q_INVOKABLE bool hasTaskType(const QString& type) const;
 
-    // 按 task type 字符串启发式归类（Input/Output/OpenCV 子域/GPU/MediaPipe/…）。
+    // 按 task type 字符串启发式归类
+    // （Input/Output/OpenCV 子域/GPU/MediaPipe/MNN/Vision（face_detect、
+    // matting 等视觉 AI 子模块）/Scripting/…）。
     // 单一来源：MainWindow 侧边栏、GraphScene 右键菜单、NodeItem 着色共用。
     static QString classifyTask(const QString& type);
 
