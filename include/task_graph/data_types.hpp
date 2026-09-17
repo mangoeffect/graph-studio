@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include <vector>
 #include <memory>
@@ -337,6 +337,20 @@ struct ParamSpec {
     std::string file_filter;
 
     bool required{false};
+
+    // ---- UI 显隐/联动提示（可选；不影响序列化与执行语义） ----
+    // hidden：属性面板不渲染该行（值仍参与序列化/执行，如隐藏的模型路径
+    //   留空时任务侧按默认模型名解析）。
+    // visible_when / visible_when_values：仅当名为 visible_when 的 enum 参数
+    //   当前取这些值之一时才渲染该行（visible_when 为空 = 不受限）。用于
+    //   "后端专属参数随 backend 联动显隐"（delegate 只在 MediaPipe 下可见等）。
+    // reset_on_visible_when_change：visible_when 指向的参数值变化时，把本
+    //   参数重置回 default_value（用于隐藏的 model_path 随 backend 切换
+    //   自动还原默认，避免残留旧后端的显式路径）。
+    bool hidden{false};
+    std::string visible_when;
+    std::vector<int> visible_when_values;
+    bool reset_on_visible_when_change{false};
 
     // 类型安全取用 default_value（内部用 any_cast_safe，WASM 安全）
     std::optional<int> default_as_int() const;

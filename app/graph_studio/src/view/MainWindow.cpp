@@ -1036,6 +1036,7 @@ void MainWindow::ClearPropertyPanel()
         }
     }
     paramWidgets_.clear();
+    paramSpecsCache_.clear();
 }
 
 // 按选中节点的 paramSpecs 动态生成参数控件（int→SpinBox、float→DoubleSpinBox、
@@ -1048,17 +1049,22 @@ void MainWindow::RebuildParamWidgets(const QString& nodeId)
         paramsLayout_->removeRow(0);
     }
     paramWidgets_.clear();
-    if (nodeId.isEmpty() || !vm_.hasNode(nodeId)) return;
+    if (nodeId.isEmpty() || !vm_.hasNode(nodeId)) { paramSpecsCache_.clear(); return; }
 
     NodeData data = vm_.nodeData(nodeId);
     QVariantList specs = vm_.paramSpecs(data.type);
     QVariantMap current = vm_.nodeParams(nodeId);
+    paramSpecsCache_ = specs;
 
     for (const QVariant& sv : specs) {
         QVariantMap s = sv.toMap();
         QString name = s.value("name").toString();
         QString type = s.value("type").toString();
         QWidget* w = nullptr;
+
+        // hidden：不渲染该行（值仍随图序列化/执行；spec 留在 cache 里供
+        // 联动 reset 使用——如隐藏的 model_path 随 backend 切换还原默认）
+        if (s.value("hidden").toBool()) continue;
 
         if (type == "int") {
             auto* sb = new QSpinBox();
@@ -1217,6 +1223,60 @@ void MainWindow::RebuildParamWidgets(const QString& nodeId)
             paramWidgets_[name] = w;
         }
     }
+
+    // visible_when 联动初值：按当前 enum 值应用行显隐（不改任何参数值）
+    ApplyParamLinkEffects(QString());
+}
+
+// backend 类 enum 参数变化后的联动效果（ParamSpec 的 visible_when 族字段）：
+//  - 行显隐：visible_when == changedKey 的参数，按新值对 visible_when_values
+//    逐行 setVisible（label + field）；changedKey 为空 = 只做初值显隐。
+//  - 值还原：reset_on_visible_when_change 的参数（典型为隐藏的 model_path）
+//    重置回 default_value，经 ChangeParamCommand 入栈（可 undo）——避免
+//    切换 backend 后残留旧后端的显式模型路径。隐藏参数无控件，只写 model。
+void MainWindow::ApplyParamLinkEffects(const QString& changedKey)
+{
+    if (!paramsLayout_ || paramSpecsCache_.isEmpty()) return;
+    const QString nodeId = vm_.selectedNodeId();
+    if (nodeId.isEmpty() || !vm_.hasNode(nodeId)) return;
+    QVariantMap current = vm_.nodeParams(nodeId);
+
+    for (const QVariant& sv : paramSpecsCache_) {
+        const QVariantMap s = sv.toMap();
+        const QString link = s.value("visibleWhen").toString();
+        if (link.isEmpty()) continue;
+        const QString name = s.value("name").toString();
+
+        // 行显隐（有控件才需要）
+        QWidget* w = paramWidgets_.value(name);
+        if (w) {
+            const int cur = current.value(link, s.value("default")).toInt();
+            // linked 参数自己的 default 兜底（未写入 model 时）
+            QVariantList vals = s.value("visibleWhenValues").toList();
+            bool show = vals.isEmpty();
+            for (const QVariant& v : vals) show = show || v.toInt() == cur;
+            if (QWidget* label = paramsLayout_->labelForField(w)) label->setVisible(show);
+            w->setVisible(show);
+        }
+
+        // 值还原：linked 参数变化时（且确实指定了 reset 标志）
+        if (!changedKey.isEmpty() && link == changedKey
+            && s.value("resetOnLinkChange").toBool()) {
+            const QVariant def = s.value("default");
+            const QVariant cur = current.value(name, def);
+            if (cur != def) {
+                selfParamEdit_ = true;
+                commandStack_.push(
+                    std::make_unique<ChangeParamCommand>(vm_, nodeId, name, def));
+                selfParamEdit_ = false;
+                if (auto* le = qobject_cast<QLineEdit*>(w)) {
+                    const bool was = le->blockSignals(true);
+                    le->setText(def.toString());
+                    le->blockSignals(was);
+                }
+            }
+        }
+    }
 }
 
 // 控件值变化 -> 走 ChangeParamCommand（支持 undo/redo）-> VM.setNodeParam
@@ -1236,6 +1296,9 @@ void MainWindow::OnParamWidgetChanged(const QString& key)
     selfParamEdit_ = true;
     commandStack_.push(std::make_unique<ChangeParamCommand>(vm_, nodeId, key, newValue));
     selfParamEdit_ = false;
+
+    // enum 参数变化后的联动（后端专属参数显隐 + 隐藏 model_path 还原默认）
+    ApplyParamLinkEffects(key);
 }
 
 // 文件路径参数的浏览按钮：桌面拿真实路径，WASM 走异步上传 -> MEMFS 临时文件。

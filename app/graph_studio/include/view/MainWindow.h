@@ -1,4 +1,4 @@
-﻿#ifndef MAIN_WINDOW_H
+#ifndef MAIN_WINDOW_H
 #define MAIN_WINDOW_H
 
 #include <QMainWindow>
@@ -160,6 +160,9 @@ private:
     void ClearPropertyPanel();
     void RebuildParamWidgets(const QString& nodeId);
     void OnParamWidgetChanged(const QString& key);
+    // backend 类 enum 参数变化后的联动：后端专属参数显隐 + reset_on_link
+    // 参数（隐藏的 model_path）还原默认值
+    void ApplyParamLinkEffects(const QString& changedKey);
     void OnBrowseFile(const QString& key, QLineEdit* le, const QString& filter);
 
     // Actions
@@ -210,6 +213,7 @@ private:
     QFormLayout* paramsLayout_ = nullptr;
     QGroupBox* paramsGroup_ = nullptr;
     QHash<QString, QWidget*> paramWidgets_;  // key -> 当前生成的控件
+    QVariantList paramSpecsCache_;  // 当前面板对应的 paramSpecs（联动显隐用）
     // 标记参数变更由当前正在编辑的控件触发（OnParamWidgetChanged 路径），
     // 避免其回响 nodeParamsChanged 时又 RebuildParamWidgets 删除自己（use-after-free）。
     bool selfParamEdit_ = false;

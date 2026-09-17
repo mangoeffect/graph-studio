@@ -61,6 +61,15 @@ QVariantMap paramSpecToVariant(const task_graph::ParamSpec& s) {
     }
     if (!s.widget_hint.empty()) m["widget"] = QString::fromStdString(s.widget_hint);
     if (!s.file_filter.empty()) m["fileFilter"] = QString::fromStdString(s.file_filter);
+    // 显隐/联动提示（属性面板消费；见 ParamSpec 字段注释）
+    if (s.hidden) m["hidden"] = true;
+    if (!s.visible_when.empty()) {
+        m["visibleWhen"] = QString::fromStdString(s.visible_when);
+        QVariantList vals;
+        for (int v : s.visible_when_values) vals.append(v);
+        m["visibleWhenValues"] = vals;
+        if (s.reset_on_visible_when_change) m["resetOnLinkChange"] = true;
+    }
     return m;
 }
 

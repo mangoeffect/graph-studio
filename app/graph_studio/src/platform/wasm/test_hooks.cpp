@@ -134,6 +134,46 @@ EMSCRIPTEN_KEEPALIVE int gs_test_action()
     return 0;
 }
 
+// in: 任务类型名。out: paramSpecs 的 JSON 数组（含 UI 显隐/联动提示字段
+// hidden/visibleWhen/visibleWhenValues/resetOnLinkChange——E2E 断言属性面板
+// 联动约定用，如 face/matting 的 model_path 隐藏 + backend 联动）。
+EMSCRIPTEN_KEEPALIVE int gs_test_param_specs()
+{
+    if (!g_vm) return 0;
+    const QString type = QString::fromUtf8(read_in());
+    const QVariantList specs = g_vm->paramSpecs(type);
+    // 手拼 JSON（ QVariant 序列化无内置 JSON 路径，字段集小且稳定）
+    std::string out = "[";
+    bool first = true;
+    for (const QVariant& v : specs) {
+        const QVariantMap m = v.toMap();
+        if (!first) out += ",";
+        first = false;
+        out += "{\"name\":\"" + m.value("name").toString().toStdString() + "\"";
+        out += ",\"type\":\"" + m.value("type").toString().toStdString() + "\"";
+        if (m.contains("hidden")) out += ",\"hidden\":true";
+        if (m.contains("visibleWhen"))
+            out += ",\"visibleWhen\":\""
+                   + m.value("visibleWhen").toString().toStdString() + "\"";
+        if (m.contains("visibleWhenValues")) {
+            out += ",\"visibleWhenValues\":[";
+            const QVariantList vals = m.value("visibleWhenValues").toList();
+            bool fv = true;
+            for (const QVariant& x : vals) {
+                if (!fv) out += ",";
+                fv = false;
+                out += std::to_string(x.toInt());
+            }
+            out += "]";
+        }
+        if (m.contains("resetOnLinkChange")) out += ",\"resetOnLinkChange\":true";
+        out += "}";
+    }
+    out += "]";
+    write_out(out);
+    return 1;
+}
+
 } // extern "C"
 
 } // namespace graph_studio
@@ -197,6 +237,12 @@ void InstallTestHooks(GraphViewModel& vm, MainWindow& window)
                 action: function(name) {
                     putIn(name);
                     return Module._gs_test_action() === 1;
+                },
+                // paramSpecs（含 hidden/visibleWhen 族字段）的 JSON 数组
+                paramSpecs: function(type) {
+                    putIn(type);
+                    if (Module._gs_test_param_specs() !== 1) return null;
+                    try { return JSON.parse(getOut()); } catch (e) { return null; }
                 },
                 lastError: getOut
             };
