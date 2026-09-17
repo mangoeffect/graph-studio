@@ -370,7 +370,9 @@ endif()
 # 注入不可靠（实测 ctest 子进程丢失前置项），拷 DLL 到测试 exe 旁（加载器第一
 # 搜索站）根治 0xc0000135。桌面 SHARED 构建（WASM 为静态 .a，不适用）；
 # 根构建树尚未产出 DLL 时静默跳过（copy_dll_if_exists.cmake）。
+# wgpu_native.dll：task_graph.dll 的直接依赖（Windows 无 rpath，须逐级就位）。
 if(WIN32 AND NOT EMSCRIPTEN)
+    file(GLOB _tg_wgpu_dll "${TASK_GRAPH_ROOT}/build/wgpu/install/windows-*/lib/wgpu_native.dll")
     foreach(_t test_graph_view_model test_command_stack test_integration test_gui)
         add_custom_command(TARGET ${_t} POST_BUILD
             COMMAND ${CMAKE_COMMAND}
@@ -378,6 +380,13 @@ if(WIN32 AND NOT EMSCRIPTEN)
                 -DDST=$<TARGET_FILE_DIR:${_t}>
                 -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/copy_dll_if_exists.cmake
             COMMENT "Copying task_graph.dll next to ${_t} (if present)")
+        if(_tg_wgpu_dll)
+            add_custom_command(TARGET ${_t} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${_tg_wgpu_dll}"
+                    "$<TARGET_FILE_DIR:${_t}>"
+                COMMENT "Copying wgpu_native.dll next to ${_t}")
+        endif()
     endforeach()
 endif()
 endif()

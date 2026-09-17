@@ -449,6 +449,16 @@ if(TASK_GRAPH_ENABLE_WGPU AND (WGPU_LIBRARY OR EMSCRIPTEN))
             BUILD_RPATH "${WGPU_INSTALL}/lib"
             INSTALL_RPATH "${WGPU_INSTALL}/lib;$ENV{HOME}/.local/lib"
         )
+        if(WIN32)
+            # Windows 无 rpath 等价物：task_graph.dll 导入 wgpu_native.dll，
+            # 拷到同目录（exe/插件链加载时的第一搜索站；CI 测试 exe 在别的
+            # 构建树，0xc0000135 的根因之一。安装包侧 build_msix.ps1 另拷一份）
+            add_custom_command(TARGET task_graph POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${WGPU_INSTALL}/lib/wgpu_native.dll"
+                    "$<TARGET_FILE_DIR:task_graph>"
+                COMMENT "Copying wgpu_native.dll next to libtask_graph")
+        endif()
     endif()
 endif()
 
