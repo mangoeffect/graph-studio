@@ -1,4 +1,4 @@
-﻿#include "view/GraphScene.h"
+#include "view/GraphScene.h"
 #include "view/NodeItem.h"
 #include "view/EdgeItem.h"
 #include "viewmodel/GraphViewModel.h"
@@ -204,9 +204,35 @@ void GraphScene::mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event)
 
 void GraphScene::contextMenuEvent(QGraphicsSceneContextMenuEvent* event)
 {
-    // 右键空白处弹出任务创建菜单；右键节点时不拦截（交由默认行为）
+    // 右键节点弹出删除菜单（走 MainWindow::DeleteSelected，复用撤销/连边清理）；
+    // 右键其他 item（如边）不拦截（交由默认行为）
     auto* itemUnder = itemAt(event->scenePos(), QTransform());
     if (itemUnder) {
+        NodeItem* nodeUnder = nullptr;
+        for (auto* it = itemUnder; it; it = it->parentItem()) {
+            if (it->type() == NodeItem::Type) {
+                nodeUnder = static_cast<NodeItem*>(it);
+                break;
+            }
+        }
+        if (nodeUnder) {
+            // 右键未选中的节点：切换选中到该节点；已选中则保持多选不动
+            if (!nodeUnder->isSelected()) {
+                clearSelection();
+                nodeUnder->setSelected(true);
+            }
+            // wasm 不支持 exec() 嵌套事件循环，统一 popup()（同空白处任务菜单）
+            QMenu* menu = new QMenu();
+            menu->setAttribute(Qt::WA_DeleteOnClose);
+            QAction* deleteAction = menu->addAction("Delete");
+            deleteAction->setShortcut(QKeySequence::Delete);
+            connect(deleteAction, &QAction::triggered, this, [this]() {
+                emit deleteSelectionRequested();
+            });
+            menu->popup(event->screenPos());
+            event->accept();
+            return;
+        }
         QGraphicsScene::contextMenuEvent(event);
         return;
     }

@@ -5,6 +5,8 @@
 #include <QLabel>
 #include <QGraphicsItem>
 #include <QGraphicsSceneMouseEvent>
+#include <QMenu>
+#include <QContextMenuEvent>
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QMimeData>
@@ -165,6 +167,7 @@ private slots:
     void testSelectionViaClick();
     void testNodeMoveViaDrag();
     void testDeleteViaAction();
+    void testNodeContextMenuDelete();
     void testUndoRedo();
     void testZoomActions();
     void testEdgeCreationViaPortDrag();
@@ -369,6 +372,60 @@ void TestGui::testDeleteViaAction()
 
     QCOMPARE(vm_->taskCount(), 0);
     QCOMPARE(countSceneItems(scene_, NodeItem::Type), 0);
+}
+
+// 右键未选中的节点 -> 弹出含 Delete 的上下文菜单 -> 节点被选中；
+// 触发菜单动作 -> deleteSelectionRequested -> DeleteSelected 删除节点。
+// （offscreen 下 popup() 安全；通过顶层 QMenu 找到动作触发，模拟点击）
+void TestGui::testNodeContextMenuDelete()
+{
+    QString idA = vm_->addTask("ctx_a", 0, 0);
+    QString idB = vm_->addTask("ctx_b", 200, 0);
+    QVERIFY(vm_->addEdge(idA, idB));
+    QCOMPARE(countSceneItems(scene_, NodeItem::Type), 2);
+
+    auto* node = scene_->findNodeItem(idB);
+    QVERIFY(node != nullptr);
+    QVERIFY(!node->isSelected());
+
+    // 经视图转发（QContextMenuEvent → QGraphicsView 转成场景事件），
+    // 与真实右键路径一致
+    QPoint vp = view_->mapFromScene(node->sceneBoundingRect().center());
+    QContextMenuEvent ctx(QContextMenuEvent::Mouse, vp, view_->viewport()->mapToGlobal(vp));
+    QApplication::sendEvent(view_->viewport(), &ctx);
+    QTest::qWait(30);
+
+    // 未选中的节点被右键后应成为选中项
+    QVERIFY(node->isSelected());
+
+    // 弹出的菜单（顶层 QMenu）应含 Delete 动作
+    QMenu* menu = nullptr;
+    for (auto* w : QApplication::topLevelWidgets()) {
+        if (auto* m = qobject_cast<QMenu*>(w)) {
+            for (auto* a : m->actions()) {
+                if (a->text().startsWith("Delete")) {
+                    menu = m;
+                    break;
+                }
+            }
+        }
+        if (menu) break;
+    }
+    QVERIFY(menu != nullptr);
+    for (auto* a : menu->actions()) {
+        if (a->text().startsWith("Delete")) {
+            a->trigger();
+            break;
+        }
+    }
+    QTest::qWait(30);
+
+    // 节点及连边一并删除
+    QCOMPARE(vm_->taskCount(), 1);
+    QCOMPARE(countSceneItems(scene_, NodeItem::Type), 1);
+    QCOMPARE(countSceneItems(scene_, EdgeItem::Type), 0);
+    QVERIFY(scene_->findNodeItem(idA) != nullptr);
+    QVERIFY(scene_->findNodeItem(idB) == nullptr);
 }
 
 // 建节点(经拖放) -> Undo 撤销 -> Redo 恢复，画布与 VM 一致

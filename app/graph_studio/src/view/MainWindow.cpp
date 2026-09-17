@@ -1,4 +1,4 @@
-﻿#include "view/MainWindow.h"
+#include "view/MainWindow.h"
 #include "view/GraphScene.h"
 #include "view/GraphView.h"
 #include "view/NodeItem.h"
@@ -357,6 +357,7 @@ void MainWindow::ConnectSignals()
     connect(scene_, &GraphScene::nodeMoved, this, &MainWindow::onNodeMovedScene);
     connect(scene_, &GraphScene::nodeDoubleClicked, this, &MainWindow::onNodeDoubleClicked);
     connect(scene_, &GraphScene::nodeCreateRequested, this, &MainWindow::CreateNodeAt);
+    connect(scene_, &GraphScene::deleteSelectionRequested, this, &MainWindow::DeleteSelected);
     connect(scene_, &QGraphicsScene::selectionChanged, this, &MainWindow::onSceneSelectionChanged);
 
     // GraphView → MainWindow

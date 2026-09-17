@@ -1,4 +1,4 @@
-﻿#ifndef GRAPH_SCENE_H
+#ifndef GRAPH_SCENE_H
 #define GRAPH_SCENE_H
 
 #include <QGraphicsScene>
@@ -27,6 +27,7 @@ signals:
     void nodeMoved(const QString& id, qreal x, qreal y);
     void nodeDoubleClicked(const QString& id);
     void nodeCreateRequested(const QString& taskType, const QPointF& pos);
+    void deleteSelectionRequested();
 
 protected:
     void drawBackground(QPainter* painter, const QRectF& rect) override;
