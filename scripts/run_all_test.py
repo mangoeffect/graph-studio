@@ -69,11 +69,20 @@ def submodule_regex() -> str:
 
 
 def setup_runtime_lib_paths(lib_build: Path, config: str, opencv_dir, qt_prefix) -> None:
-    """把 build/<Config>、OpenCV bin、Qt bin 前置到本平台的动态库搜索路径环境变量。"""
+    """把 build/<Config>、MediaPipe bin、OpenCV bin、Qt bin 前置到本平台的动态库搜索路径环境变量。
+
+    MediaPipe bin（build/mediapipe/install/bin，含 vision.dll/libvision）：UI 阶段的
+    测试 exe 在 app/graph_studio/build 独立工程里静态链 task_graph.lib，进程直接
+    导入 vision.dll——不在 PATH 时 Windows 上 0xc0000135（STATUS_DLL_NOT_FOUND，
+    CI 首次带真实 MediaPipe 预构建跑 Windows 时实测）。与 run_graph_studio.py 启动
+    app 时的 mp_bin 前置同源。"""
     lib_env = platform.runtime_lib_env()
     if not lib_env:
         return
     platform.prepend_env_path(lib_env, lib_build / config)
+    mp_bin = lib_build / "mediapipe" / "install" / "bin"
+    if mp_bin.is_dir():
+        platform.prepend_env_path(lib_env, mp_bin)
     if opencv_dir:
         platform.prepend_env_path(lib_env, opencv_dir / "bin")
     if qt_prefix:
