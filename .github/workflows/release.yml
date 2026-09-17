@@ -153,6 +153,13 @@ jobs:
           path: build/wgpu/install
           key: wgpu-native-${{ runner.os }}-${{ hashFiles('scripts/fetch_wgpu.py') }}
 
+      # face/matting 模型随包：打包脚本 stage_models 在打包期自跑
+      # download_face/matting_models.py，其中 .task/.onnx → .mnn 转换依赖
+      # mnnconvert（pip mnn 提供；同下方 wasm job 的做法）。
+      - name: Setup mnnconvert (pip mnn)
+        shell: bash
+        run: pip install mnn
+
       # ---- macOS: macdeployqt + dylibbundler + create-dmg -> .dmg ----
       - name: Install macOS packaging tools
         if: runner.os == 'macOS'
@@ -494,7 +501,7 @@ jobs:
             - macOS：`.dmg`（拖入 Applications 安装）
             - Windows：`.msix`（首次安装需先信任发布者证书：双击附件 `GraphStudioDev.cer` → 安装证书 → 存储位置选“本地计算机” → “受信任的根证书颁发机构”或“受信任人”；之后所有版本无需重复。上架 Microsoft Store 后由 Store 重签名，届时无需此步骤）
             - Linux：`.AppImage`（`chmod +x` 后直接运行）
-            - Web：`GraphStudio-*-web.zip`（WASM 版，无需安装）——官网[在线体验](https://mangoeffect.github.io/graph-studio/web/)直接运行；zip 可解压到任意 HTTPS 静态托管自部署
+            - Web：`GraphStudio-*-web.zip`（WASM 版，无需安装）——官网[在线体验](https://studio.mangoeffect.net/web/)直接运行；zip 可解压到任意 HTTPS 静态托管自部署
 
             ### 调试符号
             - `graphstudio-symbols-*.zip`：对应平台调试符号（dSYM / PDB / ELF debug），用于离线符号化崩溃 minidump；配置 Sentry secrets 后线上符号化同样可用。
