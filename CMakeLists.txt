@@ -249,8 +249,13 @@ if(TASK_GRAPH_ENABLE_MEDIAPIPE)
             add_library(mediapipe_vision_c SHARED IMPORTED)
             set_target_properties(mediapipe_vision_c PROPERTIES
                 IMPORTED_LOCATION "${MP_INSTALL}/lib/libvision.so"
-                INTERFACE_INCLUDE_DIRECTORIES "${MP_INSTALL}/include")
+                INTERFACE_INCLUDE_DIRECTORIES "${MP_INSTALL}/include"
+                # 链接期：exe/插件链 libtask_graph.so 时，GNU ld 需定位其
+                # DT_NEEDED 的 libvision.so（-L 不参与 DT_NEEDED 解析，须
+                # -rpath-link 指向实际目录，否则 "needed by ... not found"）
+                INTERFACE_LINK_OPTIONS "-Wl,-rpath-link,${MP_INSTALL}/lib")
             set(TASK_GRAPH_MEDIAPIPE_AVAILABLE ON)
+            set(MEDIAPIPE_MP_SO "${MP_INSTALL}/lib/libvision.so")
         elseif(EXISTS "${MP_INSTALL}/lib/vision.lib" AND EXISTS "${MP_INSTALL}/bin/vision.dll")
             add_library(mediapipe_vision_c SHARED IMPORTED)
             set_target_properties(mediapipe_vision_c PROPERTIES
@@ -538,6 +543,17 @@ if(TASK_GRAPH_ENABLE_MEDIAPIPE)
                     "${MEDIAPIPE_MP_DLL}"
                     "$<TARGET_FILE_DIR:task_graph>/vision.dll"
                 COMMENT "Copying vision.dll next to libtask_graph")
+        endif()
+        if(UNIX AND NOT APPLE AND MEDIAPIPE_MP_SO)
+            # Linux 运行期：DT_NEEDED 只有 SONAME（libvision.so），ld.so 按
+            # exe 的 RPATH → LD_LIBRARY_PATH → 系统目录解析；拷到
+            # libtask_graph.so 旁（CMake 对构建树目标自动加同目录 RPATH，
+            # 测试 exe 与 dlopen 插件链都能命中），与 Windows 分支同思路。
+            add_custom_command(TARGET task_graph POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${MEDIAPIPE_MP_SO}"
+                    "$<TARGET_FILE_DIR:task_graph>/libvision.so"
+                COMMENT "Copying libvision.so next to libtask_graph")
         endif()
     endif()
 endif()

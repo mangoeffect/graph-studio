@@ -364,6 +364,22 @@ if(GRAPH_STUDIO_HAS_SENTRY)
         target_link_libraries(${_t} PRIVATE sentry)
     endforeach()
 endif()
+
+# 测试 exe 与 libtask_graph.dll 分属两棵构建树（app/build vs 根 build/<Config>），
+# exe 静态导入 task_graph.dll：加载器只搜 exe 目录/系统目录/PATH——CI 上 PATH
+# 注入不可靠（实测 ctest 子进程丢失前置项），拷 DLL 到测试 exe 旁（加载器第一
+# 搜索站）根治 0xc0000135。桌面 SHARED 构建（WASM 为静态 .a，不适用）；
+# 根构建树尚未产出 DLL 时静默跳过（copy_dll_if_exists.cmake）。
+if(WIN32 AND NOT EMSCRIPTEN)
+    foreach(_t test_graph_view_model test_command_stack test_integration test_gui)
+        add_custom_command(TARGET ${_t} POST_BUILD
+            COMMAND ${CMAKE_COMMAND}
+                -DSRC=${TASK_GRAPH_ROOT}/build/$<CONFIG>/task_graph.dll
+                -DDST=$<TARGET_FILE_DIR:${_t}>
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/copy_dll_if_exists.cmake
+            COMMENT "Copying task_graph.dll next to ${_t} (if present)")
+    endforeach()
+endif()
 endif()
 
 # ============================================================
