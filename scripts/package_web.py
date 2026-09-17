@@ -20,6 +20,7 @@ zip 因此是自包含的，下载者可在任意 HTTPS 静态托管上原样部
   python scripts/package_web.py --version 0.1.0
   python scripts/package_web.py --src-dir app/graph_studio/build_wasm
   python scripts/package_web.py --out-dir dist/web
+  python scripts/package_web.py --skip-models        # 不随包 face/matting 模型
 
 退出码：0 成功（打印最终 zip 路径）；非 0 表示产物缺失/打包出错。
 """
@@ -33,6 +34,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from gs import console, repo_root  # noqa: E402
+from gs import models as gs_models  # noqa: E402
 
 COI_SNIPPET = '<script src="coi-serviceworker.js"></script>'
 
@@ -92,6 +94,8 @@ def main() -> int:
     ap.add_argument("--version", default="0.1.0", help="版本号（用于 zip 文件名）")
     ap.add_argument("--src-dir", default="", help="wasm 构建产物目录（默认 app/graph_studio/build_wasm）")
     ap.add_argument("--out-dir", default="dist/web", help="输出目录（默认 dist/web）")
+    ap.add_argument("--skip-models", action="store_true",
+                    help="跳过 face/matting 模型随包（参数留空的任务将报模型未找到）")
     args = ap.parse_args()
 
     root = repo_root()
@@ -111,6 +115,16 @@ def main() -> int:
         console.fail(f"找不到 coi-serviceworker.js: {coi}")
         return 1
 
+    # 模型随包（wasm 侧 mediapipe 是 stub，只随包 face/matting 的 .mnn；
+    # 启动期按 manifest.json fetch 进 MEMFS /models，ModelFinder 按名命中）
+    if args.skip_models:
+        console.step("跳过模型随包（--skip-models）")
+        models_dir = None
+    else:
+        models_dir = src / "models"
+        if not gs_models.stage_web_models(models_dir):
+            return 1
+
     out_dir.mkdir(parents=True, exist_ok=True)
     zip_path = out_dir / f"GraphStudio-{args.version}-web.zip"
 
@@ -123,6 +137,11 @@ def main() -> int:
         # index.html = 注入 coi 后的 shell，/web/ 目录直接可访问
         zf.writestr("index.html", html.encode("utf-8"))
         zf.writestr("coi-serviceworker.js", coi.read_bytes())
+        # models/ + manifest.json（启动期 fetch 进 MEMFS /models）
+        if models_dir is not None:
+            for p in sorted(models_dir.iterdir()):
+                if p.is_file():
+                    zf.write(p, f"models/{p.name}")
 
     print(f"    {zip_path} ({human_size(zip_path.stat().st_size)})")
     for name in ["graph_studio.wasm", "graph_studio.js", "graph_studio.html"]:

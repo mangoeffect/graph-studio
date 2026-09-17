@@ -1,4 +1,4 @@
-﻿#include <QApplication>
+#include <QApplication>
 #include <QMainWindow>
 #include <QIcon>
 #include <QSize>
@@ -165,6 +165,43 @@ int main(int argc, char* argv[])
     // 浏览器 E2E 测试桥（window.__gsTest），桌面构建为 no-op
     InstallTestHooks(vm, window);
 
+    // 包内默认模型后台预取：fetch models/manifest.json → 逐个拉取写入
+    // MEMFS /models（ModelBootstrap 在 wasm 下把该目录注册进 ModelFinder，
+    // face/matting 等任务按默认模型名命中）。与 UI 启动并行、不阻塞；
+    // 失败仅告警（--skip-models 包 / dev 未 staging 时任务侧报可读错误）。
+    // 就绪 promise 挂在 window.__gsModelsReady，?open 立即执行流等它落盘。
+    EM_ASM({
+        var waitForModels = setInterval(function() {
+            if (typeof Module === 'undefined' || !Module.FS
+                || !Module.FS.writeFile) return;
+            clearInterval(waitForModels);
+            window.__gsModelsReady = fetch('models/manifest.json')
+                .then(function(r) {
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    return r.json();
+                }).then(function(list) {
+                    try { Module.FS.mkdir('/models'); } catch (e) {}
+                    var jobs = (list || []).map(function(m) {
+                        return fetch('models/' + m.name).then(function(r) {
+                            if (!r.ok) throw new Error('HTTP ' + r.status);
+                            return r.arrayBuffer();
+                        }).then(function(buf) {
+                            Module.FS.writeFile('/models/' + m.name,
+                                                new Uint8Array(buf));
+                        }).catch(function(e) {
+                            console.warn('[gs] 模型拉取失败: ' + m.name
+                                         + ': ' + e.message);
+                        });
+                    });
+                    return Promise.all(jobs);
+                }).catch(function(e) {
+                    console.warn('[gs] models/manifest.json 不可用'
+                                 + '（--skip-models 包或 dev 未 staging）: '
+                                 + e.message);
+                });
+        }, 50);
+    });
+
     // ?open=<url>[&run=1]：WASM 侧对齐桌面 --open/--run 的图输入通道
     //（可分享的图链接 + 浏览器 E2E 免文件选择器自动化）。JS 侧 fetch 图
     // 与相对路径资产进 MEMFS 根（与桌面落位同语义：相对引用按图所在目录
@@ -254,10 +291,15 @@ int main(int argc, char* argv[])
                     });
                 }));
             }).then(function() {
-                Module.FS.writeFile('/tmp/gs_url_open.txt',
-                                    name + '\x1f' + (run ? '1' : '0'));
-                if (Module._gs_wasm_open_graph() !== 1)
-                    console.error('[gs] ?open 打开失败: ' + open);
+                // run=1 立即执行前等默认模型落盘（face/matting 参数留空时
+                // 依赖 MEMFS /models）；拉取本身失败不阻塞打开。
+                var pre = window.__gsModelsReady || Promise.resolve();
+                return pre.then(function() {
+                    Module.FS.writeFile('/tmp/gs_url_open.txt',
+                                        name + '\x1f' + (run ? '1' : '0'));
+                    if (Module._gs_wasm_open_graph() !== 1)
+                        console.error('[gs] ?open 打开失败: ' + open);
+                });
             }).catch(function(e) {
                 console.error('[gs] ?open 拉取失败: ' + open + ': ' + e.message);
             });

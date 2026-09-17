@@ -185,7 +185,8 @@ def stage_appdir(appdir: Path, gs_build: Path, lib_build: Path, resources: Path,
     # GRAPH_STUDIO_MODELS_DIR 指向该目录（ModelBootstrap 优先读 env）
     if skip_models:
         console.step("跳过模型随包（--skip-models）")
-    elif not gs_models.stage_models(appdir / "usr" / "share" / "graph_studio" / "models"):
+    elif not gs_models.stage_models(appdir / "usr" / "share" / "graph_studio" / "models",
+                                    sets=("mediapipe", "face", "matting")):
         return 1
 
     # .desktop 文件（linuxdeployqt 据此定位 Exec/Icon）

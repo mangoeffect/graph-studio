@@ -335,28 +335,43 @@ if (Test-Path $mpVision) {
     Write-Step "Bundled MediaPipe vision.dll -> $Staging\vision.dll"
 }
 
-# MediaPipe 模型文件 -> models\（exe 同级）。任务参数里只填模型名，
-# ModelBootstrap（<exe 目录>/models 布局）从这里查找。缺模型先跑下载脚本
-#（幂等、已存在即跳过）；下载失败则打包失败，-SkipModels 可跳过随包。
+# 模型文件 -> models\（exe 同级）。任务参数里只填模型名，ModelBootstrap
+#（<exe 目录>/models 布局）从这里查找。三集合：mediapipe（.task/.tflite，
+# mp 后端）+ face/matting（.mnn，mnn 后端）。缺模型先跑下载脚本（幂等、
+# 已存在即跳过）；下载失败则打包失败，-SkipModels 可跳过随包。
 if ($SkipModels) {
     Write-Step "Skipping bundled models (-SkipModels)"
 } else {
-    $Code = Invoke-Native "python" @((Join-Path $ScriptDir "download_mediapipe_models.py"))
-    if ($Code -ne 0) {
-        Write-Fail "Model download failed (network?). Retry, or pass -SkipModels."
-        exit $Code
-    }
-    $ModelsSrc = Join-Path $RootDir "submodules\mediapipe\mediapipe_vision\tests\models"
+    $ModelSets = @(
+        @{ Script = "download_mediapipe_models.py"; Dir = "tests\models\mediapipe";
+           Exts = @(".task", ".tflite") },
+        @{ Script = "download_face_models.py";     Dir = "tests\models\face";
+           Exts = @(".mnn") },
+        @{ Script = "download_matting_models.py";  Dir = "tests\models\matting";
+           Exts = @(".mnn") }
+    )
     $ModelsDst = Join-Path $Staging "models"
     New-Item -ItemType Directory -Force -Path $ModelsDst | Out-Null
-    $ModelFiles = @(Get-ChildItem -File $ModelsSrc -ErrorAction SilentlyContinue |
-                    Where-Object { $_.Extension -in @(".task", ".tflite") })
-    if ($ModelFiles.Count -eq 0) {
-        Write-Fail "No model files found under: $ModelsSrc"
-        exit 1
+    $Copied = 0
+    foreach ($Set in $ModelSets) {
+        $Code = Invoke-Native "python" @((Join-Path $ScriptDir $Set.Script))
+        if ($Code -ne 0) {
+            Write-Fail "Model download failed ($($Set.Script), network?). Retry, or pass -SkipModels."
+            exit $Code
+        }
+        $ModelsSrc = Join-Path $RootDir $Set.Dir
+        $ModelFiles = @(Get-ChildItem -File $ModelsSrc -ErrorAction SilentlyContinue |
+                        Where-Object { $_.Extension -in $Set.Exts })
+        if ($ModelFiles.Count -eq 0) {
+            Write-Fail "No model files found under: $ModelsSrc"
+            exit 1
+        }
+        $ModelFiles | ForEach-Object {
+            Copy-Item $_.FullName (Join-Path $ModelsDst $_.Name) -Force
+            $Copied++
+        }
     }
-    $ModelFiles | ForEach-Object { Copy-Item $_.FullName (Join-Path $ModelsDst $_.Name) -Force }
-    Write-Step "Bundled model files -> $ModelsDst ($($ModelFiles.Count) files)"
+    Write-Step "Bundled model files -> $ModelsDst ($Copied files)"
 }
 
 # order matters for windeployqt: run on the exe in the staging tree

@@ -311,10 +311,12 @@ def main() -> int:
     if run_deployqt(qt_prefix, app_bundle) != 0:
         return 1
     copy_plugins(app_bundle, lib_build, args.config)
-    # 模型随包：Contents/Resources/models（ModelBootstrap 的 macOS 查找布局）
+    # 模型随包：Contents/Resources/models（ModelBootstrap 的 macOS 查找布局）。
+    # 三集合：mediapipe（mp 后端）+ face/matting（.mnn，mnn 后端）
     if args.skip_models:
         console.step("跳过模型随包（--skip-models）")
-    elif not gs_models.stage_models(app_bundle / "Contents" / "Resources" / "models"):
+    elif not gs_models.stage_models(app_bundle / "Contents" / "Resources" / "models",
+                                    sets=("mediapipe", "face", "matting")):
         return 1
     # 依赖搜索路径：root build（libtask_graph.dylib）+ 各插件目录（libvision.dylib 等）
     search_dirs = [lib_build] + sdk.plugin_build_dirs(lib_build, args.config)

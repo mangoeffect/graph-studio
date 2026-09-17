@@ -115,6 +115,8 @@ def main() -> int:
     console.init()
     ap = argparse.ArgumentParser(description="构建 WASM 版 GraphStudio 并启动 dev server")
     ap.add_argument("--build-only", action="store_true", help="只构建，不启动 server")
+    ap.add_argument("--skip-models", action="store_true",
+                    help="跳过 face/matting 默认模型 staging（dev server 照常启动）")
     ap.add_argument("--no-build", action="store_true", help="跳过构建，直接启 server")
     ap.add_argument("--port", default="",
                     help="dev server 端口（默认 8000，被占用时自动顺延找空闲端口）")
@@ -258,6 +260,18 @@ def main() -> int:
         br = gs_build / "graph_studio.wasm.br"
         if br.is_file():
             print(f"    brotli: graph_studio.wasm.br ({human_size(br.stat().st_size)})")
+
+    # 默认模型 staging：app 启动期按 manifest.json fetch 进 MEMFS /models
+    #（face/matting 参数留空时开箱即用）。dev 流程 warn-tolerant：模型拉取/
+    # 转换失败只告警，server 照常启动（任务侧报可读错误）。
+    if args.skip_models:
+        console.step("跳过模型 staging（--skip-models）")
+    else:
+        from gs import models as gs_models
+        if not gs_models.stage_web_models(gs_build / "models"):
+            console.warn("模型 staging 失败：face/matting 参数留空将报模型未找到"
+                         "（重跑或先执行 scripts/download_face_models.py 与"
+                         " scripts/download_matting_models.py）")
 
     if args.build_only:
         return 0

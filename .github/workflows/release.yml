@@ -407,9 +407,27 @@ jobs:
             python3 scripts/build_mnn.py --platform wasm -j 4
           fi
 
+      # face/matting 默认模型（face_landmark.mnn/modnet.mnn 转换需要
+      # mnnconvert：pip install mnn）。run_graph_studio_wasm.py 用
+      # --skip-models 跳过 staging（避免重复转换），package_web.py 的
+      # stage_web_models 从这里的缓存产物收集并写入 zip 的 models/。
+      - name: Cache face/matting models
+        uses: actions/cache@v4
+        with:
+          path: |
+            tests/models/face
+            tests/models/matting
+          key: models-face-matting-${{ hashFiles('scripts/download_face_models.py', 'scripts/download_matting_models.py') }}
+      - name: Setup mnnconvert (pip mnn)
+        run: pip install mnn
+      - name: Download face/matting models (on cache miss)
+        run: |
+          python3 scripts/download_face_models.py
+          python3 scripts/download_matting_models.py
+
       - name: Build GraphStudio WASM
         shell: bash
-        run: python3 scripts/run_graph_studio_wasm.py --build-only -j 4
+        run: python3 scripts/run_graph_studio_wasm.py --build-only -j 4 --skip-models
 
       - name: Derive package version
         shell: bash

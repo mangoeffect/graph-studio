@@ -1,4 +1,4 @@
-﻿#include "ModelBootstrap.h"
+#include "ModelBootstrap.h"
 
 #include <task_graph_api.hpp>
 
@@ -23,18 +23,38 @@ const char* const kModelSuffixes[] = {"", ".task", ".tflite", ".mnn"};
 std::vector<fs::path> collect_model_dirs() {
     std::vector<fs::path> dirs;
 
-    // 1) 显式环境变量优先（dev 脚本、Linux AppImage 的 AppRun 都从这里注入）
+    // 1) 显式环境变量优先（dev 脚本、Linux AppImage 的 AppRun 都从这里注入）。
+    //    支持路径列表（':'/';' 分隔，与 os path list 兼容）：dev 模式下各
+    //    模型集分居 tests/models/{mediapipe,face,matting}，无需合并 staging。
     if (const char* env = std::getenv("GRAPH_STUDIO_MODELS_DIR"); env && *env) {
-        dirs.emplace_back(fs::path(env));
+        std::string list(env);
+        size_t start = 0;
+        while (start <= list.size()) {
+            const size_t pos = list.find_first_of(":;", start);
+            const std::string entry =
+                list.substr(start, pos == std::string::npos ? std::string::npos : pos - start);
+            if (!entry.empty()) {
+                dirs.emplace_back(fs::path(entry));
+            }
+            if (pos == std::string::npos) break;
+            start = pos + 1;
+        }
     }
 
 #ifndef __EMSCRIPTEN__
-    // WASM 无真实 exe 目录（MEMFS 上传场景），跳过布局推断
+    // 桌面布局推断：Windows MSIX / dev 构建（exe 与 models/ 同级）、
+    // macOS .app bundle（Contents/Resources/models）。
     const fs::path exe_dir = QCoreApplication::applicationDirPath().toStdString();
     // 2) Windows MSIX / dev 构建布局：exe 与 models/ 同级
     dirs.emplace_back(exe_dir / "models");
     // 3) macOS .app bundle：Contents/Resources/models
     dirs.emplace_back(exe_dir / ".." / "Resources" / "models");
+#else
+    // WASM 无真实 exe 目录，但启动期会把包内 models/ 按清单 fetch 进
+    // MEMFS 固定目录 /models（entry.cpp 的启动 EM_ASM），ModelFinder
+    // 从这里按名解析。目录尚不存在也照常注册（fail-open：fetch 未完成/
+    // --skip-models 包时名称回退图相对路径）。
+    dirs.emplace_back("/models");
 #endif
     return dirs;
 }

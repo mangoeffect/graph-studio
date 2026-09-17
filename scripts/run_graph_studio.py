@@ -188,11 +188,14 @@ def run() -> int:
         os.environ["TASK_GRAPH_PLUGINS_PATH"] = os.pathsep.join(str(p) for p in plugin_dirs)
         console.step(f"TASK_GRAPH_PLUGINS_PATH: {os.environ['TASK_GRAPH_PLUGINS_PATH']}")
 
-    # dev 模式模型目录：下载过测试模型（scripts/download_mediapipe_models.py）
-    # 时，让图里只填模型名即可解析（打包布局由 ModelBootstrap 自行推断）。
-    dev_models = repo_root() / "tests" / "models" / "mediapipe"
-    if dev_models.is_dir():
-        os.environ["GRAPH_STUDIO_MODELS_DIR"] = str(dev_models)
+    # dev 模式模型目录：下载过测试模型（scripts/download_*_models.py）时，
+    # 让图里只填模型名即可解析（打包布局由 ModelBootstrap 自行推断）。
+    # 三集合多目录注入：mediapipe（mp 后端）+ face/matting（.mnn，mnn 后端）。
+    model_dirs = [str(repo_root() / "tests" / "models" / n)
+                  for n in ("mediapipe", "face", "matting")]
+    model_dirs = [d for d in model_dirs if Path(d).is_dir()]
+    if model_dirs:
+        os.environ["GRAPH_STUDIO_MODELS_DIR"] = os.pathsep.join(model_dirs)
         console.step(f"GRAPH_STUDIO_MODELS_DIR: {os.environ['GRAPH_STUDIO_MODELS_DIR']}")
 
     # ---- 运行单元测试 ----
