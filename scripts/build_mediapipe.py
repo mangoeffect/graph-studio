@@ -1156,6 +1156,17 @@ def run_docker_linux_build(mp_src: Path, mp_build: Path, jobs: int,
         "'/work-build/tools/bazelisk-linux --output_user_root=/tmp/bazel-root "
         "build -c opt --jobs %d "
         "--define=MEDIAPIPE_DISABLE_GPU=1 "
+        # XNNPACK AVX 扩展禁用同原生 Linux 路径：容器 22.04 的 gas 2.38 汇编
+        # 不了 gcc-13 编出的 vpdpbssd 等指令（vpdpbssd 需 gas 2.42）。
+        "--define=xnn_enable_avxvnni=false "
+        "--define=xnn_enable_avxvnniint8=false "
+        "--define=xnn_enable_avx256vnni=false "
+        "--define=xnn_enable_avx256vnnigfni=false "
+        "--define=xnn_enable_avx512vnni=false "
+        "--define=xnn_enable_avx512vnnigfni=false "
+        "--define=xnn_enable_avx512amx=false "
+        "--define=xnn_enable_avx512bf16=false "
+        "--define=xnn_enable_avx512fp16=false "
         "--override_repository=androidndk=/work-build/tools/androidndk-stub "
         "--repo_env=CC=/usr/bin/gcc-13 --repo_env=CXX=/usr/bin/g++-13 %s "
         "//mediapipe/tasks/c/vision:libvision.so && "
@@ -1392,6 +1403,23 @@ def main() -> int:
             config_flags = ["--config=macos"]
         else:
             config_flags = []
+        if platform.is_linux() and args.platform in ("host", "linux"):
+            # XNNPACK：ubuntu-22.04 的 binutils（gas 2.38）汇编不了 gcc-13 编出的
+            # AVXVNNIINT8/AMX 等 x86 新指令（vpdpbssd，gas 2.42 才支持；CI 首跑
+            # 实测 avxvnniint8_prod_microkernels 全批 assembler error）。与下方
+            # Windows 配方同款 define 全量关掉——只影响 x86 CPU microkernel 选择，
+            # arm64 目标与功能无损。
+            build_flags += [
+                "--define=xnn_enable_avxvnni=false",
+                "--define=xnn_enable_avxvnniint8=false",
+                "--define=xnn_enable_avx256vnni=false",
+                "--define=xnn_enable_avx256vnnigfni=false",
+                "--define=xnn_enable_avx512vnni=false",
+                "--define=xnn_enable_avx512vnnigfni=false",
+                "--define=xnn_enable_avx512amx=false",
+                "--define=xnn_enable_avx512bf16=false",
+                "--define=xnn_enable_avx512fp16=false",
+            ]
         env = dict(os.environ, HERMETIC_PYTHON_VERSION="3.12")
         if args.platform == "android":
             ndk = resolve_android_ndk()
