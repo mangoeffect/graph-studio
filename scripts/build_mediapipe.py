@@ -790,8 +790,11 @@ ALL_VISION_LIBS = [
 ]
 
 
-def patch_vision_build(mp_src: Path) -> None:
-    """修正 VISION_LIBRARIES 为全部 11 个模块的 C API；写导出符号白名单；补 dylib linkopts。"""
+def patch_vision_build(mp_src: Path, vs_abs_path: Optional[str] = None) -> None:
+    """修正 VISION_LIBRARIES 为全部 11 个模块的 C API；写导出符号白名单；补 dylib linkopts。
+
+    vs_abs_path：ELF version-script 的绝对路径（Docker 路径下源码挂载为 /work，
+    须传容器内视角路径；默认用宿主路径）。"""
     build = mp_src / "mediapipe" / "tasks" / "c" / "vision" / "BUILD"
     if not build.is_file():
         return
@@ -845,6 +848,32 @@ def patch_vision_build(mp_src: Path) -> None:
             '    name = "libvision.so",\n',
             '    name = "libvision.so",\n'
             '    srcs = ["vision_export_anchor.c"],\n', 1)
+
+    # ELF 版本脚本（macOS exported_symbols_list 的对应物）：只导出 Mp* C API。
+    # 不做的话 libvision.so 会导出全部静态编入符号——含 protobuf 6.x 全套
+    # （实测 3700+ 个 T 符号）；ubuntu 的 libopencv-core 链系统 libprotobuf.so
+    # （3.x 动态库），同进程两套 protobuf 符号互插 → descriptor 数据互拒
+    # （"Invalid file descriptor data" FATAL / 静态初始化期 SegFault）。
+    version_map = build.parent / "vision_export.map"
+    version_map.write_text(
+        "{\n  global:\n    Mp*;\n  local:\n    *;\n};\n", encoding="utf-8")
+    # linkopt 用绝对路径（相对名/execroot 相对在 bazel 沙盒的 ld cwd 下均解析
+    # 不到，实测两种都 "cannot open"；沙盒保留宿主 FS 视图，绝对路径可见）。
+    # Docker 路径下源码挂载为 /work，需用容器内视角路径。
+    if vs_abs_path is None:
+        vs_abs_path = str(version_map).replace("\\", "/")
+    if 'name = "libvision.so"' in s:
+        # 幂等：先清掉旧补丁插入的 version-script 行（路径形态可能变化）
+        s = re.sub(r' *"-Wl,--version-script=[^"]*",\n', "", s)
+        s = s.replace(
+            "        \"-Wl,-soname=libvision.so\",\n",
+            "        \"-Wl,-soname=libvision.so\",\n"
+            f"        \"-Wl,--version-script={vs_abs_path}\",\n", 1)
+        so_block = s.split('name = "libvision.so"', 1)[1]
+        if 'data = ["exported_symbols.txt"]' in so_block.split("cc_binary", 1)[0]:
+            s = s.replace(
+                '    data = ["exported_symbols.txt"],\n    tags = [\n        "manual",',
+                '    data = ["exported_symbols.txt", "vision_export.map"],\n    tags = [\n        "manual",', 1)
 
     if "exported_symbols_list" not in s:
         # BUILD 文件里必须用正斜杠：Windows 的原生反斜杠路径会被 bazel 的
@@ -1379,9 +1408,12 @@ def main() -> int:
     if args.platform == "linux" and not platform.is_linux():
         eigen_patched = prepare_eigen_override(mp_build, mp_src)
         patch_linux_opencv4(mp_src)
-        # vision BUILD 补丁（锚点 srcs + 导出清单）对 Docker 内的 .so 构建
-        # 同样必需：容器里跑的就是这份挂载源码，未补丁时产出的同样是空壳 .so
-        patch_vision_build(mp_src)
+        # vision BUILD 补丁（锚点 srcs + 导出清单 + ELF version script）对
+        # Docker 内的 .so 构建同样必需：容器里跑的就是这份挂载源码，未补丁时
+        # 产出的同样是空壳 .so；version script 传容器内视角路径
+        patch_vision_build(
+            mp_src,
+            vs_abs_path="/work/mediapipe/tasks/c/vision/vision_export.map")
         code = run_docker_linux_build(mp_src, mp_build, jobs, eigen_patched)
         if code != 0:
             console.fail(f"Docker Linux 构建失败 (exit {code})")
