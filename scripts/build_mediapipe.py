@@ -156,6 +156,13 @@ def prepare_zlib_override(mp_build: Path, mp_src: Path) -> Optional[Path]:
             return None
         with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tf:
             tf.extractall(str(mp_build))
+        # 官方 tarball 解压目录是 zlib-1.2.13/，规范化为 zlib-1.2.13-src/
+        # （本目录名是既定约定——已在用机器存在该目录时上面整段跳过，
+        #   此重命名只发生在全新机器/CI 上；CI 曾因这个目录名假设直接
+        #   FileNotFoundError 于 copytree）。
+        extracted = mp_build / "zlib-1.2.13"
+        if extracted.is_dir():
+            extracted.rename(zlib_src)
     shutil.copytree(zlib_src, patched)
     # MACOS||TARGET_OS_MAC → MACOS（修复 macOS 上 fdopen 重定义）
     _replace_once(patched / "zutil.h",
