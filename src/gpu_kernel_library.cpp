@@ -434,12 +434,23 @@ GpuKernelLibrary::GpuKernelLibrary() {
     register_builtin_ops();
 }
 
+GpuKernelLibrary::~GpuKernelLibrary() {
+    // Linux 退出期：libtask_graph.so 的 __cxa_atexit 单例析构先于插件 .so 的
+    // _dl_fini destructor 执行，插件的 unregister_op 会踩已析构的哈希表/互斥量
+    // （CI ubuntu 上 gpu 图测试 19 例断言全过后退出 SegFault 的根因，同
+    // PluginRegistry 先例）。置标志让后续修改型访问直接 no-op；macOS dyld
+    // 析构顺序不同，不触发。
+    destroyed_ = true;
+}
+
 void GpuKernelLibrary::register_op(const std::string& op_name, GpuImageOp op) {
+    if (destroyed_) return;  // 退出期再注册：无意义且不安全
     std::lock_guard<std::mutex> lock(mutex_);
     ops_[op_name] = std::move(op);
 }
 
 void GpuKernelLibrary::unregister_op(const std::string& op_name) {
+    if (destroyed_) return;  // 退出期卸载：容器即将随进程消失，跳过
     std::lock_guard<std::mutex> lock(mutex_);
     ops_.erase(op_name);
 }

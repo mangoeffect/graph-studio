@@ -27,26 +27,30 @@ TG_REGISTER_TYPE(cv::Mat,      "cv::Mat");
 // 使上面的 TG_REGISTER_TYPE 静态初始化器在进程启动时执行（包括 WASM 单线程 build）。
 }  // namespace task_graph
 namespace task_graph::detail {
+
+// force-link 锚点：各注册 TU 在 task_graph::detail 内定义非 inline 空函数，
+// STATIC 核心库下无外部引用的注册 TU（TG_PLUGIN_AUTOREG 初始化器）会被
+// 链接器裁剪，instance() 是全库必经路径，借它建立引用。
+// 必须在命名空间作用域声明 + 限定调用：块作用域 extern 按标准落在最近
+// 外层命名空间（clang/gcc 正确），但 MSVC 会错误绑定到全局命名空间，
+// Debug 构建解析到 ::pull_* 而非 detail 内的定义 → LNK2019。
+#ifdef TASK_GRAPH_MNN_AVAILABLE
+void pull_mnn_tasks();        // src/mnn/mnn_registry.cpp
+#endif
+#ifdef TASK_GRAPH_MEDIAPIPE_AVAILABLE
+void pull_mediapipe_tasks();  // src/mediapipe/mediapipe_registry.cpp
+#endif
+void pull_sdk_tasks();        // api/src/sdk.cpp（io_input/io_output 内置任务）
+void pull_js_tasks();         // src/js/js_registry.cpp（js_script 任务，quickjs 树内恒可用）
+
 TypeRegistry& TypeRegistry::instance() {
 #ifdef TASK_GRAPH_MNN_AVAILABLE
-    // 强制拉入 src/mnn/mnn_registry.cpp：STATIC 核心库下，无外部引用的
-    // 注册 TU（TG_REGISTER_TYPE / TG_PLUGIN_AUTOREG 初始化器）会被链接器
-    // 裁剪。本函数是全库必经路径，借它建立引用（同上方 force-link 注释）。
-    // 块作用域 extern 声明落在最近外层命名空间 = task_graph::detail。
-    extern void pull_mnn_tasks();
     pull_mnn_tasks();
 #endif
 #ifdef TASK_GRAPH_MEDIAPIPE_AVAILABLE
-    // 同上：强制拉入 src/mediapipe/mediapipe_registry.cpp。
-    extern void pull_mediapipe_tasks();
     pull_mediapipe_tasks();
 #endif
-    // 同上：强制拉入 src/sdk.cpp 的 io_input/io_output 内置任务注册。
-    extern void pull_sdk_tasks();
     pull_sdk_tasks();
-    // 同上：强制拉入 src/js/js_registry.cpp（js_script 任务）。quickjs 在树内
-    // 恒可用，锚点无条件（无需 MNN 式 AVAILABLE 门控）。
-    extern void pull_js_tasks();
     pull_js_tasks();
     static TypeRegistry r;
     return r;

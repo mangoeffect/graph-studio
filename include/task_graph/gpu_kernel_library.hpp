@@ -64,10 +64,14 @@ public:
 
 private:
     GpuKernelLibrary();
+    ~GpuKernelLibrary();
     void register_builtin_ops();
 
     std::unordered_map<std::string, GpuImageOp> ops_;
     mutable std::mutex mutex_;
+    // Linux 退出期守卫（同 PluginRegistry::destroyed_）：插件 .so 的
+    // __attribute__((destructor)) 注销晚于本单例析构，见 .cpp。
+    bool destroyed_{false};
 };
 
 }  // namespace task_graph
