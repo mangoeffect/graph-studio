@@ -1,9 +1,9 @@
 name: Fetch private submodules
 description: >
-  通过只读 deploy key 拉取三个私有 plugin-* 子模块。GitHub 的 job GITHUB_TOKEN 只对
+  通过只读 deploy key 拉取五个私有 plugin-* 子模块。GitHub 的 job GITHUB_TOKEN 只对
   公有的主仓库有权限，且一个 deploy key 不能跨仓库复用，因此每个私有仓库各绑一把
   只读 key。仓库 secret SUBMODULES_DEPLOY_KEYS 依次拼接 plugin-opencv / plugin-gpu /
-  plugin-render 的 OpenSSH 私钥（固定顺序，不可打乱）。
+  plugin-render / plugin-face / plugin-matting 的 OpenSSH 私钥（固定顺序，不可打乱）。
   （plugin-mediapipe 已于 2026-09 移除：MediaPipe 任务直接编入核心库
   src/mediapipe/；plugin-scripting 已于 2026-09 移除：JS 引擎 + js_script
   任务直接编入核心库 src/js/，见
@@ -11,7 +11,7 @@ description: >
 
 inputs:
   keys:
-    description: SUBMODULES_DEPLOY_KEYS secret 的内容（4 把私钥按固定顺序拼接）
+    description: SUBMODULES_DEPLOY_KEYS secret 的内容（5 把私钥按固定顺序拼接）
     required: true
 
 runs:
@@ -24,7 +24,7 @@ runs:
       run: |
         set -euo pipefail
         if [ -z "$SUBMODULE_KEYS" ]; then
-          echo "::error::缺少 SUBMODULES_DEPLOY_KEYS secret。三个 plugin-* 子模块是私有仓库，需要把各自的只读 deploy key 私钥按 opencv, gpu, render 顺序拼接后存入该 secret。" >&2
+          echo "::error::缺少 SUBMODULES_DEPLOY_KEYS secret。五个 plugin-* 子模块是私有仓库，需要把各自的只读 deploy key 私钥按 opencv, gpu, render, face, matting 顺序拼接后存入该 secret。" >&2
           exit 1
         fi
 
@@ -32,12 +32,12 @@ runs:
         bundle="$HOME/.ssh/submodule_keys.pem"
         printf '%s\n' "$SUBMODULE_KEYS" > "$bundle"
 
-        # 按固定顺序拆分：key_00=opencv key_01=gpu key_02=render
+        # 按固定顺序拆分：key_00=opencv key_01=gpu key_02=render key_03=face key_04=matting
         # （用 awk 而非 csplit：macOS 的 BSD csplit 不支持 -z）
         (cd "$HOME/.ssh" && awk '/^-----BEGIN OPENSSH PRIVATE KEY-----$/{n++} {print > sprintf("key_%02d", n-1)}' "$bundle")
         n_keys=$(ls "$HOME/.ssh"/key_?? 2>/dev/null | wc -l | tr -d ' ')
-        if [ "$n_keys" != "3" ]; then
-          echo "::error::SUBMODULES_DEPLOY_KEYS 应包含 3 把私钥，实际拆出 $n_keys 把（检查 secret 内容/顺序）。" >&2
+        if [ "$n_keys" != "5" ]; then
+          echo "::error::SUBMODULES_DEPLOY_KEYS 应包含 5 把私钥，实际拆出 $n_keys 把（检查 secret 内容/顺序）。" >&2
           exit 1
         fi
         for k in "$HOME/.ssh"/key_??; do
@@ -47,10 +47,10 @@ runs:
 
         ssh-keyscan -t ed25519 github.com >> "$HOME/.ssh/known_hosts" 2>/dev/null
 
-        # 每个仓库一个 Host 别名、各用各的 key；insteadOf 只改写这四个仓库的精确 URL，
+        # 每个仓库一个 Host 别名、各用各的 key；insteadOf 只改写这些仓库的精确 URL，
         # 不影响主仓库及其它 https 依赖（如 CMake FetchContent）的访问方式。
         i=0
-        for repo in opencv gpu render; do
+        for repo in opencv gpu render face matting; do
           printf 'Host gh-sub-%s\n  HostName github.com\n  User git\n  IdentityFile ~/.ssh/key_%02d\n  IdentitiesOnly yes\n' \
             "$repo" "$i" >> "$HOME/.ssh/config"
           git config --global "url.git@gh-sub-$repo:mangoeffect/plugin-$repo.git.insteadOf" \
