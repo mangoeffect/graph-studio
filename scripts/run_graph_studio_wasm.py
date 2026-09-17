@@ -17,6 +17,10 @@
   python scripts/run_graph_studio_wasm.py --port 9000    # 指定 server 端口（占用即报错；
                                                          # 默认 8000 被占时自动顺延找空闲）
   python scripts/run_graph_studio_wasm.py --clean        # 清空两个 build 目录
+  python scripts/run_graph_studio_wasm.py --tunnel       # 额外起 cloudflared quick tunnel，
+                                                          # 打印临时 trycloudflare.com 公网地址
+                                                          #（无需账号/域名；Ctrl+C 随 server 一起退出，
+                                                          # 不影响 ~/.cloudflared 里已有的命名隧道）
 
 环境要求:
   - emsdk 已安装并设 EMSDK_ROOT（或让 emcmake 在 PATH 上）
@@ -27,10 +31,14 @@
 
 import argparse
 import os
+import re
 import shutil
+import signal
 import socket
 import subprocess
 import sys
+import tempfile
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -63,6 +71,46 @@ def port_bindable(port: int) -> bool:
             return False
 
 
+def start_quick_tunnel(port: int, timeout: float = 60.0):
+    """启动 cloudflared quick tunnel（临时 trycloudflare.com 域名，无需账号）。
+
+    关键点：显式传 --config 指向空文件。cloudflared 默认会加载
+    ~/.cloudflared/config.yml；若本机已有命名隧道配置（ingress 规则 + 兜底
+    http_status:404），其 ingress 会覆盖 --url，导致临时域名恒 404（实测踩坑）。
+    空配置完全绕开，且不读写 ~/.cloudflared 下任何文件——与已有命名隧道零相互影响。
+
+    返回 (proc, url, log_path)；失败返回 (None, "", log_path)。
+    """
+    cloudflared = shutil.which("cloudflared")
+    if not cloudflared:
+        console.warn("未找到 cloudflared（brew install cloudflared），跳过隧道")
+        return None, "", ""
+    # 空配置放临时目录（不污染仓库/构建目录）；quick tunnel 不写它，仅绕开默认配置
+    empty_cfg = Path(tempfile.mkdtemp(prefix="gs-tunnel-")) / "empty.yml"
+    empty_cfg.write_text("")
+    log_path = empty_cfg.parent / "cloudflared.log"
+    proc = subprocess.Popen(
+        [cloudflared, "tunnel", "--config", str(empty_cfg),
+         "--url", f"http://localhost:{port}"],
+        stdout=open(log_path, "w"), stderr=subprocess.STDOUT,
+    )
+    url_re = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if proc.poll() is not None:  # cloudflared 退出（配置/网络错误）
+            break
+        text = log_path.read_text(errors="ignore") if log_path.exists() else ""
+        m = url_re.search(text)
+        if m:
+            return proc, m.group(0), str(log_path)
+        time.sleep(1)
+    console.warn(f"隧道未就绪（{int(timeout)}s 内未拿到临时域名），"
+                 f"详情见 {log_path}；本地调试不受影响")
+    if proc.poll() is None:
+        proc.terminate()
+    return None, "", str(log_path)
+
+
 def main() -> int:
     console.init()
     ap = argparse.ArgumentParser(description="构建 WASM 版 GraphStudio 并启动 dev server")
@@ -73,6 +121,10 @@ def main() -> int:
     ap.add_argument("--no-browser", action="store_true",
                     help="server 启动后不自动打开浏览器")
     ap.add_argument("--clean", action="store_true", help="清空两个 build 目录")
+    ap.add_argument("--tunnel", action="store_true",
+                    help="启动后附带 cloudflared quick tunnel，得到临时 "
+                         "trycloudflare.com 公网地址（无需账号；不影响已有命名隧道；"
+                         "Ctrl+C 随 server 一起退出）")
     ap.add_argument("-j", "--jobs", type=int, default=0, help="并行编译线程数（默认 CPU 核数）")
     ap.add_argument("--wgpu", action="store_true",
                     help="wasm 编入 wgpu 统一后端（核心库 WGPU=ON + 链接 -sUSE_WEBGPU；"
@@ -229,12 +281,36 @@ def main() -> int:
     if not args.port and port != 8000:
         print(f"    （默认端口 8000 被占用，已顺延到 {port}）")
     print("    Ctrl+C 停止")
+
+    tunnel_proc, tunnel_url = None, ""
+    if args.tunnel:
+        console.step("启动 cloudflared quick tunnel（临时域名）")
+        # SIGTERM（kill / 关终端）也走 SystemExit，让下面的 finally 收掉隧道进程
+        signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+        tunnel_proc, tunnel_url, _ = start_quick_tunnel(port)
+        if tunnel_url:
+            print(f"    公网临时地址: {tunnel_url}/graph_studio.html")
+            print("    （随机域名，进程退出即失效；COOP/COEP 头经隧道完整透传，"
+                  "crossOriginIsolated 可用）", flush=True)
+
     dev_server = Path(__file__).resolve().parent / "wasm_dev_server.py"
     server_env = dict(os.environ, PORT=str(port))
     if not args.no_browser:
-        # server 在 socket 就绪后打开默认浏览器（见 wasm_dev_server.py）
-        server_env["OPEN_URL"] = url
-    return subprocess.run([sys.executable, str(dev_server), str(gs_build)], env=server_env).returncode
+        # server 在 socket 就绪后打开默认浏览器（见 wasm_dev_server.py）；
+        # 隧道模式下优先打开公网地址（本地访问同样可用）
+        server_env["OPEN_URL"] = f"{tunnel_url or url}/graph_studio.html"
+    try:
+        return subprocess.run(
+            [sys.executable, str(dev_server), str(gs_build)], env=server_env).returncode
+    finally:
+        # server（Ctrl+C）退出后连带收掉隧道，不留孤儿进程；
+        # 只 terminate 自己 Popen 的句柄，绝不 pkill——避免误杀同机其他隧道
+        if tunnel_proc is not None and tunnel_proc.poll() is None:
+            tunnel_proc.terminate()
+            try:
+                tunnel_proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                tunnel_proc.kill()
 
 
 if __name__ == "__main__":
