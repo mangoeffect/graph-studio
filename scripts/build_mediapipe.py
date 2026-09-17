@@ -1421,8 +1421,11 @@ def main() -> int:
             if swift_stub:
                 override_args.append(
                     f"--override_repository={SWIFT_LOCAL_CONFIG_CANONICAL}=" + str(swift_stub))
-        full_targets = MP_TARGETS_FULL + MP_TARGETS_WIN
-        if any(t in full_targets for t in mp_targets):
+        # 补丁覆盖全部共享库目标：dylib/dll（exported_symbols_list / vision.dll
+        # 注入）+ so（锚点 srcs——GNU ld 归档拉入，Linux host/CI 原生路径；
+        # 此前漏掉 SO targets，CI 上 BUILD 从未打补丁 → 空 .so 复发）
+        patched_targets = MP_TARGETS_FULL + MP_TARGETS_WIN + MP_TARGETS_SO
+        if any(t in patched_targets for t in mp_targets):
             patch_vision_build(mp_src)
 
         build_flags = ["--define=MEDIAPIPE_DISABLE_GPU=1"]
