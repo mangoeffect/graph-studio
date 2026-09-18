@@ -93,11 +93,18 @@ def main() -> int:
         console.step("mnnconvert ONNX -> modnet.mnn (fp16)")
         # framework 名必须大写（"onnx" 会报
         # "Framework Input ERROR or Not Support This Model Type Now!"）
-        if runner.check([mnnconvert, "--framework", "ONNX",
+        rc = runner.run([mnnconvert, "--framework", "ONNX",
                          "--modelFile", str(onnx_path),
-                         "--MNNModel", str(mnn_out), "--fp16"],
-                        what="mnnconvert ONNX") != 0:
-            return 1
+                         "--MNNModel", str(mnn_out), "--fp16"])
+        if rc != 0:
+            # 同 download_face_models.py：Windows 上转换完成后的退出期
+            # DLL 卸载崩溃（exit 0xC0000005）产物已生成——存在即放行。
+            if mnn_out.is_file() and mnn_out.stat().st_size > 0:
+                console.warn(f"mnnconvert 退出码 {rc} 但产物已生成，按成功处理"
+                             "（Windows 退出期 DLL 卸载崩溃）")
+            else:
+                console.fail("mnnconvert ONNX 失败")
+                return 1
         console.ok(f"产出 {mnn_out}")
 
     portrait = root / "tests" / "models" / "mediapipe" / "portrait.jpg"

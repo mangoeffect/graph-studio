@@ -41,7 +41,7 @@ from gs.cmake import CMake  # noqa: E402
 MNN_VERSION = "3.6.1"
 MNN_REPO = "https://github.com/alibaba/MNN.git"
 # WASM 工具链钉版（对齐 run_graph_studio_wasm.py / release.yml 的 emsdk 版本）
-EMSDK_VERSION = "3.1.37"
+EMSDK_VERSION = "3.1.46"
 
 # 关闭一切非运行时组件（converter/tools/demo/test 等），只留推理 runtime。
 COMMON_DEFINES = [
@@ -169,8 +169,11 @@ def do_wasm(root: Path, src: Path, jobs: int, install_dir: Path,
         console.fail("找不到 emsdk。请安装并设 EMSDK_ROOT 环境变量。")
         return 1
     # 与 run_graph_studio_wasm.py / release.yml 的工具链钉版一致（Qt wasm 包
-    # 只发布到 6.6.3，配套 emsdk 3.1.37）。emscripten 新版（如 homebrew 6.x）
+    # 只发布到 6.6.3，配套 emsdk 3.1.x）。emscripten 新版（如 homebrew 6.x）
     # 的 libc++ 与 MNN 源不兼容，emcmake 必须取自该 emsdk root 而非 PATH。
+    # 3.1.37：emscripten-releases 已清理 ≤3.1.45 的下载（404，
+    # `emsdk activate 3.1.37` 在 CI 直接失败），升到同系列 3.1.46
+    # （release.yml setup-emsdk 实际安装的版本）。
     if runner.check([sys.executable, str(emsdk_root / "emsdk.py"),
                      "activate", EMSDK_VERSION],
                     what=f"emsdk activate {EMSDK_VERSION}") != 0:

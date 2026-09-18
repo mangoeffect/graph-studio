@@ -320,7 +320,8 @@ jobs:
   # 官网在线体验（GitHub Pages /web/）的来源：构建多线程 WASM 版 GraphStudio
   # 并打包为 GraphStudio-<ver>-web.zip 附到同一 Release。website.yml 由
   # release:published 自动触发，fetch_web_release.py 下载最新 web zip 解压进
-  # Pages 产物。版本组合与本地验证一致：emsdk 3.1.37 + Qt 6.6.3 wasm_multithread。
+  # Pages 产物。版本组合：emsdk 3.1.46 + Qt 6.6.3 wasm_multithread（3.1.37
+  # 已被 emscripten-releases 清理无法下载；build_mnn.py 同步钉 3.1.46）。
   wasm:
     name: Package (wasm web)
     runs-on: ubuntu-22.04

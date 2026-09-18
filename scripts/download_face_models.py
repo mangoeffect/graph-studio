@@ -104,11 +104,19 @@ def main() -> int:
         console.step("mnnconvert TFLITE -> face_landmark.mnn")
         # 注意 framework 名必须大写（"tflite" 会报
         # "Framework Input ERROR or Not Support This Model Type Now!"）
-        if runner.check([mnnconvert, "--framework", "TFLITE",
+        rc = runner.run([mnnconvert, "--framework", "TFLITE",
                          "--modelFile", str(tflite_path),
-                         "--MNNModel", str(lmk_out)],
-                        what="mnnconvert TFLITE") != 0:
-            return 1
+                         "--MNNModel", str(lmk_out)])
+        if rc != 0:
+            # pip mnn 的 mnnconvert（Windows）在转换完成后的进程退出期偶发
+            # access violation（DLL 卸载崩溃，exit 0xC0000005）——产物已生成。
+            # 产物存在且非空即放行（幂等：下次运行产物存在整段跳过）。
+            if lmk_out.is_file() and lmk_out.stat().st_size > 0:
+                console.warn(f"mnnconvert 退出码 {rc} 但产物已生成，按成功处理"
+                             "（Windows 退出期 DLL 卸载崩溃）")
+            else:
+                console.fail("mnnconvert TFLITE 失败")
+                return 1
         console.ok(f"产出 {lmk_out}")
 
     portrait = root / "tests" / "models" / "mediapipe" / "portrait.jpg"
