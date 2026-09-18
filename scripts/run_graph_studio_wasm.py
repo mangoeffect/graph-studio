@@ -311,8 +311,11 @@ def main() -> int:
     server_env = dict(os.environ, PORT=str(port))
     if not args.no_browser:
         # server 在 socket 就绪后打开默认浏览器（见 wasm_dev_server.py）；
-        # 隧道模式下优先打开公网地址（本地访问同样可用）
-        server_env["OPEN_URL"] = f"{tunnel_url or url}/graph_studio.html"
+        # 隧道模式下优先打开公网地址（本地访问同样可用）。url 本身已带
+        # /graph_studio.html——隧道地址是裸 host 才需要补路径，直接拼会
+        # 得到 .../graph_studio.html/graph_studio.html（http.server 404）。
+        server_env["OPEN_URL"] = (
+            f"{tunnel_url}/graph_studio.html" if tunnel_url else url)
     try:
         return subprocess.run(
             [sys.executable, str(dev_server), str(gs_build)], env=server_env).returncode
