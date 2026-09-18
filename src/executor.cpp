@@ -635,7 +635,24 @@ void DAGExecutor::run(const DAG& dag) {
                 TaskContext task_ctx(task->config().params, deps, input_results,
                                      std::move(inputs_by_port));
                 seed_context_values(task_ctx);
-                TaskResult result = task->execute(task_ctx);
+                TaskResult result;
+                try {
+                    result = task->execute(task_ctx);
+                } catch (const std::exception& e) {
+                    // 任务实现抛出（如 js/OpenCV 绑定未捕获的 cv::Exception）：
+                    // packaged_task 会把异常吞进 future——本 lambda 提前结束、
+                    // completed_count 不增、下游依赖不推进 → 调度循环永久等待
+                    // （CI Linux/Windows 上 js MatOps 挂死 300s+ 的根因）。此处
+                    // 转为 FAILED 结果（value 携带可读原因），保持计数/事件/
+                    // 下游传播三不变量。
+                    result = TaskResult{.status = TaskStatus::FAILED,
+                                        .value = std::string("task threw exception: ") + e.what()};
+                    TG_LOG_ERROR("Task '" + tid + "' threw exception: " + e.what());
+                } catch (...) {
+                    result = TaskResult{.status = TaskStatus::FAILED,
+                                        .value = std::string("task threw unknown exception")};
+                    TG_LOG_ERROR("Task '" + tid + "' threw unknown exception");
+                }
 
                 auto exec_duration = std::chrono::steady_clock::now() - exec_start;
                 result.duration = std::chrono::duration_cast<std::chrono::nanoseconds>(exec_duration);

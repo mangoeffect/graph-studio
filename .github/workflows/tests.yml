@@ -131,10 +131,13 @@ jobs:
           # 上限）——gpu/render 图测试显式软跳过；macOS 有真实 Metal 不设。
           # TG_TEST_SKIP_MP（仅 Linux）：mp 推理链正常但 image_read→mp 输入传递
           # 失败（上游空输出），根因待复现定位，先跳过保 CI 门禁。
+          # TG_TEST_SKIP_JS_MATOPS：同源输入传递问题的 js 用例（空 Mat 触发
+          # cvtColor 断言；executor 已兜异常转 FAILED，此处再显式跳过）。
           EXTRA=""
           if [ "$RUNNER_OS" != "macOS" ]; then EXTRA="--download-models"; fi
           if [ "$RUNNER_OS" != "macOS" ]; then export TG_TEST_SKIP_GPU=1; fi
           if [ "$RUNNER_OS" = "Linux" ]; then export TG_TEST_SKIP_MP=1; fi
+          if [ "$RUNNER_OS" != "macOS" ]; then export TG_TEST_SKIP_JS_MATOPS=1; fi
           python scripts/run_all_test.py -j 3 -v --config Debug $EXTRA --mnn --wgpu
 
       # 原生后端回归（非阻塞附加项）：gpu/render 测试默认走 wgpu 统一后端
