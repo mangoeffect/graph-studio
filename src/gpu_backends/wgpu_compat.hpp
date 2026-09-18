@@ -199,23 +199,25 @@ inline void wgpuInstanceProcessEvents(WGPUInstance) {}
 
 // WGSL 描述：3.1.37 字段名 source，3.1.46 起 code。__EMSCRIPTEN_minor__
 // 等版本宏由 <emscripten.h> 定义（本头不包含它，恒未定义），故用成员探测。
+// 注意：赋值必须放类模板的成员函数里——非模板上下文的 if constexpr 不丢弃
+// 未选分支的语义检查（else 里的 s.source 照样硬编译报错），模板成员体
+// 未实例化时不做成员检查。
 namespace tg_wgpu_compat {
 template <typename T, typename = void>
-struct has_wgsl_code : std::false_type {};
+struct wgsl_field_setter {
+    static void set(T& s, char const* d) { s.source = d; }
+};
 template <typename T>
-struct has_wgsl_code<T, std::void_t<decltype(std::declval<T&>().code)>>
-    : std::true_type {};
+struct wgsl_field_setter<T, std::void_t<decltype(std::declval<T&>().code)>> {
+    static void set(T& s, char const* d) { s.code = d; }
+};
 }  // namespace tg_wgpu_compat
 
 inline WGPUShaderModuleWGSLDescriptor make_wgsl_source(const char* data, size_t) {
     WGPUShaderModuleWGSLDescriptor s{};
     s.chain.next = nullptr;
     s.chain.sType = WGPUSType_ShaderModuleWGSLDescriptor;
-    if constexpr (tg_wgpu_compat::has_wgsl_code<WGPUShaderModuleWGSLDescriptor>::value) {
-        s.code = data;
-    } else {
-        s.source = data;
-    }
+    tg_wgpu_compat::wgsl_field_setter<WGPUShaderModuleWGSLDescriptor>::set(s, data);
     return s;
 }
 
