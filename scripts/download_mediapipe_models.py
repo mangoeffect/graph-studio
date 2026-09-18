@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
-"""download_mediapipe_models.py — 下载 MediaPipe 测试模型到
+"""download_mediapipe_models.py — 下载 MediaPipe 模型与共享测试图到
 tests/models/mediapipe/（跨平台）。
 
-取代 scripts/download_mediapipe_models.sh。模型文件不入库（大体积二进制走下载更干净）。
-测试在模型缺失时 SKIP，不强制依赖。用标准库 urllib 替代 curl，三平台通用。
+mp_* 任务层已移除（2026-09-18），但模型仍被消费：face/matting 子模块的
+mediapipe 后端（face_detector.tflite / face_landmarker.task /
+selfie_segmenter.tflite）与图测试（portrait/hand_image 共享测试图，
+download_face_models.py / download_matting_models.py 头部注释声明来源为本
+脚本）。取代 scripts/download_mediapipe_models.sh。模型文件不入库（大体积
+二进制走下载更干净）。测试在资产缺失时 SKIP，不强制依赖。用标准库 urllib
+替代 curl，三平台通用。
 
 用法:
   python scripts/download_mediapipe_models.py                   # 下载全部
@@ -100,7 +105,7 @@ def download_one(name: str, models_dir: Path, retries: int = 3) -> int:
 
 def main() -> int:
     console.init()
-    ap = argparse.ArgumentParser(description="下载 MediaPipe 测试模型")
+    ap = argparse.ArgumentParser(description="下载 MediaPipe 模型与共享测试图")
     ap.add_argument("model", nargs="?", default="", help="仅下载该模型（不指定则下载全部）")
     ap.add_argument("-l", "--list", action="store_true", help="列出可用模型后退出")
     args = ap.parse_args()

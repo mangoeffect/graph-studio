@@ -38,5 +38,6 @@ docs/.hugo_build.lock
 docs/data/releases.json
 /profile_trace.json
 
-# MNN 测试模型（scripts/download_mnn_models.py 下载/转换，不入库）
+# 测试模型/测试图（scripts/download_*_models.py 下载，不入库：face/matting/
+# mediapipe 三套——mediapipe 集供 face/matting 的 mp 后端与共享测试图）
 tests/models/

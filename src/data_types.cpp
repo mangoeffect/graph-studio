@@ -34,24 +34,12 @@ namespace task_graph::detail {
 // 必须在命名空间作用域声明 + 限定调用：块作用域 extern 按标准落在最近
 // 外层命名空间（clang/gcc 正确），但 MSVC 会错误绑定到全局命名空间，
 // Debug 构建解析到 ::pull_* 而非 detail 内的定义 → LNK2019。
-#ifdef TASK_GRAPH_MNN_AVAILABLE
-void pull_mnn_tasks();        // src/mnn/mnn_registry.cpp
-#endif
-#ifdef TASK_GRAPH_MEDIAPIPE_AVAILABLE
-void pull_mediapipe_tasks();  // src/mediapipe/mediapipe_registry.cpp
-#endif
+// （mnn/mediapipe/js 任务层已于 2026-09-18 移除，引擎层 TU 由 face/matting
+// 子模块直接引用符号拉入，不再需要锚点。）
 void pull_sdk_tasks();        // api/src/sdk.cpp（io_input/io_output 内置任务）
-void pull_js_tasks();         // src/js/js_registry.cpp（js_script 任务，quickjs 树内恒可用）
 
 TypeRegistry& TypeRegistry::instance() {
-#ifdef TASK_GRAPH_MNN_AVAILABLE
-    pull_mnn_tasks();
-#endif
-#ifdef TASK_GRAPH_MEDIAPIPE_AVAILABLE
-    pull_mediapipe_tasks();
-#endif
     pull_sdk_tasks();
-    pull_js_tasks();
     static TypeRegistry r;
     return r;
 }

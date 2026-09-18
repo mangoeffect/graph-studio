@@ -15,7 +15,7 @@ import time
 
 from gs import console
 from .app import AppSession, wait_until
-from .plugin_cases import CASES, JS_ARITH
+from .plugin_cases import CASES
 
 NODE_SPACING = 220   # 画布横向布局间距（节点宽 140 + 间隙）
 
@@ -126,13 +126,10 @@ def _run_case(s: AppSession, case, report, fixtures, subs, gpu_ok) -> None:
 
 
 def run(pkg, report, fixtures, ctx) -> None:
-    # 内嵌 JS 夹具与输出目录
-    js_path = report.path("core_js/engine_arith.js")
-    js_path.parent.mkdir(parents=True, exist_ok=True)
-    js_path.write_text(JS_ARITH, encoding="utf-8")
+    # 输出目录（image_writer 用例的落盘位置）
     out_dir = report.path("core_out")
     out_dir.mkdir(parents=True, exist_ok=True)
-    subs = {"$ASSET": fixtures.asset_abs, "$JS": js_path, "$OUT": out_dir}
+    subs = {"$ASSET": fixtures.asset_abs, "$OUT": out_dir}
 
     s = AppSession(pkg, report)
     s.launch_and_attach()

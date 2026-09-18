@@ -2,6 +2,9 @@
 
 > 状态：已实现（2026-08）。对应核心 API `include/plugin_api.hpp`（ModelFinder 段）、
 > 实现 `src/model_finder.cpp`、GraphStudio 接入 `app/graph_studio/src/ModelBootstrap.cpp`。
+> 2026-09-18 起消费方为 face/matting 子模块（模型名解析）与其 mp 后端模型
+> （`download_mediapipe_models.py` → 打包 mediapipe 集）；文中 mp 任务细节为
+> 历史存档（任务层已移除）。
 
 ## 背景与目标
 

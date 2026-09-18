@@ -5,7 +5,8 @@ GRAPH_STUDIO_MODELS_DIR / exe 目录 models / macOS Resources/models 布局；
 WASM 为 MEMFS /models，由启动期 fetch 填充）查找。
 
 模型集（下载脚本幂等，产物 gitignored）：
-  mediapipe — tests/models/mediapipe（.task/.tflite；桌面 mp 后端）
+  mediapipe — tests/models/mediapipe（.task/.tflite；face/matting 的
+              mediapipe 后端模型来源——mp_* 任务层已移除，但后端仍在）
   face      — tests/models/face（.mnn；face_detect 的 mnn 后端）
   matting   — tests/models/matting（.mnn；matting 的 mnn 后端。目录里的
               selfie_segmenter.tflite 是 mp 后端模型，Web 不随包——

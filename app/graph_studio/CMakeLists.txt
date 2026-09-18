@@ -475,7 +475,8 @@ if(EMSCRIPTEN)
         # 仅靠 constructor 注册，PluginBootstrap 不做 dlopen）。
     endif()
 
-    # MNN 推理引擎：libtask_graph.a 含 MNN 任务代码（ENABLE_MNN 默认 ON），
+    # MNN 推理引擎：libtask_graph.a 含 MNN 引擎代码（ENABLE_MNN 默认 ON；
+    # mnn_* 任务层已移除，引擎由 face/matting 子模块后端引用而拉入），
     # 但 libMNN.a 是独立预编译静态库（scripts/build_mnn.py --platform wasm），
     # 需一并链入。缺库时核心库为 stub（无 MNN 符号引用），条件跳过。
     if(EXISTS "${TASK_GRAPH_ROOT}/build_wasm/mnn/install/lib/libMNN.a")
@@ -526,7 +527,7 @@ if(EMSCRIPTEN)
         if(_OPENCV_WASM_AVAILABLE)
             target_link_libraries(${_wt} PRIVATE ${OpenCV_LIBS})
         endif()
-        # MNN 符号经 TypeRegistry 锚点被拉入（pull_mnn_tasks），同 app 一起链接
+        # MNN 符号经 face/matting 子模块的引擎引用被拉入，同 app 一起链接
         if(EXISTS "${TASK_GRAPH_ROOT}/build_wasm/mnn/install/lib/libMNN.a")
             target_link_libraries(${_wt} PRIVATE
                 "${TASK_GRAPH_ROOT}/build_wasm/mnn/install/lib/libMNN.a")

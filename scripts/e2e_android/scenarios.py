@@ -44,8 +44,8 @@ TASK_RE = re.compile(r"\[gs\] task:\s+(\S+)")
 
 # subnode.json 里参与 Android e2e 的模块（= tests/android/CMakeLists.txt 的
 # TG_E2E_SUBMODULES；build_android.py 的 SUBMODULE_TARGETS 是同一集合）。
-# js_script 已编入核心库（src/js/，随 libtask_graph 注册），不再是子模块；
-# 其图夹具迁至主仓库 tests/graphs/js（桌面 ctest 覆盖，不进 e2e 发现树）。
+# （js_script 任务层已移除；其图夹具原迁至主仓库 tests/graphs/js，现已随
+# 任务一并删除。）
 ANDROID_MODULES = [
     "image_reader", "image_filtering", "image_writer",
     "image_geometry", "image_color", "image_color_grading",
@@ -55,12 +55,11 @@ ANDROID_MODULES = [
 # 对齐 WASM 的 WASM_UNSUPPORTED_MODULES 机制）：
 #   image_processing = gpu 子模块（无 Android GPU 后端：wgpu 无 android 产物、
 #   Vulkan 走桌面 SDK 的 find_package）；render_task 的 Android 构建门未开；
-#   mp_* 任务无 Android libvision 预编译库（任务是 stub，已并入核心库）；
 #   video_io 依赖 opencv_videoio（build_opencv_android.py 的 BUILD_LIST 未含）。
+#   （mp_*/js_script/mnn_* 任务层已移除，不再占用发现树条目。）
 ANDROID_UNSUPPORTED_MODULES = {
     "image_processing": "gpu 子模块无 Android GPU 后端（wgpu 无 android 产物）",
     "render_task": "render 子模块 Android 构建门未开（任务类型未注册）",
-    "mediapipe": "无 Android libvision 预编译库（mp_* 为 stub）",
     "video_io": "OpenCV Android BUILD_LIST 无 videoio 模块（video_io 未编入）",
 }
 

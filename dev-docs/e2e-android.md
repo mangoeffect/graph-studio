@@ -85,9 +85,8 @@ Android 是 STATIC 核心库 + 静态子模块，子模块靠
   是 `#ifndef __EMSCRIPTEN__` 源码守卫（wasm-ld 无此选项），Android 的 ld.lld
   支持该选项——不动子模块源码，且 Android 不做 dlopen，取任意一份即可。
 
-`--selfcheck` 把注册结果变成可断言的事实：实跑 39 个任务 = 35（subnode.json 的
-7 个 Android 模块）+ io_input/io_output（核心库）+ mnn_inference/
-mnn_image_classifier（MNN）。
+`--selfcheck` 把注册结果变成可断言的事实：实跑 37 个任务 = 35（subnode.json 的
+7 个 Android 模块）+ io_input/io_output（核心库）。（mnn_* 任务层移除前为 39 个。）
 
 ## 驱动侧
 
@@ -119,8 +118,7 @@ mnn_image_classifier（MNN）。
   只有 win/macos/linux，Vulkan 走桌面 SDK 的 `find_package`，其 CMakeLists 在
   `TASK_GRAPH_MOBILE` 下直接 `return()`；
 - `render_task`：同上（Android 构建门未开）；
-- `mp_*`（核心库）：无 Android libvision 预编译库（`build_mediapipe.py` 无
-  Android 支持），任务是 stub；
+- `mp_*`（核心库）：任务层已移除（2026-09-18），不再占用发现树条目；
 - `video_io`：OpenCV Android 预编译的 `BUILD_LIST` 只有 core/imgproc/imgcodecs。
 
 实跑（arm64 AVD，Android 13）：**27 张通过**（opencv 全系 25 + js_task 2，与
@@ -176,8 +174,8 @@ python3 scripts/run_e2e_android.py --serial emulator-5554
   （Android 无 app 可驱动）。若将来做 APK，图输入通道建议沿用 intent extra +
   同一个 `OpenGraphAtStartup`，断言通道仍走 `[gs]` 行（logcat/tombstone 侧）。
 - **gpu/render/mediapipe 的 Android 后端化**未做（wgpu 需 android 产物或
-  Vulkan-on-Android 接线；mp_* 需 Android 交叉编译 libvision）——这四类
-  模块的图在 Android 记 skip，不是"失败"。
+  Vulkan-on-Android 接线；face/matting 的 mp 后端需 Android 交叉编译
+  libvision）——这些模块的图在 Android 记 skip，不是"失败"。
 - **CI 未接线**：对齐 WASM/macOS E2E 的本地轨道定位；进 CI 需要 runner 无设备
   运行（host 侧跑不了 aarch64 二进制）或引入模拟器 action，未评估。
 - 执行是**串行**的（对齐 macOS），并行化（多设备/多进程）留作后续。

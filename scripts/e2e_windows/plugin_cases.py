@@ -44,22 +44,6 @@ def _reader() -> dict:
     return {**READER, "params": {"file_path": "$ASSET"}}
 
 
-# JS 算术脚本（无图像输入，输出 float value）：验证 Scripting 分类 + 脚本内
-# 声明的额外参数（a/b → 属性面板 SpinBox）。语法同 js_task 的 engine_arith.js。
-JS_ARITH = """// e2e fixture: params + computed float output
-const inputs = [];
-const outputs = [{ name: "value", type: "float" }];
-const params = [
-    { name: "a", type: "float", default: 2 },
-    { name: "b", type: "float", default: 21 },
-];
-function execute(ctx) {
-    ctx.log("e2e_js_arith running");
-    ctx.setOutput("value", ctx.param("a") * ctx.param("b"));
-}
-"""
-
-
 CASES: list[PluginCase] = [
     PluginCase(
         name="input_filter",
@@ -109,17 +93,6 @@ CASES: list[PluginCase] = [
         edges=[(0, 1)],
         requires_gpu=True,
         expect_results=["gpu_grayscale"],
-    ),
-    PluginCase(
-        name="scripting_js",
-        # a/b 用脚本声明的默认值：属性面板只在节点选中时按 paramSpecs 重建，
-        # script_path 提交后 a/b 行不会即时出现，故不单独设置。
-        # 执行成功（0 failed）即证明 execute() 运行（脚本抛错会使任务 FAILED）；
-        # ctx.log 走任务 logBuffer，不保证落在 Log 面板，故无日志子串断言。
-        nodes=[{"category": "Scripting", "type": "js_script",
-                "params": {"script_path": "$JS"}}],
-        edges=[],
-        expect_log=[],
     ),
     PluginCase(
         name="output_write",

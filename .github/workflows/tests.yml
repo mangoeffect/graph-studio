@@ -119,25 +119,18 @@ jobs:
       - name: Run all tests (framework + submodules + UI)
         shell: bash
         run: |
-          # Windows/Linux：下载 MediaPipe 模型（~35MB，GCS）让 test_mediapipe_* 真实执行；
-          # 下载必须先于 cmake configure（configure 期 file(COPY) 把模型进构建树）。
-          # macOS 无本机预构建链路（dylib 由本地 build/mediapipe/install 提供，
-          # CI 上 mediapipe 为 stub），下载无意义。
-          # --mnn：构建/复用 MNN 引擎（macOS/Linux Debug 测试真实执行；
-          # Windows Debug 与 MNN Release 运行库不匹配（/MDd vs /MD，同 shaderc），
-          # run_all_test 内部构建失败仅告警、测试侧按配置门控，不阻塞。
+          # Windows/Linux：下载 MediaPipe 模型与测试图（~35MB——face/matting
+          # 的 mediapipe 后端 + 图测试消费；mp_* 任务层已移除但模型保留）；
+          # macOS 无本机预构建链路（CI 上 mediapipe 引擎为 stub），下载无意义。
+          # --mnn：构建/复用 MNN 引擎（face/matting 后端消费；macOS/Linux Debug
+          # 测试真实执行；Windows Debug 与 MNN Release 运行库不匹配（/MDd vs /MD，
+          # 同 shaderc），run_all_test 内部构建失败仅告警、不阻塞。
           # TG_TEST_SKIP_GPU：无真实 GPU 的 runner（ubuntu/windows）上 wgpu 落到
           # llvmpipe/WARP 软渲染，init 成功但 compute 提交挂死（实测拖满 6h 平台
           # 上限）——gpu/render 图测试显式软跳过；macOS 有真实 Metal 不设。
-          # TG_TEST_SKIP_MP（仅 Linux）：mp 推理链正常但 image_read→mp 输入传递
-          # 失败（上游空输出），根因待复现定位，先跳过保 CI 门禁。
-          # TG_TEST_SKIP_JS_MATOPS：同源输入传递问题的 js 用例（空 Mat 触发
-          # cvtColor 断言；executor 已兜异常转 FAILED，此处再显式跳过）。
           EXTRA=""
           if [ "$RUNNER_OS" != "macOS" ]; then EXTRA="--download-models"; fi
           if [ "$RUNNER_OS" != "macOS" ]; then export TG_TEST_SKIP_GPU=1; fi
-          if [ "$RUNNER_OS" = "Linux" ]; then export TG_TEST_SKIP_MP=1; fi
-          if [ "$RUNNER_OS" != "macOS" ]; then export TG_TEST_SKIP_JS_MATOPS=1; fi
           python scripts/run_all_test.py -j 3 -v --config Debug $EXTRA --mnn --wgpu
 
       # 原生后端回归（非阻塞附加项）：gpu/render 测试默认走 wgpu 统一后端
@@ -159,7 +152,7 @@ jobs:
         if: failure()
         shell: bash
         run: |
-          echo "::notice::run_all_test 阶段汇总见上方日志；若 GPU/Metal 阶段被跳过属预期（无 GPU runner）。mp_* 用例在 Windows 应真实执行（非跳过）。"
+          echo "::notice::run_all_test 阶段汇总见上方日志；若 GPU/Metal 阶段被跳过属预期（无 GPU runner）。"
 
   # ------------------------------------------------------------------ iOS SDK
   # 交叉编译验证 + 产出 libtask_graph.xcframework（device + simulator 双 slice）。

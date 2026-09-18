@@ -340,8 +340,6 @@ add_library(task_graph ${TASK_GRAPH_LIB_TYPE}
     src/profiler.cpp
     src/js/js_engine.cpp
     src/js/js_bindings.cpp
-    src/js/js_task.cpp
-    src/js/js_registry.cpp
 )
 
 # 核心类（INode/DAG/DAGExecutor 等）没有显式 __declspec(dllexport)。
@@ -462,12 +460,12 @@ if(TASK_GRAPH_ENABLE_WGPU AND (WGPU_LIBRARY OR EMSCRIPTEN))
     endif()
 endif()
 
-# MNN 推理任务（直接编入核心库；stub/真实实现由 TASK_GRAPH_MNN_AVAILABLE 决定）
+# MNN 引擎（直接编入核心库；stub/真实实现由 TASK_GRAPH_MNN_AVAILABLE 决定）。
+# 任务层（mnn_inference/mnn_image_classifier）2026-09-18 移除——引擎仅供
+# face/matting 子模块后端消费，公共 API 见 include/task_graph/mnn/。
 if(TASK_GRAPH_ENABLE_MNN)
     target_sources(task_graph PRIVATE
         src/mnn/mnn_engine.cpp
-        src/mnn/mnn_inference.cpp
-        src/mnn/mnn_registry.cpp
     )
     if(TASK_GRAPH_MNN_AVAILABLE)
         if(MSVC)
@@ -499,14 +497,14 @@ if(TASK_GRAPH_ENABLE_MNN)
     endif()
 endif()
 
-# MediaPipe Vision 任务（直接编入核心库；stub/真实实现由
+# MediaPipe Vision 引擎（直接编入核心库；stub/真实实现由
 # TASK_GRAPH_MEDIAPIPE_AVAILABLE 决定；Mp* C API 调用全部封在
-# src/mediapipe/vision_engine.cpp 的 pimpl 内，公共头零泄漏）
+# src/mediapipe/vision_engine.cpp 的 pimpl 内，公共头零泄漏）。
+# 任务层（10 个 mp_* 任务）2026-09-18 移除——引擎仅供 face/matting
+# 子模块后端消费，公共 API 见 include/task_graph/mediapipe/。
 if(TASK_GRAPH_ENABLE_MEDIAPIPE)
     target_sources(task_graph PRIVATE
         src/mediapipe/vision_engine.cpp
-        src/mediapipe/vision_tasks.cpp
-        src/mediapipe/mediapipe_registry.cpp
     )
     if(TASK_GRAPH_MEDIAPIPE_AVAILABLE)
         if(MSVC)
@@ -739,33 +737,6 @@ if(TASK_GRAPH_ENABLE_OPENCV)
     )
 endif()
 
-# MNN 推理：仅在引擎真实编入时构建（模型缺失时用例内部软跳过，
-# 对齐 mediapipe 子节点惯例）。MSVC 多配置生成器在配置期无法区分 Debug——
-# 而 MNN 只有 Release 可链（/MD vs /MDd），Debug 下是 stub，测试会失败，
-# 故 VS 生成器不注册本测试（单配置 Ninja 的 CMAKE_BUILD_TYPE 可判）。
-if(TASK_GRAPH_ENABLE_MNN AND TASK_GRAPH_MNN_AVAILABLE
-        AND NOT (MSVC AND CMAKE_CONFIGURATION_TYPES))
-    add_tg_test(test_mnn_inference)
-    target_compile_definitions(test_mnn_inference PRIVATE
-        TG_TEST_MNN_MODELS_DIR="${CMAKE_SOURCE_DIR}/tests/models/mnn"
-    )
-endif()
-
-# MediaPipe Vision 图驱动测试（原子模块 10 个驱动合并为一个 gtest 二进制）。
-# 门控对齐 test_mnn_inference：引擎真实编入才注册（模型缺失时用例内软跳过）；
-# MSVC 多配置生成器 Debug 下是 stub（/MD vs /MDd），不注册。
-# 图引用 opencv_image_read 做图像源——主仓测试本不依赖子模块注册顺序，
-# 但这里图 JSON 需要，image_reader 是 subnode.json 首位子节点（链接期目标
-# 必先存在），TARGET 判定在 subnode.json 解析之后求值（CMake 惰性 if）。
-# 注意：本块必须位于 parse_subnode_json 之后才能引用 image_reader 目标，
-# 故放在子模块 add_subdirectory 之后（见下方 TASK_GRAPH_BUILD_SUBMODULES 块）。
-set(TG_BUILD_MP_VISION_TESTS OFF)
-if(TASK_GRAPH_BUILD_TESTS AND NOT EMSCRIPTEN AND TASK_GRAPH_ENABLE_MEDIAPIPE
-        AND TASK_GRAPH_MEDIAPIPE_AVAILABLE AND TASK_GRAPH_ENABLE_OPENCV
-        AND NOT (MSVC AND CMAKE_CONFIGURATION_TYPES))
-    set(TG_BUILD_MP_VISION_TESTS ON)
-endif()
-
 endif() # NOT EMSCRIPTEN AND TASK_GRAPH_BUILD_TESTS
 
 # ============================================================
@@ -801,44 +772,6 @@ if(TASK_GRAPH_BUILD_SUBMODULES)
     endforeach()
 endif()
 
-# MediaPipe Vision 图驱动测试（定义延后到子模块之后：图引用 opencv_image_read，
-# 需要 image_reader 目标已存在——见上方 TG_BUILD_MP_VISION_TESTS 门控注释）。
-if(TG_BUILD_MP_VISION_TESTS AND TARGET image_reader)
-    add_executable(test_mediapipe_vision tests/test_mediapipe_vision.cpp)
-    target_include_directories(test_mediapipe_vision PRIVATE
-        "${CMAKE_SOURCE_DIR}/include")
-    target_link_libraries(test_mediapipe_vision PRIVATE
-        task_graph image_reader GTest::gtest_main)
-    target_compile_definitions(test_mediapipe_vision PRIVATE
-        TG_TEST_MP_DIR="${CMAKE_SOURCE_DIR}/tests")
-    gtest_discover_tests(test_mediapipe_vision
-        DISCOVERY_MODE PRE_TEST
-        TEST_PREFIX "test_mediapipe_vision."
-        PROPERTIES TIMEOUT 300
-    )
-endif()
-
-# js_script 图驱动测试（js_script 已编入核心库；图引用 opencv_image_read，
-# 需 image_reader 子模块目标 + OpenCV 的 MatWrapper/cv 绑定）。
-# 门控对齐 mp 测试块（移动端/WASM/关测试时不注册——GTest 未拉取，
-# gtest_discover_tests 不可用；iOS+OpenCV 交叉构建曾在此断言配置失败）。
-if(NOT TASK_GRAPH_MOBILE AND NOT EMSCRIPTEN AND TASK_GRAPH_BUILD_TESTS
-        AND TASK_GRAPH_ENABLE_OPENCV AND TARGET image_reader)
-    add_executable(test_js_script tests/test_js_script.cpp)
-    target_include_directories(test_js_script PRIVATE
-        "${CMAKE_SOURCE_DIR}/include")
-    target_link_libraries(test_js_script PRIVATE
-        task_graph image_reader GTest::gtest_main)
-    target_compile_definitions(test_js_script PRIVATE
-        TG_TEST_JS_DIR="${CMAKE_SOURCE_DIR}/tests")
-    gtest_discover_tests(test_js_script
-        DISCOVERY_MODE PRE_TEST
-        TEST_PREFIX "test_js_script."
-        PROPERTIES TIMEOUT 300
-    )
-endif()
-
-# ============================================================
 # Android 无头 graph E2E runner（tests/android/，仅 Android 构建；
 # 目标 EXCLUDE_FROM_ALL，由 scripts/build_android.py --e2e 显式构建——
 # Android 侧没有 GraphStudio app 壳，图执行的 e2e 载体是这个 console 程序，

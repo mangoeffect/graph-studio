@@ -296,4 +296,10 @@ bool MnnEngine::run(const Image& image, std::vector<MnnTensorData>& outputs,
                image_source_format(copy), outputs, err);
 }
 
+// 端口数据类型跨 SO 稳定名注册（任务层移除后随引擎保留——face/matting
+// 的端口/后端结果仍在使用这些类型，stub 构建同样注册）
+TG_REGISTER_TYPE(MnnTensorData, "task_graph::MnnTensorData");
+TG_REGISTER_TYPE(MnnInferenceResult, "task_graph::MnnInferenceResult");
+TG_REGISTER_TYPE(MnnClassificationResult, "task_graph::MnnClassificationResult");
+
 }  // namespace task_graph

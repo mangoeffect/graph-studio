@@ -151,10 +151,10 @@ python3 scripts/generate_submodule.py \
 | `image_reader` | `opencv_image_read` |
 | `image_filtering` | `opencv_blur_filter`、`opencv_gaussian_blur_filter`、`opencv_median_blur_filter`、`opencv_bilateral_filter`、`opencv_box_filter`、`opencv_sobel_filter`、`opencv_scharr_filter`、`opencv_laplacian_filter` |
 | `gpu_image_processing` | `gpu_box_blur`、`gpu_gaussian_blur`、`gpu_grayscale`、`gpu_brightness_contrast`、`gpu_resize` |
-| `js_task` | `js_script` |
-| `mediapipe_vision` | `mp_face_landmarker`、`mp_hand_landmarker`、`mp_pose_landmarker`、`mp_object_detector`（另有 `mp_face_detector`、`mp_gesture_recognizer`、`mp_holistic_landmarker`、`mp_image_classifier`、`mp_image_embedder`、`mp_image_segmenter`） |
+| `face_detect` | `face_detect` |
+| `matting` | `matting` |
 
-MediaPipe 视觉需要先用 `scripts/download_mediapipe_models.py` 下载预构建模型和图片到 `submodules/mediapipe/mediapipe_vision/tests/models/`；缺失这些资源时相关测试会 soft-skip。
+视觉任务（`face_detect`/`matting`）需要先用 `scripts/download_face_models.py` / `download_matting_models.py` 下载模型（其 mediapipe 后端另消费 `scripts/download_mediapipe_models.py` 的模型与测试图）；缺失这些资源时相关测试会 soft-skip。原 `mnn_*` / `mp_*` / `js_script` 任务层已移除——引擎保留在核心库内，作为视觉子模块的后端底座。
 
 ## 独立编译 & 动态插件（桌面）
 

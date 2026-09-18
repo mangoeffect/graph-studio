@@ -152,10 +152,10 @@ The generator produces `CMakeLists.txt`, a task header, and a source with dual p
 | `image_reader` | `opencv_image_read` |
 | `image_filtering` | `opencv_blur_filter`, `opencv_gaussian_blur_filter`, `opencv_median_blur_filter`, `opencv_bilateral_filter`, `opencv_box_filter`, `opencv_sobel_filter`, `opencv_scharr_filter`, `opencv_laplacian_filter` |
 | `gpu_image_processing` | `gpu_box_blur`, `gpu_gaussian_blur`, `gpu_grayscale`, `gpu_brightness_contrast`, `gpu_resize` |
-| `js_task` | `js_script` |
-| `mediapipe_vision` | `mp_face_landmarker`, `mp_hand_landmarker`, `mp_pose_landmarker`, `mp_object_detector` (+ `mp_face_detector`, `mp_gesture_recognizer`, `mp_holistic_landmarker`, `mp_image_classifier`, `mp_image_embedder`, `mp_image_segmenter`) |
+| `face_detect` | `face_detect` |
+| `matting` | `matting` |
 
-MediaPipe vision requires prebuilt models + demo images downloaded via `scripts/download_mediapipe_models.py` into `submodules/mediapipe/mediapipe_vision/tests/models/`; tests soft-skip when those assets are absent.
+Vision tasks (`face_detect`/`matting`) need models fetched by `scripts/download_face_models.py` / `download_matting_models.py` (their MediaPipe backends additionally consume `scripts/download_mediapipe_models.py` assets); tests soft-skip when those assets are absent. The former `mnn_*` / `mp_*` / `js_script` task layers were removed — their engines remain inside the core library as backend plumbing for the vision submodules.
 
 ## Standalone build & dynamic plugins (desktop)
 

@@ -229,15 +229,9 @@ void NodeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, 
     } else if (category == QStringLiteral("GPU")) {
         bodyColor = QColor(40, 60, 60);
         accentColor = QColor(0, 188, 212);
-    } else if (category == QStringLiteral("MediaPipe")) {
-        bodyColor = QColor(60, 40, 60);
-        accentColor = QColor(186, 104, 200);
     } else if (category == QStringLiteral("Vision")) {
         bodyColor = QColor(38, 52, 48);
         accentColor = QColor(0, 200, 150);
-    } else if (category == QStringLiteral("Scripting")) {
-        bodyColor = QColor(60, 55, 40);
-        accentColor = QColor(255, 193, 7);
     } else if (category == QStringLiteral("Color Grading")) {
         bodyColor = QColor(55, 40, 60);
         accentColor = QColor(255, 152, 0);

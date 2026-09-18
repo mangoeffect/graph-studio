@@ -779,4 +779,14 @@ bool MpVisionEngine::run(const Image& image, VisionResult& out, std::string& err
     return run(copy.data->data(), copy.width, copy.height, copy.channels, out, err);
 }
 
+// 视觉结果公共类型的稳定名（跨 SO 一致；任务层移除后随引擎保留——
+// face/matting 的端口/后端结果仍在使用这些类型，stub 构建同样注册）
+TG_REGISTER_TYPE(NormalizedLandmark, "task_graph::NormalizedLandmark")
+TG_REGISTER_TYPE(Landmark, "task_graph::Landmark")
+TG_REGISTER_TYPE(Detection, "task_graph::Detection")
+TG_REGISTER_TYPE(Category, "task_graph::Category")
+TG_REGISTER_TYPE(MatrixData, "task_graph::MatrixData")
+TG_REGISTER_TYPE(SegmentationMask, "task_graph::SegmentationMask")
+TG_REGISTER_TYPE(VisionResult, "task_graph::VisionResult")
+
 }  // namespace task_graph

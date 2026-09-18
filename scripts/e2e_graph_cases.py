@@ -24,7 +24,6 @@ from pathlib import Path
 
 from gs import repo_root
 
-SKIP_GRAPHS = {"js_error.json"}            # 故意失败的反例夹具，不进正向流
 PRIORITY_GRAPHS = ["read_image.json", "read_image_unicode.json"]
 
 # 相对路径引用的探测祖先层级：夹具布局是 <tests>/graphs/*.json + 资产在
@@ -51,8 +50,6 @@ def discover_graphs() -> list[dict]:
     """枚举子模块图夹具，返回 [{path, module, name, tasks, edges, refs, missing}]。"""
     out = []
     for g in sorted((repo_root() / "submodules").rglob("tests/graphs/*.json")):
-        if g.name in SKIP_GRAPHS:
-            continue
         try:
             data = json.loads(g.read_text(encoding="utf-8"))
         except (ValueError, OSError) as e:
