@@ -191,15 +191,22 @@ inline WGPUFuture tg_pop_error_scope(WGPUDevice device,
 }
 
 // 旧头无 ProcessEvents：回调依赖 JS 事件循环，wasm 上不能阻塞等待——
-// 空实现让 spin_until 立即返回（init 观察到 null 即优雅失败）
+// 空实现让 spin_until 立即返回（init 观察到 null 即优雅失败）。
+// 3.1.46 起头文件自带真函数，不能重定义。
+#if !(__EMSCRIPTEN_major__ > 3 || (__EMSCRIPTEN_major__ == 3 && __EMSCRIPTEN_minor__ >= 46))
 inline void wgpuInstanceProcessEvents(WGPUInstance) {}
+#endif
 
-// WGSL 描述：旧头 code 字段名是 source
+// WGSL 描述：3.1.37 字段名 source，3.1.46 起 code
 inline WGPUShaderModuleWGSLDescriptor make_wgsl_source(const char* data, size_t) {
     WGPUShaderModuleWGSLDescriptor s{};
     s.chain.next = nullptr;
     s.chain.sType = WGPUSType_ShaderModuleWGSLDescriptor;
+#if __EMSCRIPTEN_major__ > 3 || (__EMSCRIPTEN_major__ == 3 && __EMSCRIPTEN_minor__ >= 46)
+    s.code = data;
+#else
     s.source = data;
+#endif
     return s;
 }
 
