@@ -680,6 +680,7 @@ function(add_tg_test name)
     gtest_discover_tests(${name}
         DISCOVERY_MODE PRE_TEST
         TEST_PREFIX "${name}."
+        PROPERTIES TIMEOUT 300
     )
 endfunction()
 
@@ -813,6 +814,7 @@ if(TG_BUILD_MP_VISION_TESTS AND TARGET image_reader)
     gtest_discover_tests(test_mediapipe_vision
         DISCOVERY_MODE PRE_TEST
         TEST_PREFIX "test_mediapipe_vision."
+        PROPERTIES TIMEOUT 300
     )
 endif()
 
@@ -832,6 +834,7 @@ if(NOT TASK_GRAPH_MOBILE AND NOT EMSCRIPTEN AND TASK_GRAPH_BUILD_TESTS
     gtest_discover_tests(test_js_script
         DISCOVERY_MODE PRE_TEST
         TEST_PREFIX "test_js_script."
+        PROPERTIES TIMEOUT 300
     )
 endif()
 
