@@ -18,6 +18,7 @@
 #include <cstddef>
 #include <cstring>
 #include <string>
+#include <type_traits>
 
 #include <webgpu/webgpu.h>
 
@@ -192,21 +193,29 @@ inline WGPUFuture tg_pop_error_scope(WGPUDevice device,
 
 // 旧头无 ProcessEvents：回调依赖 JS 事件循环，wasm 上不能阻塞等待——
 // 空实现让 spin_until 立即返回（init 观察到 null 即优雅失败）。
-// 3.1.46 起头文件自带真函数，不能重定义。
-#if !(__EMSCRIPTEN_major__ > 3 || (__EMSCRIPTEN_major__ == 3 && __EMSCRIPTEN_minor__ >= 46))
+// 3.1.46 起头文件已声明同名函数——声明与 inline 定义签名一致时合法共存，
+// 编译器取 inline 定义（行为相同），无需版本分支。
 inline void wgpuInstanceProcessEvents(WGPUInstance) {}
-#endif
 
-// WGSL 描述：3.1.37 字段名 source，3.1.46 起 code
+// WGSL 描述：3.1.37 字段名 source，3.1.46 起 code。__EMSCRIPTEN_minor__
+// 等版本宏由 <emscripten.h> 定义（本头不包含它，恒未定义），故用成员探测。
+namespace tg_wgpu_compat {
+template <typename T, typename = void>
+struct has_wgsl_code : std::false_type {};
+template <typename T>
+struct has_wgsl_code<T, std::void_t<decltype(std::declval<T&>().code)>>
+    : std::true_type {};
+}  // namespace tg_wgpu_compat
+
 inline WGPUShaderModuleWGSLDescriptor make_wgsl_source(const char* data, size_t) {
     WGPUShaderModuleWGSLDescriptor s{};
     s.chain.next = nullptr;
     s.chain.sType = WGPUSType_ShaderModuleWGSLDescriptor;
-#if __EMSCRIPTEN_major__ > 3 || (__EMSCRIPTEN_major__ == 3 && __EMSCRIPTEN_minor__ >= 46)
-    s.code = data;
-#else
-    s.source = data;
-#endif
+    if constexpr (tg_wgpu_compat::has_wgsl_code<WGPUShaderModuleWGSLDescriptor>::value) {
+        s.code = data;
+    } else {
+        s.source = data;
+    }
     return s;
 }
 
