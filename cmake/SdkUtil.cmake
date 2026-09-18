@@ -26,6 +26,15 @@ function(use_task_graph_sdk target)
         if(EXISTS "${TASK_GRAPH_ROOT}/include/plugin_api.hpp")
             target_include_directories(${target} PRIVATE "${TASK_GRAPH_ROOT}/include")
         endif()
+        # js 公共头（js_engine.hpp 的 API 面暴露 JSContext*/JSValue）需要
+        # <quickjs.h> 可解析——in-tree 构建由 task_graph 目标的 PUBLIC include
+        # 带入（根 CMakeLists），legacy 模式没有目标可挂，这里对齐补上
+        #（WASM app-as-top 构建编译 render_task（render_js_script 消费 JS 引擎）
+        # 时踩过 quickjs.h not found）。
+        if(EXISTS "${TASK_GRAPH_ROOT}/third_party/quickjs/quickjs.h")
+            target_include_directories(${target} PRIVATE
+                "${TASK_GRAPH_ROOT}/third_party/quickjs")
+        endif()
         if(EXISTS "${TASK_GRAPH_ROOT}/build")
             target_link_directories(${target} PRIVATE "${TASK_GRAPH_ROOT}/build")
         endif()

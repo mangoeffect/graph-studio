@@ -435,7 +435,10 @@ jobs:
 
       - name: Build GraphStudio WASM
         shell: bash
-        run: python3 scripts/run_graph_studio_wasm.py --build-only -j 4 --skip-models
+        # --wgpu：WebGPU 后端 + gpu/render 子模块编入（浏览器内经主线程
+        # Asyncify 泵初始化/读写回收；本地全量 E2E 验证通过后于 2026-09-18
+        # 翻默认）。ASYNCIFY 插桩体积增量 ~7MB（wasm 32M / brotli 6M）。
+        run: python3 scripts/run_graph_studio_wasm.py --build-only --wgpu -j 4 --skip-models
 
       - name: Derive package version
         shell: bash

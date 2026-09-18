@@ -426,7 +426,13 @@ if(EMSCRIPTEN)
     if(EXISTS "${_OPENCV_WASM_INSTALL}/lib/cmake/opencv4")
         set(_OPENCV_WASM_AVAILABLE ON)
         set(OpenCV_DIR "${_OPENCV_WASM_INSTALL}/lib/cmake/opencv4")
-        # 依赖 OpenCV 的 submodule CMakeLists 用该开关判断是否 return() 跳过
+        # 依赖 OpenCV 的 submodule CMakeLists 用该开关判断是否 return() 跳过；
+        # cv::Mat 端口回退的编译定义由各子模块自己加（face/matting 的
+        # target_compile_definitions 模式——render_task 已对齐；gpu 子模块
+        # 不需要：输入转换在核心库 run_gpu_op 内完成）。不能在本目录
+        # add_compile_definitions 全局定义：gpu_image_processing 会因
+        # data_types.hpp 的 opencv include 而缺头编译失败（legacy -l 链接
+        # 无核心库 target 的 PUBLIC include 可带）。
         set(TASK_GRAPH_ENABLE_OPENCV ON)
         find_package(OpenCV REQUIRED COMPONENTS core imgproc)
         message(STATUS "WASM: OpenCV found at ${_OPENCV_WASM_INSTALL}")

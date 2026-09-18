@@ -30,6 +30,14 @@ PRIORITY_GRAPHS = ["read_image.json", "read_image_unicode.json"]
 # <tests>/{data,models,scripts}/…（框架按图自身目录解析相对路径）。
 _ANCESTORS = (0, 1, 2)   # graphs/ 自身、tests/、subnode 根
 
+# 天然失败的夹具（图本身断言错误路径——如 render_js_error 的 script boom
+# 抛错）：桌面 ctest 对应用例承担验证；E2E 侧按"预期失败"记 skip 而非
+# fail（三端共享；wasm 端已消费，macOS/Android 轨道下次运行时接入）。
+EXPECTED_FAILURE_GRAPHS = {
+    "render_js_error.json":
+        "夹具断言 JS 抛错路径（script boom），任务预期 FAILED——桌面 ctest 覆盖",
+}
+
 
 def _resolve_ref(graph_path: Path, ref: str) -> bool:
     """相对路径引用是否存在（按 graphs/ 的若干级祖先探测）。

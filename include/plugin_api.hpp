@@ -254,6 +254,15 @@ public:
     virtual CheckResult check_input(
         const std::unordered_map<std::string, std::any>& inputs_by_port) const;
 
+    // 执行线程偏好（默认 false）。wasm 上 GPU 任务必须主线程内联执行：
+    // 浏览器 WebGPU 回调只在主线程事件循环送达，且 emscripten 的 webgpu
+    // JS glue 无跨线程代理（句柄表每 JS 上下文一份，worker 上的回调永不
+    // 触发）。GPU 任务基类覆写为 true；桌面实现忽略本标志（后端互斥锁
+    // 已保证线程安全）。命名避开平台字眼——纯执行调度语义。
+    // 注：置于虚函数清单末尾——中途插入会平移既有虚槽位，ABI 上等同于
+    // 破坏独立编译的插件 dylib（槽位错调、段错误）。
+    virtual bool prefer_main_thread() const { return false; }
+
 protected:
     // 子类重写此方法实现预初始化逻辑（如 GPU shader 预编译）。保证只被调用一次。
     virtual void on_init() {}

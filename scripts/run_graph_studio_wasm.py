@@ -129,9 +129,10 @@ def main() -> int:
                          "Ctrl+C 随 server 一起退出）")
     ap.add_argument("-j", "--jobs", type=int, default=0, help="并行编译线程数（默认 CPU 核数）")
     ap.add_argument("--wgpu", action="store_true",
-                    help="wasm 编入 wgpu 统一后端（核心库 WGPU=ON + 链接 -sUSE_WEBGPU；"
-                         "浏览器内初始化优雅失败——真实初始化是独立里程碑。"
-                         "默认关闭：发布 CI 在浏览器验证完成前不受影响）")
+                    help="wasm 编入 wgpu 统一后端（核心库 WGPU=ON + app 链接 "
+                         "-sUSE_WEBGPU -sASYNCIFY；GPU/render 子模块编入）。浏览器内 "
+                         "WebGPU 经主线程 Asyncify 泵初始化与读写回收；无 WebGPU 的"
+                         "浏览器优雅降级。默认关闭：发布 CI 在全量 E2E 验证后翻默认")
     ap.add_argument("--emsdk-root", default="", help="emsdk 根目录（默认 $EMSDK_ROOT/$EMSDK）")
     ap.add_argument("--qt-wasm-root", default="",
                     help="Qt wasm 前缀（默认 $QT_WASM_ROOT，回退探测 ~/Qt/<ver>/wasm_multithread）")
@@ -231,8 +232,11 @@ def main() -> int:
                    "-DCMAKE_EXE_LINKER_FLAGS=-fexceptions"]
         if args.wgpu:
             # app 的 EMSCRIPTEN 块按此开关链接 -sUSE_WEBGPU（GpuBootstrap 编入
-            # wgpu 路径；浏览器内 init 优雅失败）
+            # wgpu 路径）。ASYNCIFY 联动：核心库 spin_until 在 wasm 上用
+            # emscripten_sleep 泵主线程事件循环等 WebGPU 回调——插桩在最终
+            # 链接（app 侧）由 Binaryen pass 施加，核心库 .a 无需编译期标志。
             qt_args.append("-DTASK_GRAPH_ENABLE_WGPU=ON")
+            qt_args.append("-DCMAKE_EXE_LINKER_FLAGS=-fexceptions -sASYNCIFY")
         env = dict(os.environ, EMSDK=str(emsdk_root))
         code = runner.check(qt_args, env=env, what="配置 graph_studio WASM")
         if code != 0:

@@ -541,9 +541,9 @@ void DAGExecutor::run(const DAG& dag) {
 
         // 任务提交闭包：封装单个任务的完整执行流程
         auto submit_task = [&](const TaskId& tid) {
-            futures.push_back(thread_pool_->submit([this, &dag, tid, &remaining_dependencies, &dependents,
-                                                    &queue_mutex, &queue_cv, &ready_queue, &completed_count,
-                                                    &fail_and_propagate]() {
+            auto run_task = [this, &dag, tid, &remaining_dependencies, &dependents,
+                             &queue_mutex, &queue_cv, &ready_queue, &completed_count,
+                             &fail_and_propagate]() {
                 TaskPtr task = dag.get_task(tid);
 
                 if (cancelled_) {
@@ -682,7 +682,22 @@ void DAGExecutor::run(const DAG& dag) {
 
                 completed_count.fetch_add(1);
                 queue_cv.notify_one();
-            }));
+            };
+#ifdef __EMSCRIPTEN__
+            // wasm：GPU 任务主线程内联执行。浏览器 WebGPU 的异步回调只在
+            // 主线程事件循环送达，且 emscripten 的 webgpu JS glue 无跨线程
+            // 代理（句柄表每 JS 上下文一份）——worker 上的回调永不触发。
+            // 调度循环本就在调用线程（主线程，见上方 EMSCRIPTEN 分支）同步
+            // 运行，内联即同栈执行；CPU 任务照旧进线程池并行。
+            {
+                TaskPtr t = dag.get_task(tid);
+                if (t && t->prefer_main_thread()) {
+                    run_task();
+                    return;
+                }
+            }
+#endif
+            futures.push_back(thread_pool_->submit(std::move(run_task)));
         };
 
 

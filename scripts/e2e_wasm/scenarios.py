@@ -23,14 +23,39 @@ from .cdp_browser import CdpBrowser, CdpTab
 BOOT_TIMEOUT = 120  # wasm 编译 + Qt 启动在冷缓存时可能较慢
 FINISHED_RE = re.compile(r"\[gs\] Execution finished:\s*(\d+)\s*ok,\s*(\d+)\s*failed")
 
-# wasm 侧不可执行的子模块（二进制 strings 实测的任务注册为准）：
-#   image_processing = gpu 子模块（module 叶子名），GPU compute 的 WGSL
-#   kernel 未移植，任务类型未注册；render_task 的 wasm 构建门未开。
-#   （mp_*/js_script/mnn_* 任务层已移除，不再占用发现树条目。）
-WASM_UNSUPPORTED_MODULES = {
-    "image_processing": "gpu 子模块未在 wasm 注册（compute WGSL 未移植）",
-    "render_task": "render 子模块 wasm 构建门未开（任务类型未注册）",
+# wasm 侧不可执行的子模块（二进制 strings 实测的任务注册为准；当前构建
+# 已把 gpu/render 子模块编入 wasm，清单为空，保留机制供未来使用）。
+WASM_UNSUPPORTED_MODULES: dict[str, str] = {}
+
+# 需要 WebGPU 后端的模块（module 叶子名）。wasm 构建已编入 gpu/render
+# 任务（--wgpu）；浏览器无 WebGPU（Safari/Firefox 等）时整模块运行时探测
+# skip——任务会注册但执行失败，skip 比逐图 fail 更可读。
+WEBGPU_MODULES = {
+    "image_processing": "gpu 子模块",
+    "render_task": "render 子模块",
 }
+
+# URL 单文件通道无法枚举目录内容：目录形 effects_path（shaders/ 整目录
+# manifest 库）的夹具记 skip——与 .tgp 打包器"目录引用不打包"是同一条
+# v1 边界（文件形 *.effect.json 的兄弟 shader 源已由 entry.cpp 补取）。
+WASM_UNSUPPORTED_GRAPHS = {
+    "render_manifest_pipeline.json":
+        "目录形 effects_path（shaders/）无法经 URL 通道枚举预取",
+}
+
+
+def webgpu_available(browser: CdpBrowser, base_url: str) -> bool:
+    """浏览器是否暴露 navigator.gpu。必须在与 app 同源的文档里探测：
+    空白新 tab（about:blank，无 opener）isSecureContext=false、WebGPU 不
+    暴露；本机 server 的任意路径（含 404 页）都是 localhost 安全上下文。"""
+    tab = browser.new_tab(base_url.rstrip("/") + "/__webgpu_probe__")
+    try:
+        val = tab.evaluate("JSON.stringify('gpu' in navigator)")
+        return val == '"true"' or val == "true"
+    except Exception:
+        return False
+    finally:
+        tab.close()
 
 
 class ScenarioError(RuntimeError):
@@ -188,7 +213,15 @@ def url_graph_case(browser: CdpBrowser, base_url: str, graph_url: str, *,
                     f"{tab.evaluate('window.__gsTest.edgeCount()')})")
         line = tab.wait_console(FINISHED_RE.pattern, timeout=timeout)
         m = FINISHED_RE.search(line)
-        return int(m.group(1)), int(m.group(2))
+        ok, failed = int(m.group(1)), int(m.group(2))
+        if failed > 0:
+            # 执行完成但有任务失败：带上 console 尾部现场（[gs] 镜像里有
+            # 每个失败任务的原因行），否则 fail 记录只有干巴巴的计数
+            tail = tab.console_text().strip().splitlines()
+            raise GraphCaseError(
+                f"执行有 {failed} 个任务失败（ok={ok}）",
+                {"console_tail": "\n".join(tail[-40:])})
+        return ok, failed
     except (ScenarioError, TimeoutError, RuntimeError) as ex:
         tail = tab.console_text().strip().splitlines()
         snapshot = {"console_tail": "\n".join(tail[-30:])}
@@ -215,12 +248,25 @@ def files_run(browser: CdpBrowser, base_url: str, report, ctx: dict) -> int:
     serve_root: Path = ctx["serve_root"]
     artifacts: Path = ctx["artifacts"]
 
+    gpu_ok = webgpu_available(browser, base_url)
+
     runnable = []
     for e in graphs:
         full = f"files/graph:{e['module']}/{e['name']}"
         reason = WASM_UNSUPPORTED_MODULES.get(e["module"])
         if reason:
             report.record(full, "skip", reason)
+            continue
+        if e["module"] in WEBGPU_MODULES and not gpu_ok:
+            report.record(full, "skip",
+                          f"浏览器无 WebGPU（navigator.gpu 缺失），"
+                          f"{WEBGPU_MODULES[e['module']]}需要 GPU 后端")
+            continue
+        if e["name"] in gc.EXPECTED_FAILURE_GRAPHS:
+            report.record(full, "skip", gc.EXPECTED_FAILURE_GRAPHS[e["name"]])
+            continue
+        if e["name"] in WASM_UNSUPPORTED_GRAPHS:
+            report.record(full, "skip", WASM_UNSUPPORTED_GRAPHS[e["name"]])
             continue
         if e["missing"]:
             report.record(full, "skip",
@@ -276,9 +322,16 @@ def project_run(browser: CdpBrowser, base_url: str, report, ctx: dict) -> int:
     serve_root: Path = ctx["serve_root"]
     artifacts: Path = ctx["artifacts"]
 
+    gpu_ok = webgpu_available(browser, base_url)
+    gpu_blocked = set(WASM_UNSUPPORTED_MODULES)
+    if not gpu_ok:
+        gpu_blocked |= set(WEBGPU_MODULES)
+
     candidates = sorted(
         (e for e in gc.discover_graphs()
-         if e["module"] not in WASM_UNSUPPORTED_MODULES
+         if e["module"] not in gpu_blocked
+         and e["name"] not in gc.EXPECTED_FAILURE_GRAPHS
+         and e["name"] not in WASM_UNSUPPORTED_GRAPHS
          and not e["missing"] and e["refs"]),
         key=lambda e: (e["module"], e["name"]))
     if not candidates:

@@ -96,6 +96,9 @@ void WgpuGpuBackend::free_texture(uintptr_t texture) {
 }
 
 bool WgpuGpuBackend::upload_texture(uintptr_t texture, const uint8_t* data, size_t size) {
+    if (!impl_->entry_allowed("upload_texture")) {
+        return false;
+    }
     wait_render_idle();  // P1：排空在飞渲染批次再搬运
     std::lock_guard<std::recursive_mutex> lock(impl_->mutex);
     if (!is_available() || !data) {
@@ -127,6 +130,9 @@ bool WgpuGpuBackend::upload_texture(uintptr_t texture, const uint8_t* data, size
 }
 
 bool WgpuGpuBackend::download_texture(uintptr_t texture, uint8_t* data, size_t size) {
+    if (!impl_->entry_allowed("download_texture")) {
+        return false;
+    }
     wait_render_idle();
     std::lock_guard<std::recursive_mutex> lock(impl_->mutex);
     if (!is_available() || !data) {
@@ -170,23 +176,30 @@ bool WgpuGpuBackend::download_texture(uintptr_t texture, uint8_t* data, size_t s
     wgpuCommandBufferRelease(cmd);
     wgpuCommandEncoderRelease(enc);
 
-    struct MapState {
-        std::atomic<bool> done{false};
+    struct MapState : public WgpuWaitState {
         bool ok = false;
-    } map_state;
+    };
+    auto map_state = std::make_unique<MapState>();
     {
         WGPUBufferMapCallbackInfo cb{};
         cb.mode = WGPUCallbackMode_AllowProcessEvents;
-        cb.userdata1 = &map_state;
+        cb.userdata1 = map_state.get();
         cb.callback = [](WGPUMapAsyncStatus status, WGPUStringView, void* u1, void*) {
             auto* s = static_cast<MapState*>(u1);
+            if (s->aborted.load(std::memory_order_acquire)) {
+                return;  // 迟到回调（等待已超时放弃）
+            }
             s->ok = status == WGPUMapAsyncStatus_Success;
             s->done.store(true, std::memory_order_release);
         };
         wgpu_compat::tg_buffer_map_async(staging, WGPUMapMode_Read, 0, sd.size, cb);
-        impl_->spin_until(map_state);
+        if (!impl_->spin_until(map_state)) {
+            wgpuBufferDestroy(staging);
+            wgpuBufferRelease(staging);
+            return false;
+        }
     }
-    bool ok = map_state.ok;
+    bool ok = map_state->ok;
     if (ok) {
         const uint8_t* mapped =
             static_cast<const uint8_t*>(wgpuBufferGetConstMappedRange(staging, 0, sd.size));
@@ -210,6 +223,9 @@ bool WgpuGpuBackend::download_texture(uintptr_t texture, uint8_t* data, size_t s
 }
 
 bool WgpuGpuBackend::copy_buffer_to_texture(uintptr_t buffer, size_t size, uintptr_t texture) {
+    if (!impl_->entry_allowed("copy_buffer_to_texture")) {
+        return false;
+    }
     wait_render_idle();
     std::lock_guard<std::recursive_mutex> lock(impl_->mutex);
     if (!is_available()) {
@@ -270,6 +286,9 @@ bool WgpuGpuBackend::copy_buffer_to_texture(uintptr_t buffer, size_t size, uintp
 }
 
 bool WgpuGpuBackend::copy_texture_to_buffer(uintptr_t texture, uintptr_t buffer, size_t size) {
+    if (!impl_->entry_allowed("copy_texture_to_buffer")) {
+        return false;
+    }
     wait_render_idle();
     std::lock_guard<std::recursive_mutex> lock(impl_->mutex);
     if (!is_available()) {
@@ -363,7 +382,8 @@ void WgpuGpuBackend::free_sampler(uintptr_t sampler) {
 
 uintptr_t WgpuGpuBackend::compile_render_pipeline(const GpuRenderPipelineDesc& desc) {
     std::lock_guard<std::recursive_mutex> lock(impl_->mutex);
-    if (!is_available() || desc.wgsl_source.empty()) {
+    if (!is_available() || desc.wgsl_source.empty() ||
+        !impl_->entry_allowed("compile_render_pipeline")) {
         // 明确报错：wgpu 后端只接受 WGSL（MSL/GLSL 字段被忽略）
         if (is_available() && desc.wgsl_source.empty()) {
             std::fprintf(stderr,
@@ -496,7 +516,8 @@ void WgpuGpuBackend::release_render_pipeline(uintptr_t pipeline) {
 
 bool WgpuGpuBackend::begin_render_pass(const GpuRenderPassDesc& desc) {
     std::lock_guard<std::recursive_mutex> lock(impl_->mutex);
-    if (!is_available() || desc.color_targets.empty()) {
+    if (!is_available() || desc.color_targets.empty() ||
+        !impl_->entry_allowed("begin_render_pass")) {
         return false;
     }
     if (impl_->pass_open) {
@@ -636,7 +657,7 @@ bool WgpuGpuBackend::end_render_pass() {
 
 bool WgpuGpuBackend::wait_render_idle() {
     std::lock_guard<std::recursive_mutex> lock(impl_->mutex);
-    if (!is_available()) {
+    if (!is_available() || !impl_->entry_allowed("wait_render_idle")) {
         return false;
     }
     if (impl_->pass_open) {

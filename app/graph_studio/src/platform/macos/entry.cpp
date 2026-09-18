@@ -289,7 +289,64 @@ int main(int argc, char* argv[])
                         console.warn('[gs] ?open 资产预取失败: ' + ref
                                      + ': ' + e.message);
                     });
-                }));
+                })).then(function() {
+                    // render effect 清单（*.effect.json）的兄弟 shader 源：
+                    // loader 按 <prefix>.metal/.frag 必读、.wgsl/.vert 可选，
+                    // 这些路径不在图 JSON 里，按清单约定补取（shader_prefix
+                    // 相对清单目录）。缺失容忍——必读源缺了执行期有可读报错。
+                    var mans = refs.filter(function(r) {
+                        return r.toLowerCase().endsWith('.effect.json');
+                    });
+                    return Promise.all(mans.map(function(m) {
+                        return fetch(dir + m).then(function(r) {
+                            return r.text();
+                        }).then(function(txt) {
+                            // C++ 语义（render_effect_manifest.hpp）：默认
+                            // prefix = 清单引用去掉 ".effect.json"（已是
+                            // 图相对完整路径）；显式 shader_prefix 才相对
+                            // 清单目录拼接。两者不能混淆（曾双重拼出
+                            // shaders/shaders/ 前缀）。
+                            var pfx = '', explicit = false;
+                            try {
+                                var j = JSON.parse(txt);
+                                if (typeof j.shader_prefix === 'string'
+                                        && j.shader_prefix) {
+                                    pfx = j.shader_prefix;
+                                    explicit = true;
+                                }
+                            } catch (e) { /* 坏清单：留给执行期报错 */ }
+                            if (!explicit) {
+                                pfx = m.slice(0, m.length
+                                              - '.effect.json'.length);
+                            } else if (pfx.charAt(0) !== '/'
+                                    && pfx.indexOf('://') < 0
+                                    && m.lastIndexOf('/') > 0) {
+                                pfx = m.slice(0, m.lastIndexOf('/')) + '/'
+                                      + pfx;
+                            }
+                            var exts = ['.metal', '.frag', '.wgsl', '.vert'];
+                            return Promise.all(exts.map(function(ext) {
+                                return fetch(dir + pfx + ext)
+                                    .then(function(r) {
+                                        if (!r.ok) return null;
+                                        return r.arrayBuffer();
+                                    }).then(function(buf) {
+                                        if (!buf) return;
+                                        var path = '/' + pfx + ext;
+                                        var dirPart = path.slice(
+                                            0, path.lastIndexOf('/'));
+                                        if (dirPart) Module.FS.createPath('/',
+                                            dirPart.slice(1), true, true);
+                                        Module.FS.writeFile(
+                                            path, new Uint8Array(buf));
+                                    }).catch(function() { /* 可选源缺失容忍 */ });
+                            }));
+                        }).catch(function(e) {
+                            console.warn('[gs] ?open effect 清单补取失败: '
+                                         + m + ': ' + e.message);
+                        });
+                    }));
+                });
             }).then(function() {
                 // run=1 立即执行前等默认模型落盘（face/matting 参数留空时
                 // 依赖 MEMFS /models）；拉取本身失败不阻塞打开。

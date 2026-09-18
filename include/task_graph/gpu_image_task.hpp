@@ -18,6 +18,9 @@ public:
 
     void on_init() override;
 
+    // wasm：GPU 调用链固定主线程（见 INode::prefer_main_thread 注释）
+    bool prefer_main_thread() const override { return true; }
+
 protected:
     // 通用 GPU 图像处理流程：按 op_name 查找算子，dispatch compute，返回 GPU-resident Image。
     TaskResult run_gpu_op(TaskContext& ctx, const std::string& op_name);

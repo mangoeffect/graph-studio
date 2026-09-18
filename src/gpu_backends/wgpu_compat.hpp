@@ -11,11 +11,13 @@
 //   - WGPUTexelCopy* 命名（是 WGPUImageCopy* / WGPUTextureDataLayout）
 // 升级 emsdk 到携带新 webgpu.h 的版本后，本文件的 __EMSCRIPTEN__ 分支可删。
 //
-// 运行时语义：旧 emscripten 的回调经浏览器 JS 事件循环异步触发；wasm 上
-// spin_until 立即返回（不能阻塞主线程），init 在回调到达前观察到 null 即
-// 优雅失败——浏览器内真实初始化是独立里程碑。
+// 运行时语义（2026-09 起落定）：浏览器回调走 JS 事件循环，只能由主线程
+// 的 Asyncify 等待（emscripten_sleep 泵）收割；GPU 调用链固定主线程
+// （worker 的 JS 栈被线程入口占死，回调永不送达）。见 wgpu_backend_impl.hpp
+// 的 spin_until。
 
 #include <cstddef>
+#include <cstdio>
 #include <cstring>
 #include <string>
 #include <type_traits>
@@ -23,6 +25,8 @@
 #include <webgpu/webgpu.h>
 
 #if defined(__EMSCRIPTEN__)
+#include <emscripten/threading.h>
+#include <thread>
 // ---- 旧 emscripten webgpu.h（<= 3.1.4x 时代）兼容层 ----
 // 注意：不能按枚举常量探测（defined() 只对宏生效；emsdk 升级换新头后本
 // 分支整段删除即可）。
@@ -191,11 +195,24 @@ inline WGPUFuture tg_pop_error_scope(WGPUDevice device,
     return WGPUFuture{0};
 }
 
-// 旧头无 ProcessEvents：回调依赖 JS 事件循环，wasm 上不能阻塞等待——
-// 空实现让 spin_until 立即返回（init 观察到 null 即优雅失败）。
+// 旧头无 ProcessEvents：wasm 上不靠轮询泵——等待走 spin_until 的
+// Asyncify 路径（emscripten_sleep），本空实现仅为共享 native 形态的调用点。
 // 3.1.46 起头文件已声明同名函数——声明与 inline 定义签名一致时合法共存，
 // 编译器取 inline 定义（行为相同），无需版本分支。
 inline void wgpuInstanceProcessEvents(WGPUInstance) {}
+
+// 主线程判定（wasm 专用）：浏览器回调只在主线程事件循环送达，GPU 调用链
+// 必须固定主线程（worker 的 JS 栈被线程入口占死）。非主线程时打日志并
+// 返回 false——调用方立即走失败路径，杜绝不可恢复的挂起。基准取首次
+// 调用所在线程（正常链路 = GpuBootstrap 启动初始化，必然主线程）。
+inline bool tg_assert_main_thread() {
+    static const std::thread::id ui_thread = std::this_thread::get_id();
+    if (std::this_thread::get_id() != ui_thread) {
+        std::fprintf(stderr, "  [wgpu] GPU wait on wrong thread\n");
+        return false;
+    }
+    return true;
+}
 
 // WGSL 描述：3.1.37 字段名 source，3.1.46 起 code。__EMSCRIPTEN_minor__
 // 等版本宏由 <emscripten.h> 定义（本头不包含它，恒未定义），故用成员探测。

@@ -43,6 +43,9 @@ namespace {
 void wgpu_on_error_scope(WGPUPopErrorScopeStatus, WGPUErrorType type,
                          WGPUStringView message, void* userdata1, void*) {
     auto* r = static_cast<WgpuErrorScopeResult*>(userdata1);
+    if (r->aborted.load(std::memory_order_acquire)) {
+        return;  // 迟到回调（等待已超时放弃）
+    }
     r->has_error = type != WGPUErrorType_NoError;
     if (r->has_error) {
         r->message.assign(message.data ? message.data : "",
@@ -117,18 +120,21 @@ bool WgpuGpuBackend::init() {
 #endif
     ao.powerPreference = WGPUPowerPreference_HighPerformance;
 
-    struct AdapterState {
-        std::atomic<bool> done{false};
+    struct AdapterState : public WgpuWaitState {
         WGPUAdapter adapter = nullptr;
         WGPURequestAdapterStatus status = WGPURequestAdapterStatus_Success;
-    } adapter_state;
+    };
+    auto adapter_state = std::make_unique<AdapterState>();
     {
         WGPURequestAdapterCallbackInfo cb{};
         cb.mode = WGPUCallbackMode_AllowProcessEvents;
-        cb.userdata1 = &adapter_state;
+        cb.userdata1 = adapter_state.get();
         cb.callback = [](WGPURequestAdapterStatus st, WGPUAdapter a,
                          WGPUStringView msg, void* u1, void*) {
             auto* s = static_cast<AdapterState*>(u1);
+            if (s->aborted.load(std::memory_order_acquire)) {
+                return;  // 迟到回调（等待已超时放弃）
+            }
             s->adapter = a;
             s->status = st;
             if (st != WGPURequestAdapterStatus_Success) {
@@ -138,17 +144,21 @@ bool WgpuGpuBackend::init() {
             s->done.store(true, std::memory_order_release);
         };
         wgpu_compat::tg_request_adapter(impl_->instance, &ao, cb);
-        impl_->spin_until(adapter_state);
+        if (!impl_->spin_until(adapter_state)) {
+            wgpuInstanceRelease(impl_->instance);
+            impl_->instance = nullptr;
+            return false;
+        }
     }
-    if (adapter_state.status != WGPURequestAdapterStatus_Success ||
-        adapter_state.adapter == nullptr) {
+    if (adapter_state->status != WGPURequestAdapterStatus_Success ||
+        adapter_state->adapter == nullptr) {
         std::fprintf(stderr, "  [wgpu] no adapter (status=%d)\n",
-                     (int)adapter_state.status);
+                     (int)adapter_state->status);
         wgpuInstanceRelease(impl_->instance);
         impl_->instance = nullptr;
         return false;
     }
-    WGPUAdapter adapter = adapter_state.adapter;
+    WGPUAdapter adapter = adapter_state->adapter;
     impl_->adapter = adapter;
 
     // 设备：默认 limits/features；uncaptured 错误打到 stderr 便于定位
@@ -162,17 +172,20 @@ bool WgpuGpuBackend::init() {
     dd.uncapturedErrorCallbackInfo = err;
 #endif
 
-    struct DeviceState {
-        std::atomic<bool> done{false};
+    struct DeviceState : public WgpuWaitState {
         WGPUDevice device = nullptr;
-    } device_state;
+    };
+    auto device_state = std::make_unique<DeviceState>();
     {
         WGPURequestDeviceCallbackInfo cb{};
         cb.mode = WGPUCallbackMode_AllowProcessEvents;
-        cb.userdata1 = &device_state;
+        cb.userdata1 = device_state.get();
         cb.callback = [](WGPURequestDeviceStatus st, WGPUDevice d,
                          WGPUStringView msg, void* u1, void*) {
             auto* s = static_cast<DeviceState*>(u1);
+            if (s->aborted.load(std::memory_order_acquire)) {
+                return;  // 迟到回调（等待已超时放弃）
+            }
             s->device = d;
             if (st != WGPURequestDeviceStatus_Success) {
                 std::fprintf(stderr, "  [wgpu] device status=%d msg=%.*s\n",
@@ -181,9 +194,15 @@ bool WgpuGpuBackend::init() {
             s->done.store(true, std::memory_order_release);
         };
         wgpu_compat::tg_request_device(adapter, &dd, cb);
-        impl_->spin_until(device_state);
+        if (!impl_->spin_until(device_state)) {
+            wgpuAdapterRelease(adapter);
+            wgpuInstanceRelease(impl_->instance);
+            impl_->adapter = nullptr;
+            impl_->instance = nullptr;
+            return false;
+        }
     }
-    WGPUDevice device = device_state.device;
+    WGPUDevice device = device_state->device;
     if (device == nullptr) {
         std::fprintf(stderr, "  [wgpu] requestDevice failed\n");
         wgpuAdapterRelease(adapter);
@@ -279,6 +298,9 @@ bool WgpuGpuBackend::upload_to_gpu(Image& image) {
 }
 
 bool WgpuGpuBackend::download_to_cpu(Image& image) {
+    if (!impl_->entry_allowed("download_to_cpu")) {
+        return false;
+    }
     if (!image.is_on_gpu() || !is_available()) {
         return false;
     }
@@ -314,23 +336,30 @@ bool WgpuGpuBackend::download_to_cpu(Image& image) {
     wgpuCommandBufferRelease(cmd);
     wgpuCommandEncoderRelease(enc);
 
-    struct MapState {
-        std::atomic<bool> done{false};
+    struct MapState : public WgpuWaitState {
         bool ok = false;
-    } map_state;
+    };
+    auto map_state = std::make_unique<MapState>();
     {
         WGPUBufferMapCallbackInfo cb{};
         cb.mode = WGPUCallbackMode_AllowProcessEvents;
-        cb.userdata1 = &map_state;
+        cb.userdata1 = map_state.get();
         cb.callback = [](WGPUMapAsyncStatus status, WGPUStringView, void* u1, void*) {
             auto* s = static_cast<MapState*>(u1);
+            if (s->aborted.load(std::memory_order_acquire)) {
+                return;  // 迟到回调（等待已超时放弃）
+            }
             s->ok = status == WGPUMapAsyncStatus_Success;
             s->done.store(true, std::memory_order_release);
         };
         wgpu_compat::tg_buffer_map_async(staging, WGPUMapMode_Read, 0, copy_size, cb);
-        impl_->spin_until(map_state);
+        if (!impl_->spin_until(map_state)) {
+            wgpuBufferDestroy(staging);
+            wgpuBufferRelease(staging);
+            return false;
+        }
     }
-    bool ok = map_state.ok;
+    bool ok = map_state->ok;
     if (ok) {
         const void* mapped = wgpuBufferGetConstMappedRange(staging, 0, copy_size);
         if (mapped) {
@@ -374,7 +403,7 @@ bool WgpuGpuBackend::release_gpu_memory(Image& image) {
 uintptr_t WgpuGpuBackend::compile_kernel(const std::string& name,
                                           const std::string& source) {
     std::lock_guard<std::recursive_mutex> lock(impl_->mutex);
-    if (!is_available()) {
+    if (!is_available() || !impl_->entry_allowed("compile_kernel")) {
         return 0;
     }
     auto it = impl_->kernel_cache.find(name);
@@ -416,7 +445,7 @@ bool WgpuGpuBackend::dispatch(uintptr_t kernel,
                                const void* uniform_data, size_t uniform_size,
                                uint32_t grid_x, uint32_t grid_y, uint32_t grid_z) {
     std::lock_guard<std::recursive_mutex> lock(impl_->mutex);
-    if (!is_available() || kernel == 0) {
+    if (!is_available() || kernel == 0 || !impl_->entry_allowed("dispatch")) {
         return false;
     }
     WGPUComputePipeline pipe = reinterpret_cast<WGPUComputePipeline>(kernel);
