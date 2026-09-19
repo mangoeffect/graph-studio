@@ -172,6 +172,8 @@ def main() -> int:
         # 整目录 rmtree 会连缓存一起清掉，之后 app 的无条件
         # opencv.hpp include 直接编译失败（且报错毫不指向根因）。选择
         # 性清理：缓存子目录挪出→清→挪回，语义与 CI cache 一致。
+        # 注意：清理失败绝不静默吞掉——半清理状态会让后续 configure
+        # 产出"看起来正常实则残缺"的链接行（浏览器里空白加载页）。
         preserved = []
         for keep in ("opencv", "mnn"):
             keep_dir = lib_build / keep
@@ -180,8 +182,22 @@ def main() -> int:
                 shutil.rmtree(tmp_dir, ignore_errors=True)
                 keep_dir.rename(tmp_dir)
                 preserved.append((tmp_dir, keep_dir))
-        shutil.rmtree(lib_build, ignore_errors=True)
-        shutil.rmtree(gs_build, ignore_errors=True)
+        try:
+            shutil.rmtree(gs_build)
+        except OSError as e:
+            console.fail(f"清理 {gs_build} 失败：{e}（占用进程？）先解决后重试")
+            for tmp_dir, keep_dir in preserved:
+                keep_dir.parent.mkdir(parents=True, exist_ok=True)
+                tmp_dir.rename(keep_dir)
+            return 1
+        try:
+            shutil.rmtree(lib_build)
+        except OSError as e:
+            console.fail(f"清理 {lib_build} 失败：{e}（占用进程？）先解决后重试")
+            for tmp_dir, keep_dir in preserved:
+                keep_dir.parent.mkdir(parents=True, exist_ok=True)
+                tmp_dir.rename(keep_dir)
+            return 1
         for tmp_dir, keep_dir in preserved:
             keep_dir.parent.mkdir(parents=True, exist_ok=True)
             tmp_dir.rename(keep_dir)
@@ -247,16 +263,43 @@ def main() -> int:
                    "-DCMAKE_CXX_FLAGS=-fexceptions",
                    "-DCMAKE_EXE_LINKER_FLAGS=-fexceptions"]
         if args.wgpu:
-            # app 的 EMSCRIPTEN 块按此开关链接 -sUSE_WEBGPU（GpuBootstrap 编入
-            # wgpu 路径）。ASYNCIFY 联动：核心库 spin_until 在 wasm 上用
-            # emscripten_sleep 泵主线程事件循环等 WebGPU 回调——插桩在最终
-            # 链接（app 侧）由 Binaryen pass 施加，核心库 .a 无需编译期标志。
+            # app 的 EMSCRIPTEN 块按此开关链接 -sUSE_WEBGPU -sASYNCIFY
+            #（GpuBootstrap 编入 wgpu 路径；插桩在最终链接由 Binaryen 施加，
+            # 核心库 .a 无需编译期标志）。
             qt_args.append("-DTASK_GRAPH_ENABLE_WGPU=ON")
             qt_args.append("-DCMAKE_EXE_LINKER_FLAGS=-fexceptions -sASYNCIFY")
+        else:
+            # 显式 OFF 覆盖 cache 残留：否则上次 --wgpu 的 cache 值会拼出
+            # "USE_WEBGPU 无 ASYNCIFY"的启动即崩组合（详见 app CMakeLists
+            # 同步注释）——脚本是开关的唯一事实源。
+            qt_args.append("-DTASK_GRAPH_ENABLE_WGPU=OFF")
         env = dict(os.environ, EMSDK=str(emsdk_root))
         code = runner.check(qt_args, env=env, what="配置 graph_studio WASM")
         if code != 0:
             return code
+        # 配置后一致性守卫：链接行必须包含在位的预编译库与关键旗标。
+        # 曾出现"配置状态与磁盘不一致"的静默降级构建（libMNN 在位却没进
+        # 链接）——产物能编译成功但浏览器里 Qt 起不来（空白加载页、零
+        # console），极难从末端倒查，这里把失败前移到配置期并给出恢复
+        # 动作。注意：库清单在 linklibs.rsp（link.txt 只有 @rsp 引用）。
+        link_txt = gs_build / "CMakeFiles" / "graph_studio.dir" / "link.txt"
+        link_rsp = gs_build / "CMakeFiles" / "graph_studio.dir" / "linklibs.rsp"
+        link_line = ""
+        for p in (link_txt, link_rsp):
+            if p.is_file():
+                link_line += p.read_text(encoding="utf-8", errors="replace")
+        if mnn_lib.is_file() and "libMNN" not in link_line:
+            console.fail(
+                "app 链接行缺少 libMNN.a（预编译库在位但 CMake 未纳入）——"
+                "构建目录状态异常。恢复：rm -rf app/graph_studio/build_wasm "
+                "后重跑本脚本")
+            return 1
+        if args.wgpu and "-sASYNCIFY" not in link_line:
+            console.fail(
+                "app 链接行缺少 -sASYNCIFY（--wgpu 的 WebGPU 等待依赖它）——"
+                "构建目录残留了旧配置。恢复：rm -rf app/graph_studio/build_wasm "
+                "后重跑本脚本（带 --wgpu）")
+            return 1
         code = cm.build(gs_build, jobs=jobs, what=f"构建 graph_studio.wasm (-j {jobs})")
         if code != 0:
             return code

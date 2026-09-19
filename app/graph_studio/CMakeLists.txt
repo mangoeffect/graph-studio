@@ -416,7 +416,12 @@ if(EMSCRIPTEN)
     # 提供）。浏览器内初始化优雅失败（兼容层 spin 不阻塞），验证是独立里程碑。
     if(TASK_GRAPH_ENABLE_WGPU)
         target_compile_definitions(graph_studio PRIVATE TG_APP_HAS_WGPU=1)
-        target_link_options(graph_studio PRIVATE "-sUSE_WEBGPU=1")
+        # -sASYNCIFY 必须与 -sUSE_WEBGPU 同进退：核心库 spin_until 的 wasm
+        # 等待依赖 emscripten_sleep（Asyncify 展开）；非 asyncify 构建里
+        # emscripten_sleep 直接 throw，启动期 GpuBootstrap 初始化即崩
+        #（空白加载页、近零 console）。两个旗标绑在同一处，杜绝经 cache
+        # 残留拼出"有 WebGPU 无 Asyncify"的组合。
+        target_link_options(graph_studio PRIVATE "-sUSE_WEBGPU=1" "-sASYNCIFY")
     endif()
 
     # OpenCV WASM 静态库若已用 scripts/build_opencv_wasm.py 构建到
