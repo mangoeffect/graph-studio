@@ -39,3 +39,13 @@
   translation: "Web build not published yet"
 - id: web_empty_body
   translation: "The WebAssembly build of GraphStudio ships with each GitHub Release (`GraphStudio-*-web.zip`); once published you can launch it here with one click. In the meantime, grab a desktop installer or build from source."
+- id: notfound_title
+  translation: "Page not found"
+- id: notfound_body
+  translation: "The page you're looking for doesn't exist or has moved. Head back home, or pick a destination below."
+- id: notfound_home
+  translation: "Back to home"
+- id: notfound_blog
+  translation: "Browse the blog"
+- id: notfound_download
+  translation: "Download GraphStudio"

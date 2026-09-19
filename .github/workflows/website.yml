@@ -54,7 +54,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          # 全历史：hugo.toml 的 enableGitInfo 靠 git log 算每文件 lastmod
+          # （sitemap <lastmod> / JSON-LD dateModified），浅克隆下所有文件
+          # 的时间恒为 HEAD 日期，失去新鲜度信号意义。
+          fetch-depth: 0
           # 不递归：plugin-* 私有子模块与站点无关（无 deploy key 拉不到会直接失败），
           # 主题子模块是公有仓库，下面单独按需拉取。
 

@@ -1,0 +1,19 @@
+{{- /* 404 页：覆盖主题裸 "404" 两字版本。Hugo 按语言各渲染一份（/404.html 与
+       /en/404.html），GitHub Pages 只对所有缺失路径固定回根 404.html（zh）——
+       en 访客看到中文属平台限制；404 无译页配对，extend_head 的自动检测
+       不会注入（无 .Translations），无重定向循环风险。 */ -}}
+{{ define "main" }}
+<article class="post-single tg-notfound">
+  <header class="post-header">
+    <h1 class="post-title">404 · {{ i18n "notfound_title" }}</h1>
+    <div class="post-description">{{ i18n "notfound_body" }}</div>
+  </header>
+  <div class="post-content">
+    <div class="tg-hero-actions">
+      <a class="tg-btn" href="{{ "" | absLangURL }}">{{ i18n "notfound_home" }}</a>
+      <a class="tg-btn" href="{{ "blog/" | relLangURL }}">{{ i18n "notfound_blog" }}</a>
+      <a class="tg-btn" href="{{ "download/" | relLangURL }}">{{ i18n "notfound_download" }}</a>
+    </div>
+  </div>
+</article>
+{{ end }}

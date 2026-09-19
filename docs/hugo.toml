@@ -7,8 +7,12 @@ title = "task_graph · GraphStudio"
 theme = "PaperMod"
 defaultContentLanguage = "zh"
 enableRobotsTXT = true
-enableGitInfo = false
+# lastmod 取每文件的 git 提交时间（sitemap <lastmod> 与 JSON-LD dateModified 的来源）。
+# 浅克隆下所有文件的时间恒为 HEAD 日期，须配套 website.yml 的 fetch-depth: 0。
+enableGitInfo = true
 enableEmoji = true
+# 中文内容按 CJK 统计字数（阅读时长 / WordCount 正确）
+hasCJKLanguage = true
 
 [pagination]
 pagerSize = 10
@@ -31,8 +35,21 @@ mainSections = ["blog"]
 # 日期显示为 ISO 风格（主题支持 ":date_long" 等 CLDR 预设）
 DateFormat = "2006-01-02"
 repoUrl = "https://github.com/mangoeffect/graph-studio"
-# og:image 兜底（无封面文章的社交分享图）
-images = ["img/og-image.png"]
+# meta author 与 JSON-LD BlogPosting.author 的兜底
+author = "mangoeffect"
+# og:image 兜底（无封面文章的社交分享图；1200x630 横版，社交大卡片规格）
+images = ["img/og-image-wide.png"]
+
+# JSON-LD Organization.sameAs（主题 schema_json.html 消费）
+[params.schema]
+sameAs = ["https://github.com/mangoeffect/graph-studio"]
+
+# 搜索引擎站长验证（PaperMod head.html 消费；需要时取消注释填 token。
+# Search Console 也可走 Cloudflare DNS TXT 验证，无需动这里）
+# [params.analytics.google]
+#   SiteVerificationTag = ""
+# [params.analytics.bing]
+#   SiteVerificationTag = ""
 
 [params.assets]
 favicon = "favicon.svg"
@@ -43,6 +60,8 @@ apple_touch_icon = "apple-touch-icon.png"
 [params.label]
 icon = "logo.png"
 iconHeight = 28
+# 页头 logo 区显示短名；<title>/og:site_name 用语言级加长标题（见 languages.*.title）
+text = "task_graph · GraphStudio"
 
 [markup]
   [markup.highlight]
@@ -68,6 +87,9 @@ languageName = "简体中文"
 languageCode = "zh-CN"
 weight = 1
 contentDir = "content/zh"
+# 语言级加长标题：首页 <title>/og:site_name 用（含可搜索关键词），
+# 内页 <title> 的站名后缀随之加长（页面唯一名在前，截断只吃后缀）
+title = "task_graph · GraphStudio — C++20 跨平台 DAG 任务执行框架"
 
 [languages.zh.params]
 description = "轻量级、跨平台的 C++20 DAG 任务执行框架，附带 GraphStudio 可视化编辑器"
@@ -110,6 +132,7 @@ languageName = "English"
 languageCode = "en-US"
 weight = 2
 contentDir = "content/en"
+title = "task_graph · GraphStudio — C++20 DAG Task Execution Framework"
 
 [languages.en.params]
 description = "A lightweight, cross-platform DAG task-execution framework in C++20, with the GraphStudio visual editor"

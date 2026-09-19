@@ -39,3 +39,13 @@
   translation: "Web 版尚未发布"
 - id: web_empty_body
   translation: "GraphStudio 的 WebAssembly 版会随 GitHub Release 一起发布（`GraphStudio-*-web.zip`），发布后即可在此一键启动。你也可以先下载桌面安装包，或从源码构建。"
+- id: notfound_title
+  translation: "页面不存在"
+- id: notfound_body
+  translation: "你访问的地址不存在或已被移动。可以回首页看看，或从下面选个去处。"
+- id: notfound_home
+  translation: "返回首页"
+- id: notfound_blog
+  translation: "浏览博客"
+- id: notfound_download
+  translation: "下载 GraphStudio"

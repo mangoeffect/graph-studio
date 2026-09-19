@@ -1,13 +1,51 @@
-{{- /* 官网扩展 head：浏览器语言自动检测（项目级覆盖 PaperMod 同名空模板，
-       在 head 末尾、正文渲染前执行；hreflang 备选页主题 head.html 已自带，勿重复输出）。
+{{- /* 官网扩展 head：hreflang x-default / 下载页结构化数据 / 浏览器语言自动检测
+       （项目级覆盖 PaperMod 同名空模板，在 head 末尾、正文渲染前执行；
+       zh/en 两条 hreflang 由主题 head.html 自带，勿重复输出）。
 
-       行为约定：
+       x-default 语义：非 zh 用户的语言兜底是 en（自动检测的跳转目标），
+       因此 en 页声明自身为 x-default。
+
+       语言自动检测行为约定：
        - localStorage 键 tg-lang-pref：zh / en = 用户手动切换过语言；auto-en = 自动跳转过。
          存在任意值时自动检测永久让位。
        - 自动检测只注入中文页（en 页面不反向跳转，天然无循环）；
          浏览器首选语言（navigator.languages[0]，回退 navigator.language）非 zh 开头才跳转。
+       - 爬虫/社交抓取工具一律豁免（UA 关键词命中即 return，且不写 localStorage、
+         不消耗 one-shot 标记）：Google/Bing 的渲染器会执行 JS，若被重定向，zh 页面
+         在它们的索引里会被 en 版顶掉（Google 官方要求语言自动重定向不得作用于爬虫；
+         百度爬虫 zh 环境不受影响，恰好只伤 Google/Bing 的中文收录）。社交抓取器
+         （twitterbot/facebookexternalhit 等）不执行 JS，守卫对它们同样无害。
        - location.replace 跳到当前页的英文译页（无译页的中文专属页如标签聚合页不跳转），
          不污染历史记录；localStorage 不可用时直接放弃跳转（防循环）。 */ -}}
+
+{{- if eq .Lang "en" }}
+<link rel="alternate" hreflang="x-default" href="{{ .Permalink }}">
+{{- end }}
+
+{{- /* 下载页 SoftwareApplication 结构化数据（rich result）；版本号取最新 stable，
+       无 stable（纯 prerelease 时期）取最新一条 release，无数据时省略该字段 */ -}}
+{{- if eq .Layout "downloads" }}
+    {{- $version := "" }}
+    {{- with site.Data.releases }}
+        {{- range first 1 (where .releases "prerelease" false) }}{{ $version = .tag_name }}{{ end }}
+        {{- if not $version }}{{ range first 1 .releases }}{{ $version = .tag_name }}{{ end }}{{ end }}
+    {{- end }}
+    {{- $app := dict "@context" "https://schema.org" "@type" "SoftwareApplication"
+        "name" "GraphStudio"
+        "applicationCategory" "DeveloperApplication"
+        "operatingSystem" "macOS, Windows, Linux, Web"
+        "url" .Permalink
+        "downloadUrl" "https://github.com/mangoeffect/graph-studio/releases"
+        "inLanguage" site.Language.Lang
+        "image" ("img/og-image-wide.png" | absURL)
+        "author" (dict "@type" "Organization" "name" "mangoeffect" "url" "https://github.com/mangoeffect")
+        "offers" (dict "@type" "Offer" "price" "0" "priceCurrency" "USD")
+        "isAccessibleForFree" true
+    }}
+    {{- with .Description }}{{ $app = merge $app (dict "description" .) }}{{ end }}
+    {{- if $version }}{{ $app = merge $app (dict "softwareVersion" $version) }}{{ end }}
+<script type="application/ld+json">{{ $app | jsonify | safeJS }}</script>
+{{- end }}
 
 {{- /* 手动偏好记录：点击页头语言切换器后写入，后续访问尊重该选择 */ -}}
 <script>
@@ -29,6 +67,8 @@
     {{- with $alt }}
 <script>
     (function () {
+        var BOT_RE = /bot|crawl|spider|slurp|headless|preview|fetch|monitor|snippet|externalhit|twitterbot|linkedinbot|pinterest|slack|telegram|whatsapp|discord|inspection/i;
+        if (BOT_RE.test(navigator.userAgent || '')) return;
         var ALT = "{{ . }}";
         try {
             if (localStorage.getItem('tg-lang-pref')) return;
