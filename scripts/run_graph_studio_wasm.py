@@ -281,11 +281,21 @@ def main() -> int:
         # 曾出现"配置状态与磁盘不一致"的静默降级构建（libMNN 在位却没进
         # 链接）——产物能编译成功但浏览器里 Qt 起不来（空白加载页、零
         # console），极难从末端倒查，这里把失败前移到配置期并给出恢复
-        # 动作。注意：库清单在 linklibs.rsp（link.txt 只有 @rsp 引用）。
-        link_txt = gs_build / "CMakeFiles" / "graph_studio.dir" / "link.txt"
-        link_rsp = gs_build / "CMakeFiles" / "graph_studio.dir" / "linklibs.rsp"
+        # 动作。
+        #
+        # 文件面：链接命令在 link.txt；库清单可能整段内联在 link.txt（短命令）
+        # 也可能拆进响应文件——rsp 的名字/拆分随 CMake 版本与平台 ARG_MAX
+        # 变化（macOS 3.22 实测叫 linklibs.rsp，Linux/新版 CMake 不保证），
+        # 所以读 target 目录下 link.txt + 全部 *.rsp，不能只认固定文件名
+        #（2026-09-19 CI Linux 首触发本守卫时，固定名单读不到库清单）。
+        target_dir = gs_build / "CMakeFiles" / "graph_studio.dir"
+        link_candidates = []
+        if target_dir.is_dir():
+            link_candidates.append(target_dir / "link.txt")
+            link_candidates.extend(sorted(target_dir.glob("*.rsp")))
+        link_files_found = [p.name for p in link_candidates if p.is_file()]
         link_line = ""
-        for p in (link_txt, link_rsp):
+        for p in link_candidates:
             if p.is_file():
                 link_line += p.read_text(encoding="utf-8", errors="replace")
         if mnn_lib.is_file() and "libMNN" not in link_line:
@@ -293,6 +303,11 @@ def main() -> int:
                 "app 链接行缺少 libMNN.a（预编译库在位但 CMake 未纳入）——"
                 "构建目录状态异常。恢复：rm -rf app/graph_studio/build_wasm "
                 "后重跑本脚本")
+            print(f"[诊断] target 目录 {target_dir}")
+            print(f"[诊断] 候选链接文件: {[p.name for p in link_candidates]}")
+            print(f"[诊断] 实际读到的文件: {link_files_found}")
+            print(f"[诊断] 合并内容长度: {len(link_line)}")
+            print(f"[诊断] 合并内容前 2000 字符:\n{link_line[:2000]}")
             return 1
         if args.wgpu and "-sASYNCIFY" not in link_line:
             console.fail(
