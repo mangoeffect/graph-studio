@@ -24,7 +24,11 @@ on:
           - 修复版
           - 正式版
       notes:
-        description: 发布说明（可选，附在 Release 正文）
+        description: 发布说明（可选，附在 Release 正文中文段）
+        required: false
+        default: ''
+      notes_en:
+        description: 发布说明英文版（可选，附在 Release 正文英文段，官网英文更新日志页渲染此段）
         required: false
         default: ''
 
@@ -495,7 +499,12 @@ jobs:
           tag_name: ${{ needs.meta.outputs.tag }}
           name: ${{ needs.meta.outputs.name }}
           prerelease: ${{ needs.meta.outputs.prerelease }}
+          # body 以 <!-- zh --> / <!-- en --> 标记分中英两段（GitHub 渲染时注释不可见）；
+          # scripts/fetch_releases.py 据此切分 body_md_zh / body_md_en，官网中英更新日志页
+          # 各取所需、无标记的历史 release 回退整份 body。generate_release_notes 的自动段
+          # （What's Changed / Full Changelog）追加在 body 末尾，脚本侧摘出后两个语言都保留。
           body: |
+            <!-- zh -->
             ${{ inputs.notes }}
 
             **渠道**：${{ inputs.release_type }}
@@ -509,6 +518,20 @@ jobs:
 
             ### 调试符号
             - `graphstudio-symbols-*.zip`：对应平台调试符号（dSYM / PDB / ELF debug），用于离线符号化崩溃 minidump；配置 Sentry secrets 后线上符号化同样可用。
+
+            <!-- en -->
+            ${{ inputs.notes_en }}
+
+            **Version tag**: ${{ needs.meta.outputs.tag }}
+
+            ### Installers
+            - macOS: `.dmg` (drag into Applications to install)
+            - Windows: `.msix` (the first install requires trusting the publisher certificate: double-click the attached `GraphStudioDev.cer` → Install Certificate → store location "Local Machine" → "Trusted Root Certification Authorities" or "Trusted People"; later versions won't ask again. Once the app is listed on the Microsoft Store, the Store re-signs it and this step goes away)
+            - Linux: `.AppImage` (`chmod +x`, then run)
+            - Web: `GraphStudio-*-web.zip` (WASM build, nothing to install) — runs right in the [online demo](https://studio.mangoeffect.net/web/); or unzip onto any HTTPS static host to self-host
+
+            ### Debug symbols
+            - `graphstudio-symbols-*.zip`: platform debug symbols (dSYM / PDB / ELF debug) for offline minidump symbolication; with the Sentry secrets configured, online symbolication works as well.
           generate_release_notes: true
           files: |
             assets/*.dmg

@@ -1,4 +1,6 @@
-{{- /* 更新日志页：数据来自 docs/data/releases.json（scripts/fetch_releases.py 在构建期生成）。 */ -}}
+{{- /* 更新日志页：数据来自 docs/data/releases.json（scripts/fetch_releases.py 在构建期生成）。
+     双语 release body 已在脚本侧按 <!-- zh --> / <!-- en --> 标记切分为
+     body_md_zh / body_md_en；此处按当前语言取段，空段（历史无标记 body）回退整份 body_md。 */ -}}
 {{ define "main" }}
 <article class="post-single tg-changelog">
   <header class="post-header">
@@ -20,7 +22,8 @@
         <time>{{ time .published_at | time.Format "2006-01-02" }}</time>
         {{- with .name }}<span class="tg-cl-name">{{ . }}</span>{{ end }}
       </div>
-      {{- with .body_md }}
+      {{- $body := index (dict "zh" .body_md_zh "en" .body_md_en) site.Language.Lang | default .body_md }}
+      {{- with $body }}
       <div class="tg-cl-body">{{ . | markdownify }}</div>
       {{- end }}
       {{- if .assets }}
