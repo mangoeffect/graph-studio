@@ -437,7 +437,15 @@ if(EMSCRIPTEN)
         find_package(OpenCV REQUIRED COMPONENTS core imgproc)
         message(STATUS "WASM: OpenCV found at ${_OPENCV_WASM_INSTALL}")
     else()
-        message(STATUS "WASM: OpenCV not built (run scripts/build_opencv_wasm.py); OpenCV submodules skipped")
+        # 不能静默跳过：app 源码无条件 include <opencv2/opencv.hpp>
+        #（GraphViewModel 的 cv::Mat 零拷贝转换），缺头的失败发生在
+        # 数十秒后的编译期且报错不指向根因——这里直接给可操作的硬错误。
+        message(FATAL_ERROR
+            "WASM: OpenCV prebuilt not found at ${_OPENCV_WASM_INSTALL}. "
+            "GraphStudio 源码无条件依赖 OpenCV 头。先运行: "
+            "python3 scripts/build_opencv_wasm.py（数分钟，产物在 "
+            "build_wasm/opencv/install，run_graph_studio_wasm.py --clean "
+            "会保留该缓存目录）")
     endif()
 
     # 逐个处理 subnode.json 声明的 submodule。URL 相对 TG_ROOT 解析。

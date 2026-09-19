@@ -166,9 +166,25 @@ def main() -> int:
         return 1
 
     if args.clean:
-        console.step("清理 WASM 构建目录")
+        console.step("清理 WASM 构建目录（保留预编译缓存）")
+        # build_wasm 下混着两类东西：CMake 构建态 + 第三方预编译缓存
+        #（opencv/install、mnn/install——构建耗时长，CI 按路径缓存恢复）。
+        # 整目录 rmtree 会连缓存一起清掉，之后 app 的无条件
+        # opencv.hpp include 直接编译失败（且报错毫不指向根因）。选择
+        # 性清理：缓存子目录挪出→清→挪回，语义与 CI cache 一致。
+        preserved = []
+        for keep in ("opencv", "mnn"):
+            keep_dir = lib_build / keep
+            if keep_dir.is_dir():
+                tmp_dir = root / f".build_wasm_keep_{keep}"
+                shutil.rmtree(tmp_dir, ignore_errors=True)
+                keep_dir.rename(tmp_dir)
+                preserved.append((tmp_dir, keep_dir))
         shutil.rmtree(lib_build, ignore_errors=True)
         shutil.rmtree(gs_build, ignore_errors=True)
+        for tmp_dir, keep_dir in preserved:
+            keep_dir.parent.mkdir(parents=True, exist_ok=True)
+            tmp_dir.rename(keep_dir)
 
     if not args.no_build:
         console.step("激活 emsdk")
