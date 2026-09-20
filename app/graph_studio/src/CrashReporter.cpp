@@ -99,20 +99,20 @@ std::string get_dsn() {
 
 std::string get_release() {
     std::string release = "task_graph";
-#ifdef GRAPH_STUDIO_SENTRY_VERSION
-    release += "@" GRAPH_STUDIO_SENTRY_VERSION;
+#ifdef GRAPH_STUDIO_VERSION
+    release += "@" GRAPH_STUDIO_VERSION;
 #else
     release += "@0.0.0";
 #endif
-#ifdef GRAPH_STUDIO_SENTRY_BUILD_HASH
-    release += std::string("#") + GRAPH_STUDIO_SENTRY_BUILD_HASH;
+#ifdef GRAPH_STUDIO_GIT_HASH
+    release += std::string("#") + GRAPH_STUDIO_GIT_HASH;
 #endif
     return release;
 }
 
 std::string get_environment() {
-#ifdef GRAPH_STUDIO_SENTRY_ENVIRONMENT
-    return GRAPH_STUDIO_SENTRY_ENVIRONMENT;
+#ifdef GRAPH_STUDIO_BUILD_ENV
+    return GRAPH_STUDIO_BUILD_ENV;
 #else
     return "development";
 #endif

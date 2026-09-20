@@ -13,11 +13,13 @@
 #include <QUrl>
 #include <QFile>
 #include <QTemporaryDir>
+#include <QPushButton>
 
 #include "model/GraphModel.h"
 #include "viewmodel/GraphViewModel.h"
 #include "command/CommandStack.h"
 #include "view/MainWindow.h"
+#include "view/AboutDialog.h"
 #include "view/GraphScene.h"
 #include "view/GraphView.h"
 #include "view/NodeItem.h"
@@ -182,6 +184,7 @@ private slots:
     void testWholeWindowFileDrop();
     void testExecuteGraphCollectsImageResults();
     void testExecuteGraphFailureFinishes();
+    void testAboutDialogBuildInfo();
 
 private:
     GraphModel* model_ = nullptr;
@@ -895,6 +898,25 @@ void TestGui::testExecuteGraphFailureFinishes()
     QCOMPARE(frame->dag.failedTasks, 1);
 
     task_graph::PluginRegistry::instance().unregister_task("failing_node");
+}
+
+void TestGui::testAboutDialogBuildInfo()
+{
+    // Help 菜单 About 弹窗的构建信息汇总：关键字段齐全且版本号与编译宏一致。
+    const QString info = AboutDialog::buildInfoText();
+    QVERIFY(info.contains("Version:"));
+    QVERIFY(info.contains("Qt:"));
+    QVERIFY(info.contains("OS:"));
+    QVERIFY(info.contains("Tasks registered:"));
+    QVERIFY(info.contains("Crash reporting:"));
+#ifndef GRAPH_STUDIO_VERSION
+#define GRAPH_STUDIO_VERSION "0.0.0"
+#endif
+    QVERIFY(info.contains(QString("Version: ") + GRAPH_STUDIO_VERSION));
+
+    // 对话框可实例化（offscreen），Copy 按钮存在
+    AboutDialog dlg(window_);
+    QVERIFY(dlg.findChild<QPushButton*>() != nullptr);
 }
 
 // 自定义 main：GUI 测试必须用 QApplication（而非 QCoreApplication）

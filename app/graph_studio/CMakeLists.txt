@@ -65,6 +65,7 @@ set(PROJECT_HEADERS
     include/view/GanttChart.h
     include/view/ProfilePanel.h
     include/view/ImageViewer.h
+    include/view/AboutDialog.h
     include/GpuBootstrap.h
     include/ModelBootstrap.h
     include/CrashReporter.h
@@ -87,6 +88,7 @@ set(PROJECT_SOURCES
     src/view/GanttChart.cpp
     src/view/ProfilePanel.cpp
     src/view/ImageViewer.cpp
+    src/view/AboutDialog.cpp
     src/platform/wasm/test_hooks.cpp
 )
 # .tgp 工程包读写（miniz zip 容器）自 SDK 起编入 libtask_graph
@@ -138,6 +140,42 @@ if(NOT EMSCRIPTEN)
     target_link_libraries(graph_studio PRIVATE ${OpenCV_LIBS})
 endif()
 
+# ---- 应用构建元信息（版本 + git 短哈希 + 环境）----
+# About 对话框与 Sentry release 共用；独立于 Sentry 依赖存在
+# （本地未拉取 sentry-native 时 About 仍能显示版本信息）。
+set(_GS_PROJECT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../")
+set(_GS_DEFAULT_APP_VERSION "0.0.0")
+file(READ "${_GS_PROJECT_ROOT}CMakeLists.txt" _GS_ROOT_CMAKE)
+string(REGEX MATCH
+       "task_graph[ \t\r\n]+VERSION[ \t\r\n]+([0-9][0-9A-Za-z._+-]*)"
+       _GS_VERSION_MATCH "${_GS_ROOT_CMAKE}")
+if(CMAKE_MATCH_1)
+    set(_GS_DEFAULT_APP_VERSION "${CMAKE_MATCH_1}")
+endif()
+set(GRAPH_STUDIO_SENTRY_VERSION "${_GS_DEFAULT_APP_VERSION}" CACHE STRING
+    "App/Sentry release version（默认根 project VERSION；发布时传完整渠道版本）")
+set(GRAPH_STUDIO_GIT_HASH "unknown")
+execute_process(COMMAND git -C "${_GS_PROJECT_ROOT}" rev-parse --short HEAD
+    OUTPUT_VARIABLE _GS_GIT_SHORT_HASH
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    RESULT_VARIABLE _GS_GIT_RC)
+if(_GS_GIT_RC EQUAL 0 AND _GS_GIT_SHORT_HASH)
+    set(GRAPH_STUDIO_GIT_HASH "${_GS_GIT_SHORT_HASH}")
+endif()
+string(TOLOWER "${CMAKE_BUILD_TYPE}" _GS_BUILD_TYPE_LOWER)
+if(_GS_BUILD_TYPE_LOWER STREQUAL "release"
+   OR _GS_BUILD_TYPE_LOWER STREQUAL "relwithdebinfo"
+   OR _GS_BUILD_TYPE_LOWER STREQUAL "minsizerel")
+    set(GRAPH_STUDIO_BUILD_ENV "production")
+else()
+    set(GRAPH_STUDIO_BUILD_ENV "development")
+endif()
+target_compile_definitions(graph_studio PRIVATE
+    GRAPH_STUDIO_VERSION="${GRAPH_STUDIO_SENTRY_VERSION}"
+    GRAPH_STUDIO_GIT_HASH="${GRAPH_STUDIO_GIT_HASH}"
+    GRAPH_STUDIO_BUILD_ENV="${GRAPH_STUDIO_BUILD_ENV}"
+)
+
 # wgpu 统一后端（GpuBootstrap 默认优先选择）：
 # 由 run_graph_studio.py 把 TASK_GRAPH_ENABLE_WGPU/WGPU_INCLUDE_DIR/WGPU_LIBRARY
 # 作为 cache 变量传入（核心库探测成功的产物路径）
@@ -167,37 +205,9 @@ endif()
 # 依赖 scripts/fetch_sentry.py 拉取；未拉取则跳过（无崩溃上报能力）。
 # ============================================================
 if(GRAPH_STUDIO_HAS_SENTRY)
-    # 崩溃元信息源：版本 + git 短哈希 + 环境（用于 Sentry release 分组）。
-    # 版本默认解析根 project() 的 VERSION（声明跨多行，需正则跨行匹配）；
-    # 发布脚本可用 -DGRAPH_STUDIO_SENTRY_VERSION 传完整渠道版本
-    # （如 0.1.0-beta.42），使 Sentry release 与 GitHub 发布 tag 一致。
-    set(_GS_PROJECT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../")
-    set(_GS_DEFAULT_SENTRY_VERSION "0.0.0")
-    file(READ "${_GS_PROJECT_ROOT}/CMakeLists.txt" _GS_ROOT_CMAKE)
-    string(REGEX MATCH
-           "task_graph[ \t\r\n]+VERSION[ \t\r\n]+([0-9][0-9A-Za-z._+-]*)"
-           _GS_VERSION_MATCH "${_GS_ROOT_CMAKE}")
-    if(CMAKE_MATCH_1)
-        set(_GS_DEFAULT_SENTRY_VERSION "${CMAKE_MATCH_1}")
-    endif()
-    set(GRAPH_STUDIO_SENTRY_VERSION "${_GS_DEFAULT_SENTRY_VERSION}" CACHE STRING
-        "Sentry release version（默认根 project VERSION；发布时传完整渠道版本）")
-    set(GRAPH_STUDIO_GIT_HASH "unknown")
-    execute_process(COMMAND git -C "${_GS_PROJECT_ROOT}" rev-parse --short HEAD
-        OUTPUT_VARIABLE _GS_GIT_SHORT_HASH
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-        RESULT_VARIABLE _GS_GIT_RC)
-    if(_GS_GIT_RC EQUAL 0 AND _GS_GIT_SHORT_HASH)
-        set(GRAPH_STUDIO_GIT_HASH "${_GS_GIT_SHORT_HASH}")
-    endif()
-    string(TOLOWER "${CMAKE_BUILD_TYPE}" GRAPH_STUDIO_BUILD_TYPE_LOWER)
-    if(GRAPH_STUDIO_BUILD_TYPE_LOWER STREQUAL "release"
-       OR GRAPH_STUDIO_BUILD_TYPE_LOWER STREQUAL "relwithdebinfo"
-       OR GRAPH_STUDIO_BUILD_TYPE_LOWER STREQUAL "minsizerel")
-        set(GRAPH_STUDIO_SENTRY_ENVIRONMENT "production")
-    else()
-        set(GRAPH_STUDIO_SENTRY_ENVIRONMENT "development")
-    endif()
+    # 崩溃元信息源（版本/git hash/环境）由上方"应用构建元信息"块统一计算
+    # （GRAPH_STUDIO_VERSION / GRAPH_STUDIO_GIT_HASH / GRAPH_STUDIO_BUILD_ENV
+    # 编译宏），CrashReporter.cpp 直接引用——无 Sentry 依赖时同样可用。
 
     set(SENTRY_BACKEND "crashpad" CACHE STRING "sentry crash backend" FORCE)
     set(SENTRY_TRANSPORT "none" CACHE STRING "sentry transport" FORCE)
@@ -213,16 +223,15 @@ if(GRAPH_STUDIO_HAS_SENTRY)
     add_subdirectory("${GRAPH_STUDIO_SENTRY_ROOT}" "${CMAKE_BINARY_DIR}/sentry")
 
     target_link_libraries(graph_studio PRIVATE sentry)
-    set(GS_CRASH_COMPILE_DEFS
-        GRAPH_STUDIO_SENTRY_VERSION="${GRAPH_STUDIO_SENTRY_VERSION}"
-        GRAPH_STUDIO_SENTRY_BUILD_HASH="${GRAPH_STUDIO_GIT_HASH}"
-        GRAPH_STUDIO_SENTRY_ENVIRONMENT="${GRAPH_STUDIO_SENTRY_ENVIRONMENT}"
-    )
+    # 版本/hash/环境宏已在上方通用块定义；此处仅按需嵌入 DSN。
+    set(GS_CRASH_COMPILE_DEFS "")
     if(NOT GRAPH_STUDIO_SENTRY_DSN STREQUAL "")
         list(APPEND GS_CRASH_COMPILE_DEFS
             GRAPH_STUDIO_SENTRY_DSN="${GRAPH_STUDIO_SENTRY_DSN}")
     endif()
-    target_compile_definitions(graph_studio PRIVATE ${GS_CRASH_COMPILE_DEFS})
+    if(GS_CRASH_COMPILE_DEFS)
+        target_compile_definitions(graph_studio PRIVATE ${GS_CRASH_COMPILE_DEFS})
+    endif()
 
     # crashpad handler 需与可执行文件同目录（crashpad 按可执行文件相对路径查找）。
     if(TARGET crashpad_handler)
@@ -338,6 +347,7 @@ qt_add_executable(test_gui
     include/view/GanttChart.h
     include/view/ProfilePanel.h
     include/view/ImageViewer.h
+    include/view/AboutDialog.h
     src/model/GraphModel.cpp
     src/viewmodel/GraphViewModel.cpp
     src/CrashReporter.cpp
@@ -350,6 +360,7 @@ qt_add_executable(test_gui
     src/view/GanttChart.cpp
     src/view/ProfilePanel.cpp
     src/view/ImageViewer.cpp
+    src/view/AboutDialog.cpp
 )
 target_link_libraries(test_gui PRIVATE Qt6::Widgets Qt6::Test Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets task_graph ${OpenCV_LIBS})
 add_test(NAME test_gui COMMAND test_gui)

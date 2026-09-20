@@ -5,6 +5,7 @@
 #include "view/EdgeItem.h"
 #include "view/ProfilePanel.h"
 #include "view/ImageViewer.h"
+#include "view/AboutDialog.h"
 #include "viewmodel/GraphViewModel.h"
 #include "task_graph/project_bundle.hpp"
 
@@ -449,15 +450,23 @@ void MainWindow::CreateMenuBar()
     connect(stopAction_, &QAction::triggered, this, &MainWindow::ActionStop);
 
     auto* helpMenu = menuBar()->addMenu("&Help");
-    connect(helpMenu->addAction("About"), &QAction::triggered, this, [this]() {
-        QMessageBox::about(this, "About Graph Studio",
-            "Graph Studio\nA DAG visual editor for task_graph.\n\n"
-            "Controls:\n"
-            "  Ctrl+Scroll - Zoom\n"
-            "  Middle-drag - Pan\n"
-            "  Drag task from left panel - Create node\n"
-            "  Drag output port to input port - Create edge\n"
-            "  Delete - Remove selected\n");
+    auto* aboutAction = helpMenu->addAction("About Graph Studio");
+    // macOS 惯例：About 项自动迁移到应用菜单（Windows/Linux 仍在 Help 下）。
+    aboutAction->setMenuRole(QAction::AboutRole);
+    connect(aboutAction, &QAction::triggered, this, [this]() {
+        AboutDialog dlg(this);
+        dlg.exec();
+    });
+    connect(helpMenu->addAction("Controls"), &QAction::triggered, this, [this]() {
+        QMessageBox::information(this, "Graph Studio Controls",
+            "Ctrl+Scroll - Zoom\n"
+            "Middle-drag - Pan\n"
+            "Drag task from left panel - Create node\n"
+            "Drag output port to input port - Create edge\n"
+            "Delete - Remove selected\n");
+    });
+    connect(helpMenu->addAction("About Qt"), &QAction::triggered, this, [this]() {
+        QMessageBox::aboutQt(this);
     });
 }
 
