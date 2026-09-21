@@ -112,6 +112,35 @@
       ]
     },
     {
+      "name": "image_enhance",
+      "url": "./submodules/opencv/image_processing/image_enhance",
+      "ref": "main",
+      "type": "local",
+      "tasks": [
+        "opencv_equalize_hist",
+        "opencv_clahe",
+        "opencv_sharpen",
+        "opencv_denoise",
+        "opencv_add_weighted",
+        "opencv_gamma_correct",
+        "opencv_brightness_contrast",
+        "opencv_invert"
+      ]
+    },
+    {
+      "name": "image_segmentation",
+      "url": "./submodules/opencv/image_processing/image_segmentation",
+      "ref": "main",
+      "type": "local",
+      "tasks": [
+        "opencv_grabcut",
+        "opencv_watershed",
+        "opencv_flood_fill",
+        "opencv_connected_components",
+        "opencv_distance_transform"
+      ]
+    },
+    {
       "name": "gpu_image_processing",
       "url": "./submodules/gpu/image_processing",
       "ref": "main",
@@ -161,6 +190,15 @@
         "render_laplacian",
         "render_dilate_dir",
         "render_erode_dir"
+      ]
+    },
+    {
+      "name": "blend",
+      "url": "./submodules/blend/blend",
+      "ref": "main",
+      "type": "local",
+      "tasks": [
+        "blend"
       ]
     }
   ]

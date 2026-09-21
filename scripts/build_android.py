@@ -56,6 +56,8 @@ SUBMODULE_TARGETS = [
     # 产物缺失时任务注册但运行时报可读错误——stub 语义由核心库承载）
     "face_detect",
     "matting",
+    # blend：GPU 能力走核心运行期后端（Android 无 → CPU 路径），无原生依赖
+    "blend",
 ]
 
 

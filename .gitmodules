@@ -22,3 +22,8 @@
 	path = submodules/matting
 	url = https://github.com/mangoeffect/plugin-matting.git
 	branch = main
+
+[submodule "submodules/blend"]
+	path = submodules/blend
+	url = https://github.com/mangoeffect/plugin-blend.git
+	branch = main

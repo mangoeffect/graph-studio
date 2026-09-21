@@ -49,6 +49,8 @@ TASK_RE = re.compile(r"\[gs\] task:\s+(\S+)")
 ANDROID_MODULES = [
     "image_reader", "image_filtering", "image_writer",
     "image_geometry", "image_color", "image_color_grading",
+    # blend：CPU 路径在 Android 可用（GPU 走核心运行期后端，Android 无则回落）
+    "blend",
 ]
 
 # Android 侧不可执行的子模块（按 gc.discover_graphs 的 module 叶子名记 skip；

@@ -664,6 +664,9 @@ QString GraphViewModel::classifyTask(const QString& type)
     // 其他内置子模块
     if (type.startsWith("color_grade_")) return QStringLiteral("Color Grading");
     if (type.startsWith("gpu_"))   return QStringLiteral("GPU");
+    // 混合模式子模块（Photoshop 27 种；type 名即 "blend"，GPU 优先/CPU 兜底）。
+    if (type == QStringLiteral("blend"))
+        return QStringLiteral("Blend");
     // 视觉 AI 子模块（face/matting 独立子库任务；后续同类任务在此追加）。
     // mp_*/mnn_*/js_script 任务层已移除（引擎保留在核心库供后端消费）。
     if (type == QStringLiteral("face_detect") || type == QStringLiteral("matting"))

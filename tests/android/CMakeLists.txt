@@ -25,6 +25,8 @@ set(TG_E2E_SUBMODULES
     image_geometry
     image_color
     image_color_grading
+    # blend：CPU 路径在 Android 可用（GPU 走核心运行期后端，无则任务内回落）
+    blend
 )
 set(_e2e_libs "")
 foreach(_sub ${TG_E2E_SUBMODULES})
