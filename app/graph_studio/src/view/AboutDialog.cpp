@@ -1,4 +1,5 @@
 #include "view/AboutDialog.h"
+#include "Brand.h"
 
 #include <task_graph_api.hpp>
 
@@ -66,8 +67,9 @@ AboutDialog::AboutDialog(QWidget* parent) : QDialog(parent) {
     linkLabel->setTextFormat(Qt::RichText);
     linkLabel->setOpenExternalLinks(true);
     linkLabel->setText(
-        tr("Website: <a href=\"https://studio.mangoeffect.net/\">studio.mangoeffect.net</a><br>"
-           "Source: <a href=\"https://github.com/mangoeffect/graph-studio\">github.com/mangoeffect/graph-studio</a>"));
+        tr("Website: <a href=\"%1\">studio.mangoeffect.net</a><br>"
+           "Source: <a href=\"%2\">github.com/mangoeffect/graph-studio</a>")
+            .arg(kWebsiteBaseUrl, kSourceRepoUrl));
     layout->addWidget(linkLabel);
 
     auto* copyButton = new QPushButton(tr("Copy build info"), this);

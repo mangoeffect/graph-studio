@@ -8,6 +8,7 @@
 #include "view/AboutDialog.h"
 #include "viewmodel/GraphViewModel.h"
 #include "task_graph/project_bundle.hpp"
+#include "Brand.h"
 
 #include <QDebug>
 #include <QMenu>
@@ -665,6 +666,15 @@ QWidget* MainWindow::CreateNodePropertyPanel()
     nodePropertyLayout_->addRow("X:", propXEdit_);
     nodePropertyLayout_->addRow("Y:", propYEdit_);
 
+    // 使用说明：链接到官网节点手册，URL 约定 slug = task type
+    // （docs/research/node-doc-links-design.md）。openExternalLinks 桌面调系统
+    // 浏览器、wasm 新开标签页（AboutDialog 已验证的全平台路径，无需 #ifdef）。
+    docsLinkLabel_ = new QLabel();
+    docsLinkLabel_->setObjectName("nodeDocsLink");
+    docsLinkLabel_->setTextFormat(Qt::RichText);
+    docsLinkLabel_->setOpenExternalLinks(true);
+    nodePropertyLayout_->addRow("Docs:", docsLinkLabel_);
+
     layout->addWidget(nodePropertyGroup_);
 
     // 参数表单容器：选中节点时按 paramSpecs 动态填充控件
@@ -1028,6 +1038,10 @@ void MainWindow::UpdatePropertyPanel(const QString& nodeId)
     propTypeEdit_->setText(data.type);
     propXEdit_->setText(QString::number(data.x, 'f', 1));
     propYEdit_->setText(QString::number(data.y, 'f', 1));
+    if (docsLinkLabel_) {
+        docsLinkLabel_->setText(QString("<a href=\"%1blog/%2/\">guide ↗</a>")
+                                     .arg(kWebsiteBaseUrl, data.type));
+    }
 
     RebuildParamWidgets(nodeId);
 }
@@ -1038,6 +1052,7 @@ void MainWindow::ClearPropertyPanel()
     if (propTypeEdit_) propTypeEdit_->setText("(none)");
     if (propXEdit_) propXEdit_->setText("-");
     if (propYEdit_) propYEdit_->setText("-");
+    if (docsLinkLabel_) docsLinkLabel_->setText("-");
     // 清空动态参数控件
     if (paramsLayout_) {
         while (paramsLayout_->rowCount() > 0) {

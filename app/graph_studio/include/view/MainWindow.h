@@ -229,6 +229,8 @@ private:
     QLineEdit* propTypeEdit_ = nullptr;
     QLineEdit* propXEdit_ = nullptr;
     QLineEdit* propYEdit_ = nullptr;
+    // 节点使用说明链接（官网节点手册 /blog/<task_type>/，随选中节点切换 href）
+    QLabel* docsLinkLabel_ = nullptr;
 
     // Track edges by "from->to" key
     QHash<QString, EdgeItem*> edgeItems_;

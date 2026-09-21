@@ -185,6 +185,7 @@ private slots:
     void testExecuteGraphCollectsImageResults();
     void testExecuteGraphFailureFinishes();
     void testAboutDialogBuildInfo();
+    void testNodeDocsLink();
 
 private:
     GraphModel* model_ = nullptr;
@@ -917,6 +918,28 @@ void TestGui::testAboutDialogBuildInfo()
     // 对话框可实例化（offscreen），Copy 按钮存在
     AboutDialog dlg(window_);
     QVERIFY(dlg.findChild<QPushButton*>() != nullptr);
+}
+
+void TestGui::testNodeDocsLink()
+{
+    // 属性面板 Docs 行：链接 href 随选中节点切换（约定 slug = task type，
+    // docs/research/node-doc-links-design.md），取消选中时回落到占位符。
+    auto* link = window_->findChild<QLabel*>("nodeDocsLink");
+    QVERIFY(link != nullptr);
+    QVERIFY(!link->text().contains("href"));  // 初始无选中
+
+    registerNodeType<ImageProducerNode>("image_producer_node");
+    QString id = vm_->addTask("image_producer_node", 0, 0);
+    QVERIFY(!id.isEmpty());
+
+    vm_->selectNode(id);
+    QTest::qWait(30);
+    QVERIFY(link->text().contains(
+        "href=\"https://studio.mangoeffect.net/blog/image_producer_node/\""));
+
+    vm_->clearSelection();
+    QTest::qWait(30);
+    QVERIFY(!link->text().contains("href"));
 }
 
 // 自定义 main：GUI 测试必须用 QApplication（而非 QCoreApplication）
