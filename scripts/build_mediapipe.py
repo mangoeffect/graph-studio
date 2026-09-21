@@ -863,12 +863,21 @@ def patch_vision_build(mp_src: Path, vs_abs_path: Optional[str] = None) -> None:
     if vs_abs_path is None:
         vs_abs_path = str(version_map).replace("\\", "/")
     if 'name = "libvision.so"' in s:
-        # 幂等：先清掉旧补丁插入的 version-script 行（路径形态可能变化）
+        # 幂等：先清掉旧补丁插入的 version-script / static-libstdc++ 行
+        # （路径形态可能变化）
         s = re.sub(r' *"-Wl,--version-script=[^"]*",\n', "", s)
+        s = re.sub(r' *"-static-libstdc\+\+",\n', "", s)
+        # -static-libstdc++：CI 的本 .so 用 gcc-13 构建（mediapipe v1.0.0 需要的
+        # C++20 特性 gcc-11 编不过），产物引用 GLIBCXX_3.4.31/3.4.32 符号；而主构建/
+        # 测试链接用系统默认 gcc-11（libstdc++ ≤3.4.30），链接期 undefined
+        # reference（2026-09-18 起主仓库 Tests 连红的根因）。静态链入 gcc-13 的
+        # libstdc++ 让 .so 符号自包含——C API（Mp*）边界纯 C、无跨边界 C++ 对象，
+        # 进程内双 libstdc++ 副本无 ABI 风险。
         s = s.replace(
             "        \"-Wl,-soname=libvision.so\",\n",
             "        \"-Wl,-soname=libvision.so\",\n"
-            f"        \"-Wl,--version-script={vs_abs_path}\",\n", 1)
+            f"        \"-Wl,--version-script={vs_abs_path}\",\n"
+            '        "-static-libstdc++",\n', 1)
         so_block = s.split('name = "libvision.so"', 1)[1]
         if 'data = ["exported_symbols.txt"]' in so_block.split("cc_binary", 1)[0]:
             s = s.replace(
