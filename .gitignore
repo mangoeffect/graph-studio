@@ -35,7 +35,7 @@ __pycache__/
 docs/public/
 docs/resources/_gen/
 docs/.hugo_build.lock
-docs/data/releases.json
+docs/data/
 /profile_trace.json
 
 # 测试模型/测试图（scripts/download_*_models.py 下载，不入库：face/matting/
