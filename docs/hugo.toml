@@ -120,6 +120,12 @@ url = "/blog/"
 weight = 30
 
 [[languages.zh.menu.main]]
+identifier = "nodeguide"
+name = "节点手册"
+url = "/tags/node-guide/"
+weight = 35
+
+[[languages.zh.menu.main]]
 identifier = "github"
 name = "GitHub"
 url = "https://github.com/mangoeffect/graph-studio"
@@ -161,6 +167,12 @@ identifier = "blog"
 name = "Blog"
 url = "/blog/"
 weight = 30
+
+[[languages.en.menu.main]]
+identifier = "nodeguide"
+name = "Node Guide"
+url = "/tags/node-guide/"
+weight = 35
 
 [[languages.en.menu.main]]
 identifier = "github"

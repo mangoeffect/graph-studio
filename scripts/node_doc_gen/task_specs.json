@@ -1,0 +1,618 @@
+[
+{"type":"blend","params":[
+    {"name":"mode","type":"enum","description":"","default":0,"enum_values":[{"label":"normal","value":0},{"label":"dissolve","value":1},{"label":"darken","value":2},{"label":"multiply","value":3},{"label":"color_burn","value":4},{"label":"linear_burn","value":5},{"label":"darker_color","value":6},{"label":"lighten","value":7},{"label":"screen","value":8},{"label":"color_dodge","value":9},{"label":"linear_dodge","value":10},{"label":"lighter_color","value":11},{"label":"overlay","value":12},{"label":"soft_light","value":13},{"label":"hard_light","value":14},{"label":"vivid_light","value":15},{"label":"linear_light","value":16},{"label":"pin_light","value":17},{"label":"hard_mix","value":18},{"label":"difference","value":19},{"label":"exclusion","value":20},{"label":"subtract","value":21},{"label":"divide","value":22},{"label":"hue","value":23},{"label":"saturation","value":24},{"label":"color","value":25},{"label":"luminosity","value":26}]},
+    {"name":"opacity","type":"float","description":"","default":1,"min":0,"max":1},
+    {"name":"device","type":"enum","description":"","default":0,"enum_values":[{"label":"auto","value":0},{"label":"gpu","value":1},{"label":"cpu","value":2}]},
+    {"name":"seed","type":"int","description":"","default":42,"min":0,"max":2.14748e+09}],"inputs":[
+    {"name":"in","type_name":"","required":true},
+    {"name":"in2","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"task_graph::Image","required":true}]},
+{"type":"color_grade_bcs","params":[
+    {"name":"brightness","type":"float","description":"","default":0,"min":-1,"max":1},
+    {"name":"contrast","type":"float","description":"","default":1,"min":0,"max":3},
+    {"name":"saturation","type":"float","description":"","default":1,"min":0,"max":3}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"cv::Mat","required":true}]},
+{"type":"color_grade_curves","params":[
+    {"name":"curve_y","type":"string","description":"","default":"0,0;1,1"},
+    {"name":"curve_r","type":"string","description":"","default":"0,0;1,1"},
+    {"name":"curve_g","type":"string","description":"","default":"0,0;1,1"},
+    {"name":"curve_b","type":"string","description":"","default":"0,0;1,1"},
+    {"name":"interp","type":"enum","description":"","default":0,"enum_values":[{"label":"LINEAR","value":0},{"label":"CUBIC","value":1}]}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"cv::Mat","required":true}]},
+{"type":"color_grade_hsl","params":[
+    {"name":"hue_low","type":"float","description":"","default":0,"min":0,"max":360},
+    {"name":"hue_high","type":"float","description":"","default":360,"min":0,"max":360},
+    {"name":"sat_low","type":"float","description":"","default":0,"min":0,"max":1},
+    {"name":"sat_high","type":"float","description":"","default":1,"min":0,"max":1},
+    {"name":"val_low","type":"float","description":"","default":0,"min":0,"max":1},
+    {"name":"val_high","type":"float","description":"","default":1,"min":0,"max":1},
+    {"name":"softness","type":"float","description":"","default":0,"min":0,"max":1},
+    {"name":"lift_r","type":"float","description":"","default":0,"min":-1,"max":1},
+    {"name":"lift_g","type":"float","description":"","default":0,"min":-1,"max":1},
+    {"name":"lift_b","type":"float","description":"","default":0,"min":-1,"max":1},
+    {"name":"gamma_r","type":"float","description":"","default":1,"min":0.1,"max":4},
+    {"name":"gamma_g","type":"float","description":"","default":1,"min":0.1,"max":4},
+    {"name":"gamma_b","type":"float","description":"","default":1,"min":0.1,"max":4},
+    {"name":"gain_r","type":"float","description":"","default":1,"min":0,"max":4},
+    {"name":"gain_g","type":"float","description":"","default":1,"min":0,"max":4},
+    {"name":"gain_b","type":"float","description":"","default":1,"min":0,"max":4}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"cv::Mat","required":true}]},
+{"type":"color_grade_lut","params":[
+    {"name":"lut_file","type":"string","description":"","default":"","widget":"file","file_filter":"Cube LUT (*.cube)"},
+    {"name":"interpolation","type":"enum","description":"","default":0,"enum_values":[{"label":"TRILINEAR","value":0},{"label":"TETRAHEDRAL","value":1}]}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"cv::Mat","required":true}]},
+{"type":"color_grade_mixer","params":[
+    {"name":"m_rr","type":"float","description":"","default":1,"min":-2,"max":2},
+    {"name":"m_rg","type":"float","description":"","default":0,"min":-2,"max":2},
+    {"name":"m_rb","type":"float","description":"","default":0,"min":-2,"max":2},
+    {"name":"m_gr","type":"float","description":"","default":0,"min":-2,"max":2},
+    {"name":"m_gg","type":"float","description":"","default":1,"min":-2,"max":2},
+    {"name":"m_gb","type":"float","description":"","default":0,"min":-2,"max":2},
+    {"name":"m_br","type":"float","description":"","default":0,"min":-2,"max":2},
+    {"name":"m_bg","type":"float","description":"","default":0,"min":-2,"max":2},
+    {"name":"m_bb","type":"float","description":"","default":1,"min":-2,"max":2}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"cv::Mat","required":true}]},
+{"type":"color_grade_wheels","params":[
+    {"name":"lift_r","type":"float","description":"","default":0,"min":-1,"max":1},
+    {"name":"lift_g","type":"float","description":"","default":0,"min":-1,"max":1},
+    {"name":"lift_b","type":"float","description":"","default":0,"min":-1,"max":1},
+    {"name":"gamma_r","type":"float","description":"","default":1,"min":0.1,"max":4},
+    {"name":"gamma_g","type":"float","description":"","default":1,"min":0.1,"max":4},
+    {"name":"gamma_b","type":"float","description":"","default":1,"min":0.1,"max":4},
+    {"name":"gain_r","type":"float","description":"","default":1,"min":0,"max":4},
+    {"name":"gain_g","type":"float","description":"","default":1,"min":0,"max":4},
+    {"name":"gain_b","type":"float","description":"","default":1,"min":0,"max":4},
+    {"name":"offset_r","type":"float","description":"","default":0,"min":-1,"max":1},
+    {"name":"offset_g","type":"float","description":"","default":0,"min":-1,"max":1},
+    {"name":"offset_b","type":"float","description":"","default":0,"min":-1,"max":1}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"cv::Mat","required":true}]},
+{"type":"face_detect","params":[
+    {"name":"backend","type":"enum","description":"","default":0,"enum_values":[{"label":"Auto","value":0},{"label":"MediaPipe","value":1},{"label":"MNN","value":2}]},
+    {"name":"model_path","type":"string","description":"","default":"","widget":"file","file_filter":"Detector model (*.tflite *.task *.mnn)","hidden":true,"visible_when":"backend","visible_when_values":[],"reset_on_change":true},
+    {"name":"landmark_model_path","type":"string","description":"","default":"","widget":"file","file_filter":"Landmark model (*.task *.mnn)","hidden":true,"visible_when":"backend","visible_when_values":[],"reset_on_change":true},
+    {"name":"output_landmarks","type":"bool","description":"","default":false},
+    {"name":"max_faces","type":"int","description":"","default":5,"min":1,"max":10},
+    {"name":"score_threshold","type":"float","description":"","default":0.5,"min":0,"max":1},
+    {"name":"nms_threshold","type":"float","description":"","default":0.3,"min":0,"max":1},
+    {"name":"delegate","type":"enum","description":"","default":0,"enum_values":[{"label":"CPU","value":0},{"label":"GPU","value":1}],"visible_when":"backend","visible_when_values":[0,1]},
+    {"name":"device","type":"enum","description":"","default":2,"enum_values":[{"label":"CPU","value":0},{"label":"Metal","value":1},{"label":"Auto","value":2}],"visible_when":"backend","visible_when_values":[0,2]},
+    {"name":"threads","type":"int","description":"","default":4,"min":1,"max":16,"visible_when":"backend","visible_when_values":[0,2]}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"","required":false}]},
+{"type":"gpu_alpha_composite","params":[],"inputs":[
+    {"name":"in","type_name":"","required":true},
+    {"name":"in2","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"task_graph::Image","required":true}]},
+{"type":"gpu_blend","params":[
+    {"name":"w1","type":"float","description":"","default":0.5,"min":0,"max":1},
+    {"name":"w2","type":"float","description":"","default":0.5,"min":0,"max":1}],"inputs":[
+    {"name":"in","type_name":"","required":true},
+    {"name":"in2","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"task_graph::Image","required":true}]},
+{"type":"gpu_box_blur","params":[
+    {"name":"kernel_size","type":"int","description":"","default":5,"min":1,"max":99,"step":2}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"task_graph::Image","required":true}]},
+{"type":"gpu_brightness_contrast","params":[
+    {"name":"brightness","type":"float","description":"","default":0,"min":-1,"max":1},
+    {"name":"contrast","type":"float","description":"","default":0,"min":-1,"max":1}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"task_graph::Image","required":true}]},
+{"type":"gpu_crop","params":[
+    {"name":"x","type":"int","description":"","default":0,"min":0,"max":16384},
+    {"name":"y","type":"int","description":"","default":0,"min":0,"max":16384},
+    {"name":"w","type":"int","description":"","default":64,"min":1,"max":16384},
+    {"name":"h","type":"int","description":"","default":64,"min":1,"max":16384}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"task_graph::Image","required":true}]},
+{"type":"gpu_flip","params":[
+    {"name":"flip","type":"enum","description":"","default":1,"enum_values":[{"label":"up_down","value":0},{"label":"left_right","value":1},{"label":"both","value":2}]}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"task_graph::Image","required":true}]},
+{"type":"gpu_gamma","params":[
+    {"name":"gamma","type":"float","description":"","default":1,"min":0.1,"max":5}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"task_graph::Image","required":true}]},
+{"type":"gpu_gaussian_blur","params":[
+    {"name":"kernel_size","type":"int","description":"","default":5,"min":1,"max":99,"step":2},
+    {"name":"sigma","type":"float","description":"","default":0,"min":0,"max":100}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"task_graph::Image","required":true}]},
+{"type":"gpu_grayscale","params":[],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"task_graph::Image","required":true}]},
+{"type":"gpu_invert","params":[],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"task_graph::Image","required":true}]},
+{"type":"gpu_laplacian","params":[],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"task_graph::Image","required":true}]},
+{"type":"gpu_resize","params":[
+    {"name":"target_w","type":"int","description":"","default":256,"min":1,"max":16384},
+    {"name":"target_h","type":"int","description":"","default":256,"min":1,"max":16384}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"task_graph::Image","required":true}]},
+{"type":"gpu_rgb2hsv","params":[],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"task_graph::Image","required":true}]},
+{"type":"gpu_rotate90","params":[
+    {"name":"times","type":"enum","description":"","default":1,"enum_values":[{"label":"0","value":0},{"label":"90","value":1},{"label":"180","value":2},{"label":"270","value":3}]}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"task_graph::Image","required":true}]},
+{"type":"gpu_sharpen","params":[
+    {"name":"amount","type":"float","description":"","default":1,"min":0,"max":5}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"task_graph::Image","required":true}]},
+{"type":"gpu_sobel","params":[],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"task_graph::Image","required":true}]},
+{"type":"gpu_threshold","params":[
+    {"name":"thresh","type":"float","description":"","default":128,"min":0,"max":255},
+    {"name":"maxval","type":"float","description":"","default":255,"min":0,"max":255},
+    {"name":"type","type":"enum","description":"","default":0,"enum_values":[{"label":"binary","value":0},{"label":"binary_inv","value":1}]}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"task_graph::Image","required":true}]},
+{"type":"io_input","params":[
+    {"name":"data_type","type":"string","description":"expected stable type name (e.g. task_graph::Image); empty = no type check","default":""}],"inputs":[],"outputs":[
+    {"name":"out","type_name":"","required":true}]},
+{"type":"io_output","params":[],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[]},
+{"type":"matting","params":[
+    {"name":"backend","type":"enum","description":"","default":0,"enum_values":[{"label":"Auto","value":0},{"label":"MediaPipe","value":1},{"label":"MNN","value":2}]},
+    {"name":"model_path","type":"string","description":"","default":"","widget":"file","file_filter":"Matting model (selfie_segmenter.tflite / *.mnn)","hidden":true,"visible_when":"backend","visible_when_values":[],"reset_on_change":true},
+    {"name":"delegate","type":"enum","description":"","default":0,"enum_values":[{"label":"CPU","value":0},{"label":"GPU","value":1}],"visible_when":"backend","visible_when_values":[0,1]},
+    {"name":"device","type":"enum","description":"","default":2,"enum_values":[{"label":"CPU","value":0},{"label":"Metal","value":1},{"label":"Auto","value":2}],"visible_when":"backend","visible_when_values":[0,2]},
+    {"name":"threads","type":"int","description":"","default":4,"min":1,"max":16,"visible_when":"backend","visible_when_values":[0,2]}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"","required":false},
+    {"name":"mask","type_name":"","required":false},
+    {"name":"cutout","type_name":"","required":false}]},
+{"type":"opencv_adaptive_threshold","params":[
+    {"name":"max_value","type":"float","description":"","default":255,"min":0,"max":255},
+    {"name":"block_size","type":"int","description":"","default":11,"min":3,"max":99},
+    {"name":"C","type":"float","description":"","default":2,"min":-50,"max":50},
+    {"name":"adaptive_method","type":"enum","description":"","default":0,"enum_values":[{"label":"MEAN_C","value":0},{"label":"GAUSSIAN_C","value":1}]},
+    {"name":"threshold_type","type":"enum","description":"","default":0,"enum_values":[{"label":"BINARY","value":0},{"label":"BINARY_INV","value":1}]}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"cv::Mat","required":true}]},
+{"type":"opencv_add_weighted","params":[
+    {"name":"alpha","type":"float","description":"","default":0.5,"min":-10,"max":10},
+    {"name":"beta","type":"float","description":"","default":0.5,"min":-10,"max":10},
+    {"name":"gamma","type":"float","description":"","default":0,"min":-255,"max":255}],"inputs":[
+    {"name":"in1","type_name":"","required":true},
+    {"name":"in2","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"cv::Mat","required":true}]},
+{"type":"opencv_apply_color_map","params":[
+    {"name":"colormap","type":"enum","description":"","default":2,"enum_values":[{"label":"AUTUMN","value":0},{"label":"BONE","value":1},{"label":"JET","value":2},{"label":"WINTER","value":3},{"label":"RAINBOW","value":4},{"label":"OCEAN","value":5},{"label":"HOT","value":11},{"label":"HSV","value":9},{"label":"PINK","value":10},{"label":"PARULA","value":12},{"label":"MAGMA","value":13},{"label":"INFERNO","value":14},{"label":"PLASMA","value":15},{"label":"VIRIDIS","value":16},{"label":"CIVIDIS","value":17},{"label":"TWILIGHT","value":18},{"label":"TURBO","value":20}]}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"cv::Mat","required":true}]},
+{"type":"opencv_bilateral_filter","params":[
+    {"name":"d","type":"int","description":"","default":9,"min":1,"max":50},
+    {"name":"sigma_color","type":"float","description":"","default":75,"min":0,"max":300},
+    {"name":"sigma_space","type":"float","description":"","default":75,"min":0,"max":300}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"cv::Mat","required":true}]},
+{"type":"opencv_blur_filter","params":[
+    {"name":"kernel_size","type":"int","description":"","default":5,"min":1,"max":99,"step":2}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"cv::Mat","required":true}]},
+{"type":"opencv_box_filter","params":[
+    {"name":"kernel_size","type":"int","description":"","default":5,"min":1,"max":99,"step":2}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"cv::Mat","required":true}]},
+{"type":"opencv_brightness_contrast","params":[
+    {"name":"brightness","type":"float","description":"","default":0,"min":-255,"max":255},
+    {"name":"contrast","type":"float","description":"","default":1,"min":-10,"max":10}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"cv::Mat","required":true}]},
+{"type":"opencv_clahe","params":[
+    {"name":"clip_limit","type":"float","description":"","default":2,"min":0.1,"max":40},
+    {"name":"tile_x","type":"int","description":"","default":8,"min":1,"max":64},
+    {"name":"tile_y","type":"int","description":"","default":8,"min":1,"max":64}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"cv::Mat","required":true}]},
+{"type":"opencv_connected_components","params":[
+    {"name":"connectivity","type":"enum","description":"","default":8,"enum_values":[{"label":"C8","value":8},{"label":"C4","value":4}]}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"labels","type_name":"","required":false},
+    {"name":"num_labels","type_name":"","required":false}]},
+{"type":"opencv_cvt_color","params":[
+    {"name":"code","type":"enum","description":"","default":6,"enum_values":[{"label":"BGR2GRAY","value":6},{"label":"GRAY2BGR","value":8},{"label":"BGR2RGB","value":4},{"label":"RGB2GRAY","value":7},{"label":"BGR2HSV","value":40},{"label":"HSV2BGR","value":54},{"label":"BGR2HLS","value":52},{"label":"BGR2LAB","value":44},{"label":"BGR2LUV","value":50},{"label":"BGR2YCRCB","value":36},{"label":"YCRCB2BGR","value":38},{"label":"BGR2XYZ","value":32}]}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"cv::Mat","required":true}]},
+{"type":"opencv_denoise","params":[
+    {"name":"h","type":"float","description":"","default":3,"min":0.1,"max":100},
+    {"name":"h_color","type":"float","description":"","default":3,"min":0.1,"max":100},
+    {"name":"template_window","type":"int","description":"","default":7,"min":3,"max":31},
+    {"name":"search_window","type":"int","description":"","default":21,"min":3,"max":65}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"cv::Mat","required":true}]},
+{"type":"opencv_dilate","params":[
+    {"name":"kernel_size","type":"int","description":"","default":3,"min":1,"max":31,"step":2},
+    {"name":"iterations","type":"int","description":"","default":1,"min":1,"max":10}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"cv::Mat","required":true}]},
+{"type":"opencv_distance_transform","params":[
+    {"name":"distance_type","type":"enum","description":"","default":2,"enum_values":[{"label":"L2","value":2},{"label":"L1","value":1},{"label":"C","value":3}]},
+    {"name":"mask_size","type":"enum","description":"","default":0,"enum_values":[{"label":"PRECISE","value":0},{"label":"3","value":3},{"label":"5","value":5}]}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"cv::Mat","required":true}]},
+{"type":"opencv_equalize_hist","params":[],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"cv::Mat","required":true}]},
+{"type":"opencv_erode","params":[
+    {"name":"kernel_size","type":"int","description":"","default":3,"min":1,"max":31,"step":2},
+    {"name":"iterations","type":"int","description":"","default":1,"min":1,"max":10}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"cv::Mat","required":true}]},
+{"type":"opencv_filter_2d","params":[
+    {"name":"kernel_size","type":"int","description":"","default":3,"min":1,"max":31,"step":2},
+    {"name":"delta","type":"float","description":"","default":0,"min":-255,"max":255}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"cv::Mat","required":true}]},
+{"type":"opencv_flip","params":[
+    {"name":"flip_code","type":"enum","description":"","default":1,"enum_values":[{"label":"HORIZONTAL","value":1},{"label":"VERTICAL","value":0},{"label":"BOTH","value":-1}]}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"cv::Mat","required":true}]},
+{"type":"opencv_flood_fill","params":[
+    {"name":"seed_x","type":"int","description":"","default":-1,"min":0,"max":16384},
+    {"name":"seed_y","type":"int","description":"","default":-1,"min":0,"max":16384},
+    {"name":"new_value","type":"int","description":"","default":255,"min":0,"max":255},
+    {"name":"lo_diff","type":"float","description":"","default":4,"min":0,"max":255},
+    {"name":"up_diff","type":"float","description":"","default":4,"min":0,"max":255},
+    {"name":"connectivity","type":"enum","description":"","default":4,"enum_values":[{"label":"C4","value":4},{"label":"C8","value":8}]}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"cv::Mat","required":true}]},
+{"type":"opencv_gabor_filter","params":[
+    {"name":"kernel_size","type":"int","description":"","default":31,"min":1,"max":99,"step":2},
+    {"name":"sigma","type":"float","description":"","default":5,"min":0,"max":50},
+    {"name":"theta","type":"float","description":"","default":0,"min":0,"max":6.2832},
+    {"name":"lambd","type":"float","description":"","default":10,"min":0,"max":100},
+    {"name":"gamma","type":"float","description":"","default":0.5,"min":0,"max":5},
+    {"name":"psi","type":"float","description":"","default":1.5708,"min":0,"max":6.2832}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"cv::Mat","required":true}]},
+{"type":"opencv_gamma_correct","params":[
+    {"name":"gamma","type":"float","description":"","default":1,"min":0.01,"max":10}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"cv::Mat","required":true}]},
+{"type":"opencv_gaussian_blur_filter","params":[
+    {"name":"kernel_size","type":"int","description":"","default":5,"min":1,"max":99,"step":2},
+    {"name":"sigma","type":"float","description":"","default":0,"min":0,"max":100}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"cv::Mat","required":true}]},
+{"type":"opencv_grabcut","params":[
+    {"name":"init_mode","type":"enum","description":"","default":0,"enum_values":[{"label":"RECT","value":0},{"label":"MASK","value":1}]},
+    {"name":"rect_x","type":"int","description":"","default":0,"min":0,"max":16384},
+    {"name":"rect_y","type":"int","description":"","default":0,"min":0,"max":16384},
+    {"name":"rect_width","type":"int","description":"","default":0,"min":0,"max":16384},
+    {"name":"rect_height","type":"int","description":"","default":0,"min":0,"max":16384},
+    {"name":"iterations","type":"int","description":"","default":5,"min":1,"max":100}],"inputs":[
+    {"name":"in","type_name":"","required":true},
+    {"name":"mask","type_name":"","required":false}],"outputs":[
+    {"name":"out","type_name":"cv::Mat","required":true}]},
+{"type":"opencv_image_read","params":[
+    {"name":"file_path","type":"string","description":"","default":"","widget":"file","file_filter":"Images (*.png *.jpg *.jpeg *.bmp *.tiff *.webp)"},
+    {"name":"keep_alpha","type":"bool","description":"","default":false}],"inputs":[],"outputs":[
+    {"name":"out","type_name":"cv::Mat","required":true}]},
+{"type":"opencv_image_write","params":[
+    {"name":"file_path","type":"string","description":"","default":"","widget":"file","file_filter":"Images (*.png *.jpg *.jpeg *.bmp *.tiff *.webp)"}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[]},
+{"type":"opencv_invert","params":[],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"cv::Mat","required":true}]},
+{"type":"opencv_laplacian_filter","params":[
+    {"name":"kernel_size","type":"int","description":"","default":3,"min":1,"max":31,"step":2}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"cv::Mat","required":true}]},
+{"type":"opencv_median_blur_filter","params":[
+    {"name":"kernel_size","type":"int","description":"","default":5,"min":1,"max":99,"step":2}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"cv::Mat","required":true}]},
+{"type":"opencv_morphology_ex","params":[
+    {"name":"operation","type":"enum","description":"","default":2,"enum_values":[{"label":"ERODE","value":0},{"label":"DILATE","value":1},{"label":"OPEN","value":2},{"label":"CLOSE","value":3},{"label":"GRADIENT","value":4},{"label":"TOPHAT","value":5},{"label":"BLACKHAT","value":6}]},
+    {"name":"kernel_size","type":"int","description":"","default":3,"min":1,"max":31,"step":2},
+    {"name":"iterations","type":"int","description":"","default":1,"min":1,"max":10}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"cv::Mat","required":true}]},
+{"type":"opencv_pyr_down","params":[],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"cv::Mat","required":true}]},
+{"type":"opencv_pyr_up","params":[],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"cv::Mat","required":true}]},
+{"type":"opencv_resize","params":[
+    {"name":"width","type":"int","description":"","default":0,"min":0,"max":8192},
+    {"name":"height","type":"int","description":"","default":0,"min":0,"max":8192},
+    {"name":"scale_x","type":"float","description":"","default":1,"min":0.01,"max":32},
+    {"name":"scale_y","type":"float","description":"","default":1,"min":0.01,"max":32},
+    {"name":"interpolation","type":"enum","description":"","default":1,"enum_values":[{"label":"LINEAR","value":1},{"label":"NEAREST","value":0},{"label":"CUBIC","value":2},{"label":"LANCZOS4","value":4},{"label":"AREA","value":3}]}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"cv::Mat","required":true}]},
+{"type":"opencv_rotate","params":[
+    {"name":"rotate_code","type":"enum","description":"","default":0,"enum_values":[{"label":"90_CW","value":0},{"label":"180","value":1},{"label":"90_CCW","value":2}]}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"cv::Mat","required":true}]},
+{"type":"opencv_scharr_filter","params":[
+    {"name":"dx","type":"int","description":"","default":1,"min":0,"max":1},
+    {"name":"dy","type":"int","description":"","default":1,"min":0,"max":1}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"cv::Mat","required":true}]},
+{"type":"opencv_sep_filter_2d","params":[
+    {"name":"kernel_size","type":"int","description":"","default":3,"min":1,"max":31,"step":2},
+    {"name":"delta","type":"float","description":"","default":0,"min":-255,"max":255}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"cv::Mat","required":true}]},
+{"type":"opencv_sharpen","params":[
+    {"name":"amount","type":"float","description":"","default":1.5,"min":0.01,"max":10},
+    {"name":"sigma","type":"float","description":"","default":1,"min":0.1,"max":20}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"cv::Mat","required":true}]},
+{"type":"opencv_sobel_filter","params":[
+    {"name":"kernel_size","type":"int","description":"","default":3,"min":1,"max":7,"step":2},
+    {"name":"dx","type":"int","description":"","default":1,"min":0,"max":6},
+    {"name":"dy","type":"int","description":"","default":1,"min":0,"max":6}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"cv::Mat","required":true}]},
+{"type":"opencv_sqr_box_filter","params":[
+    {"name":"kernel_size","type":"int","description":"","default":3,"min":1,"max":31,"step":2},
+    {"name":"normalize","type":"bool","description":"","default":true}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"cv::Mat","required":true}]},
+{"type":"opencv_threshold","params":[
+    {"name":"thresh","type":"float","description":"","default":128,"min":0,"max":255},
+    {"name":"maxval","type":"float","description":"","default":255,"min":0,"max":255},
+    {"name":"type","type":"enum","description":"","default":0,"enum_values":[{"label":"BINARY","value":0},{"label":"BINARY_INV","value":1},{"label":"TRUNC","value":2},{"label":"TOZERO","value":3},{"label":"TOZERO_INV","value":4},{"label":"OTSU_BINARY","value":8},{"label":"TRIANGLE_BINARY","value":16}]}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"cv::Mat","required":true}]},
+{"type":"opencv_transpose","params":[],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"cv::Mat","required":true}]},
+{"type":"opencv_warp_affine","params":[
+    {"name":"angle","type":"float","description":"","default":0,"min":-360,"max":360},
+    {"name":"scale","type":"float","description":"","default":1,"min":0.01,"max":32},
+    {"name":"center_x","type":"float","description":"","default":-1,"min":-1,"max":8192},
+    {"name":"center_y","type":"float","description":"","default":-1,"min":-1,"max":8192},
+    {"name":"output_width","type":"int","description":"","default":0,"min":0,"max":8192},
+    {"name":"output_height","type":"int","description":"","default":0,"min":0,"max":8192},
+    {"name":"interpolation","type":"enum","description":"","default":1,"enum_values":[{"label":"LINEAR","value":1},{"label":"NEAREST","value":0},{"label":"CUBIC","value":2},{"label":"LANCZOS4","value":4}]},
+    {"name":"border_mode","type":"enum","description":"","default":0,"enum_values":[{"label":"CONSTANT","value":0},{"label":"REPLICATE","value":1},{"label":"REFLECT","value":2},{"label":"REFLECT_101","value":4},{"label":"WRAP","value":3}]}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"cv::Mat","required":true}]},
+{"type":"opencv_watershed","params":[
+    {"name":"rect_x","type":"int","description":"","default":-1,"min":-1,"max":16384},
+    {"name":"rect_y","type":"int","description":"","default":-1,"min":-1,"max":16384},
+    {"name":"rect_width","type":"int","description":"","default":-1,"min":-1,"max":16384},
+    {"name":"rect_height","type":"int","description":"","default":-1,"min":-1,"max":16384}],"inputs":[
+    {"name":"in","type_name":"","required":true},
+    {"name":"markers","type_name":"","required":false}],"outputs":[
+    {"name":"out","type_name":"cv::Mat","required":true}]},
+{"type":"render_box_dir","params":[
+    {"name":"script_path","type":"string","description":"","default":"","widget":"file","file_filter":"Scripts (*.js)"},
+    {"name":"width","type":"int","description":"","default":0,"min":0,"max":65535},
+    {"name":"height","type":"int","description":"","default":0,"min":0,"max":65535},
+    {"name":"format","type":"enum","description":"","default":0,"enum_values":[{"label":"rgba8","value":0},{"label":"rgba32f","value":1}]},
+    {"name":"clear","type":"bool","description":"","default":true},
+    {"name":"clear_color","type":"string","description":"","default":"0,0,0,0"},
+    {"name":"blend","type":"bool","description":"","default":false},
+    {"name":"ksize","type":"int","description":"","default":5,"min":1,"max":99,"step":2},
+    {"name":"direction","type":"enum","description":"","default":0,"enum_values":[{"label":"horizontal","value":0},{"label":"vertical","value":1}]}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"task_graph::Image","required":true}]},
+{"type":"render_dilate_dir","params":[
+    {"name":"script_path","type":"string","description":"","default":"","widget":"file","file_filter":"Scripts (*.js)"},
+    {"name":"width","type":"int","description":"","default":0,"min":0,"max":65535},
+    {"name":"height","type":"int","description":"","default":0,"min":0,"max":65535},
+    {"name":"format","type":"enum","description":"","default":0,"enum_values":[{"label":"rgba8","value":0},{"label":"rgba32f","value":1}]},
+    {"name":"clear","type":"bool","description":"","default":true},
+    {"name":"clear_color","type":"string","description":"","default":"0,0,0,0"},
+    {"name":"blend","type":"bool","description":"","default":false},
+    {"name":"ksize","type":"int","description":"","default":3,"min":1,"max":31,"step":2},
+    {"name":"direction","type":"enum","description":"","default":0,"enum_values":[{"label":"horizontal","value":0},{"label":"vertical","value":1}]}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"task_graph::Image","required":true}]},
+{"type":"render_erode_dir","params":[
+    {"name":"script_path","type":"string","description":"","default":"","widget":"file","file_filter":"Scripts (*.js)"},
+    {"name":"width","type":"int","description":"","default":0,"min":0,"max":65535},
+    {"name":"height","type":"int","description":"","default":0,"min":0,"max":65535},
+    {"name":"format","type":"enum","description":"","default":0,"enum_values":[{"label":"rgba8","value":0},{"label":"rgba32f","value":1}]},
+    {"name":"clear","type":"bool","description":"","default":true},
+    {"name":"clear_color","type":"string","description":"","default":"0,0,0,0"},
+    {"name":"blend","type":"bool","description":"","default":false},
+    {"name":"ksize","type":"int","description":"","default":3,"min":1,"max":31,"step":2},
+    {"name":"direction","type":"enum","description":"","default":0,"enum_values":[{"label":"horizontal","value":0},{"label":"vertical","value":1}]}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"task_graph::Image","required":true}]},
+{"type":"render_gauss_dir","params":[
+    {"name":"script_path","type":"string","description":"","default":"","widget":"file","file_filter":"Scripts (*.js)"},
+    {"name":"width","type":"int","description":"","default":0,"min":0,"max":65535},
+    {"name":"height","type":"int","description":"","default":0,"min":0,"max":65535},
+    {"name":"format","type":"enum","description":"","default":0,"enum_values":[{"label":"rgba8","value":0},{"label":"rgba32f","value":1}]},
+    {"name":"clear","type":"bool","description":"","default":true},
+    {"name":"clear_color","type":"string","description":"","default":"0,0,0,0"},
+    {"name":"blend","type":"bool","description":"","default":false},
+    {"name":"ksize","type":"int","description":"","default":5,"min":1,"max":99,"step":2},
+    {"name":"sigma","type":"float","description":"","default":0,"min":0,"max":100},
+    {"name":"direction","type":"enum","description":"","default":0,"enum_values":[{"label":"horizontal","value":0},{"label":"vertical","value":1}]}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"task_graph::Image","required":true}]},
+{"type":"render_gauss_h","params":[
+    {"name":"script_path","type":"string","description":"","default":"","widget":"file","file_filter":"Scripts (*.js)"},
+    {"name":"width","type":"int","description":"","default":0,"min":0,"max":65535},
+    {"name":"height","type":"int","description":"","default":0,"min":0,"max":65535},
+    {"name":"format","type":"enum","description":"","default":0,"enum_values":[{"label":"rgba8","value":0},{"label":"rgba32f","value":1}]},
+    {"name":"clear","type":"bool","description":"","default":true},
+    {"name":"clear_color","type":"string","description":"","default":"0,0,0,0"},
+    {"name":"blend","type":"bool","description":"","default":false}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"task_graph::Image","required":true}]},
+{"type":"render_gauss_v","params":[
+    {"name":"script_path","type":"string","description":"","default":"","widget":"file","file_filter":"Scripts (*.js)"},
+    {"name":"width","type":"int","description":"","default":0,"min":0,"max":65535},
+    {"name":"height","type":"int","description":"","default":0,"min":0,"max":65535},
+    {"name":"format","type":"enum","description":"","default":0,"enum_values":[{"label":"rgba8","value":0},{"label":"rgba32f","value":1}]},
+    {"name":"clear","type":"bool","description":"","default":true},
+    {"name":"clear_color","type":"string","description":"","default":"0,0,0,0"},
+    {"name":"blend","type":"bool","description":"","default":false}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"task_graph::Image","required":true}]},
+{"type":"render_gradient","params":[
+    {"name":"script_path","type":"string","description":"","default":"","widget":"file","file_filter":"Scripts (*.js)"},
+    {"name":"width","type":"int","description":"","default":0,"min":0,"max":65535},
+    {"name":"height","type":"int","description":"","default":0,"min":0,"max":65535},
+    {"name":"format","type":"enum","description":"","default":0,"enum_values":[{"label":"rgba8","value":0},{"label":"rgba32f","value":1}]},
+    {"name":"clear","type":"bool","description":"","default":true},
+    {"name":"clear_color","type":"string","description":"","default":"0,0,0,0"},
+    {"name":"blend","type":"bool","description":"","default":false},
+    {"name":"color0","type":"string","description":"","default":"0,0,0,1"},
+    {"name":"color1","type":"string","description":"","default":"1,1,1,1"}],"inputs":[],"outputs":[
+    {"name":"out","type_name":"task_graph::Image","required":true}]},
+{"type":"render_laplacian","params":[
+    {"name":"script_path","type":"string","description":"","default":"","widget":"file","file_filter":"Scripts (*.js)"},
+    {"name":"width","type":"int","description":"","default":0,"min":0,"max":65535},
+    {"name":"height","type":"int","description":"","default":0,"min":0,"max":65535},
+    {"name":"format","type":"enum","description":"","default":0,"enum_values":[{"label":"rgba8","value":0},{"label":"rgba32f","value":1}]},
+    {"name":"clear","type":"bool","description":"","default":true},
+    {"name":"clear_color","type":"string","description":"","default":"0,0,0,0"},
+    {"name":"blend","type":"bool","description":"","default":false},
+    {"name":"ksize","type":"int","description":"","default":3,"min":1,"max":7,"step":2}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"task_graph::Image","required":true}]},
+{"type":"render_lut","params":[
+    {"name":"script_path","type":"string","description":"","default":"","widget":"file","file_filter":"Scripts (*.js)"},
+    {"name":"width","type":"int","description":"","default":0,"min":0,"max":65535},
+    {"name":"height","type":"int","description":"","default":0,"min":0,"max":65535},
+    {"name":"format","type":"enum","description":"","default":0,"enum_values":[{"label":"rgba8","value":0},{"label":"rgba32f","value":1}]},
+    {"name":"clear","type":"bool","description":"","default":true},
+    {"name":"clear_color","type":"string","description":"","default":"0,0,0,0"},
+    {"name":"blend","type":"bool","description":"","default":false},
+    {"name":"intensity","type":"float","description":"","default":1,"min":0,"max":1},
+    {"name":"layout","type":"enum","description":"","default":0,"enum_values":[{"label":"auto","value":0},{"label":"hald","value":1},{"label":"stripe","value":2}]},
+    {"name":"lut_size","type":"int","description":"","default":0,"min":0,"max":256}],"inputs":[
+    {"name":"in","type_name":"","required":true},
+    {"name":"in2","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"task_graph::Image","required":true}]},
+{"type":"render_lut_cube","params":[
+    {"name":"lut_file","type":"string","description":"","default":"","widget":"file","file_filter":"Cube LUT (*.cube)"}],"inputs":[],"outputs":[
+    {"name":"out","type_name":"task_graph::Image","required":true}]},
+{"type":"render_mix","params":[
+    {"name":"script_path","type":"string","description":"","default":"","widget":"file","file_filter":"Scripts (*.js)"},
+    {"name":"width","type":"int","description":"","default":0,"min":0,"max":65535},
+    {"name":"height","type":"int","description":"","default":0,"min":0,"max":65535},
+    {"name":"format","type":"enum","description":"","default":0,"enum_values":[{"label":"rgba8","value":0},{"label":"rgba32f","value":1}]},
+    {"name":"clear","type":"bool","description":"","default":true},
+    {"name":"clear_color","type":"string","description":"","default":"0,0,0,0"},
+    {"name":"blend","type":"bool","description":"","default":false},
+    {"name":"weight","type":"float","description":"","default":0.5,"min":0,"max":1}],"inputs":[
+    {"name":"in","type_name":"","required":true},
+    {"name":"in2","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"task_graph::Image","required":true}]},
+{"type":"render_pass","params":[
+    {"name":"effect","type":"string","description":"","default":""},
+    {"name":"shader_path","type":"string","description":"","default":"","widget":"file","file_filter":"Shaders (*.metal *.vert *.frag)"},
+    {"name":"effects_path","type":"string","description":"","default":"","widget":"file","file_filter":"Effect manifests (*.json)"},
+    {"name":"uniform","type":"string","description":"","default":""},
+    {"name":"script_path","type":"string","description":"","default":"","widget":"file","file_filter":"Scripts (*.js)"},
+    {"name":"width","type":"int","description":"","default":0,"min":0,"max":65535},
+    {"name":"height","type":"int","description":"","default":0,"min":0,"max":65535},
+    {"name":"format","type":"enum","description":"","default":0,"enum_values":[{"label":"rgba8","value":0},{"label":"rgba32f","value":1}]},
+    {"name":"clear","type":"bool","description":"","default":true},
+    {"name":"clear_color","type":"string","description":"","default":"0,0,0,0"},
+    {"name":"blend","type":"bool","description":"","default":false}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"task_graph::Image","required":true}]},
+{"type":"render_passthrough","params":[
+    {"name":"script_path","type":"string","description":"","default":"","widget":"file","file_filter":"Scripts (*.js)"},
+    {"name":"width","type":"int","description":"","default":0,"min":0,"max":65535},
+    {"name":"height","type":"int","description":"","default":0,"min":0,"max":65535},
+    {"name":"format","type":"enum","description":"","default":0,"enum_values":[{"label":"rgba8","value":0},{"label":"rgba32f","value":1}]},
+    {"name":"clear","type":"bool","description":"","default":true},
+    {"name":"clear_color","type":"string","description":"","default":"0,0,0,0"},
+    {"name":"blend","type":"bool","description":"","default":false}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"task_graph::Image","required":true}]},
+{"type":"render_pipeline","params":[
+    {"name":"passes","type":"int","description":"","default":2,"min":1,"max":64},
+    {"name":"width","type":"int","description":"","default":0,"min":0,"max":65535},
+    {"name":"height","type":"int","description":"","default":0,"min":0,"max":65535},
+    {"name":"effects_path","type":"string","description":"","default":"","widget":"file","file_filter":"Effect manifests (*.json)"}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"task_graph::Image","required":true}]},
+{"type":"render_scharr","params":[
+    {"name":"script_path","type":"string","description":"","default":"","widget":"file","file_filter":"Scripts (*.js)"},
+    {"name":"width","type":"int","description":"","default":0,"min":0,"max":65535},
+    {"name":"height","type":"int","description":"","default":0,"min":0,"max":65535},
+    {"name":"format","type":"enum","description":"","default":0,"enum_values":[{"label":"rgba8","value":0},{"label":"rgba32f","value":1}]},
+    {"name":"clear","type":"bool","description":"","default":true},
+    {"name":"clear_color","type":"string","description":"","default":"0,0,0,0"},
+    {"name":"blend","type":"bool","description":"","default":false},
+    {"name":"dx","type":"int","description":"","default":1,"min":0,"max":1},
+    {"name":"dy","type":"int","description":"","default":1,"min":0,"max":1}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"task_graph::Image","required":true}]},
+{"type":"render_sobel","params":[
+    {"name":"script_path","type":"string","description":"","default":"","widget":"file","file_filter":"Scripts (*.js)"},
+    {"name":"width","type":"int","description":"","default":0,"min":0,"max":65535},
+    {"name":"height","type":"int","description":"","default":0,"min":0,"max":65535},
+    {"name":"format","type":"enum","description":"","default":0,"enum_values":[{"label":"rgba8","value":0},{"label":"rgba32f","value":1}]},
+    {"name":"clear","type":"bool","description":"","default":true},
+    {"name":"clear_color","type":"string","description":"","default":"0,0,0,0"},
+    {"name":"blend","type":"bool","description":"","default":false},
+    {"name":"ksize","type":"int","description":"","default":3,"min":1,"max":7,"step":2},
+    {"name":"dx","type":"int","description":"","default":1,"min":0,"max":1},
+    {"name":"dy","type":"int","description":"","default":1,"min":0,"max":1}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"task_graph::Image","required":true}]},
+{"type":"render_subtract","params":[
+    {"name":"script_path","type":"string","description":"","default":"","widget":"file","file_filter":"Scripts (*.js)"},
+    {"name":"width","type":"int","description":"","default":0,"min":0,"max":65535},
+    {"name":"height","type":"int","description":"","default":0,"min":0,"max":65535},
+    {"name":"format","type":"enum","description":"","default":0,"enum_values":[{"label":"rgba8","value":0},{"label":"rgba32f","value":1}]},
+    {"name":"clear","type":"bool","description":"","default":true},
+    {"name":"clear_color","type":"string","description":"","default":"0,0,0,0"},
+    {"name":"blend","type":"bool","description":"","default":false}],"inputs":[
+    {"name":"in","type_name":"","required":true},
+    {"name":"in2","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"task_graph::Image","required":true}]},
+{"type":"render_threshold","params":[
+    {"name":"script_path","type":"string","description":"","default":"","widget":"file","file_filter":"Scripts (*.js)"},
+    {"name":"width","type":"int","description":"","default":0,"min":0,"max":65535},
+    {"name":"height","type":"int","description":"","default":0,"min":0,"max":65535},
+    {"name":"format","type":"enum","description":"","default":0,"enum_values":[{"label":"rgba8","value":0},{"label":"rgba32f","value":1}]},
+    {"name":"clear","type":"bool","description":"","default":true},
+    {"name":"clear_color","type":"string","description":"","default":"0,0,0,0"},
+    {"name":"blend","type":"bool","description":"","default":false},
+    {"name":"threshold","type":"float","description":"","default":0.5,"min":0,"max":1},
+    {"name":"invert","type":"bool","description":"","default":false}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"task_graph::Image","required":true}]},
+{"type":"render_unsharp","params":[
+    {"name":"script_path","type":"string","description":"","default":"","widget":"file","file_filter":"Scripts (*.js)"},
+    {"name":"width","type":"int","description":"","default":0,"min":0,"max":65535},
+    {"name":"height","type":"int","description":"","default":0,"min":0,"max":65535},
+    {"name":"format","type":"enum","description":"","default":0,"enum_values":[{"label":"rgba8","value":0},{"label":"rgba32f","value":1}]},
+    {"name":"clear","type":"bool","description":"","default":true},
+    {"name":"clear_color","type":"string","description":"","default":"0,0,0,0"},
+    {"name":"blend","type":"bool","description":"","default":false},
+    {"name":"amount","type":"float","description":"","default":1,"min":0,"max":5}],"inputs":[
+    {"name":"in","type_name":"","required":true},
+    {"name":"in2","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"task_graph::Image","required":true}]},
+{"type":"video_reader","params":[
+    {"name":"file_path","type":"string","description":"","default":"","widget":"file","file_filter":"Videos (*.mp4 *.avi *.mov *.mkv *.webm)"},
+    {"name":"api_preference","type":"enum","description":"","default":0,"enum_values":[{"label":"DEFAULT","value":0},{"label":"FFMPEG","value":1700}]}],"inputs":[],"outputs":[
+    {"name":"out","type_name":"cv::Mat","required":true}]},
+{"type":"video_writer","params":[
+    {"name":"file_path","type":"string","description":"","default":"","widget":"file","file_filter":"Videos (*.mp4 *.avi *.mov *.mkv)"},
+    {"name":"fourcc","type":"string","description":"","default":"mp4v"},
+    {"name":"fps","type":"float","description":"","default":30,"min":1,"max":240},
+    {"name":"is_color","type":"bool","description":"","default":true}],"inputs":[
+    {"name":"in","type_name":"","required":true}],"outputs":[
+    {"name":"out","type_name":"cv::Mat","required":true}]}
+]
