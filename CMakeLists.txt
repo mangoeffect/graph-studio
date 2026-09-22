@@ -321,6 +321,7 @@ add_library(task_graph ${TASK_GRAPH_LIB_TYPE}
     src/compiler.cpp
     src/thread_pool.cpp
     src/executor.cpp
+    src/run_loop.cpp
     src/context.cpp
     src/plugin.cpp
     src/plugin_registry.cpp
@@ -713,6 +714,9 @@ add_tg_test(test_plugin)
 
 # 流式执行器（IStreamSource/IStreamSink 逐帧循环）单元测试：纯 mock 源/汇，不依赖 OpenCV。
 add_tg_test(test_stream_executor)
+
+# 多轮运行会话（RunLoop：单次/N 次/循环 + 暂停/取消 + 结果保留策略）单元测试
+add_tg_test(test_run_loop)
 
 # 插件 ABI 动态加载测试（独立编译的 demo 插件由 scripts/build_sdk.py +
 # scripts/build_plugin_standalone.py 生成；文件缺失时 soft-SKIP）

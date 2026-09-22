@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include <string>
 #include <memory>
@@ -302,6 +302,11 @@ class IStreamSink {
 public:
     virtual ~IStreamSink() = default;
     virtual void on_stream_end() = 0;
+
+    // 每轮流开始前由 executor 调用（与 IStreamSource::reset_stream 对称）。
+    // 多轮会话（RunLoop N 次/循环）下汇据此准备本轮输出目标——例如按
+    // on_repeat 策略续写/换名。默认空实现（单轮语义无需处理）。
+    virtual void reset_stream() {}
 };
 
 class IPluginRegistry {

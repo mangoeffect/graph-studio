@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <atomic>
+#include <condition_variable>
 #include <future>
 #include <vector>
 #include <functional>
@@ -69,6 +70,14 @@ public:
     void cancel();
     bool is_running() const { return running_; }
 
+    // —— 协作式暂停（RunLoop / 宿主驱动）——
+    // 置位后：one-shot 调度在任务派发前挂起（worker 线程检查点），stream 模式
+    // 在帧循环顶部挂起。已在执行中的任务不会被强停——暂停最迟在当前任务
+    // 完成时生效。resume() 解除；cancel() 隐含解除（唤醒挂起者）。
+    void pause();
+    void resume();
+    bool is_paused() const { return paused_; }
+
     std::unordered_map<TaskId, TaskResult> get_results() const;
 
     // 获取内置 ProfileCollector（始终可用；enable_profiling=true 时才会采集数据）
@@ -96,6 +105,10 @@ private:
     // 从 results_ 取上游、check_input、execute、存回 results_、emit 事件。
     TaskResult execute_one(const DAG& dag, const TaskId& tid);
 
+    // 暂停检查点：paused_ 置位时在调用线程挂起，直到 resume/cancel。
+    // 必须在未持有任何锁的上下文调用（worker 线程入口 / 帧循环顶部）。
+    void wait_if_paused();
+
     // 触发统一执行事件（同时喂给 ProfileCollector 和用户 callback）
     void emit_event(const ExecutionEvent& e);
     void emit_event(ExecutionEvent::Type type, const std::string& task_id = {},
@@ -106,6 +119,9 @@ private:
     ThreadPoolPtr thread_pool_;
     std::atomic<bool> running_{false};
     std::atomic<bool> cancelled_{false};
+    std::atomic<bool> paused_{false};
+    std::mutex pause_mutex_;
+    std::condition_variable pause_cv_;
     std::shared_future<void> execution_future_;
 
     mutable std::mutex results_mutex_;

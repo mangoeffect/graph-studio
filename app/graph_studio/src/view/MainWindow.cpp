@@ -13,6 +13,7 @@
 #include <QDebug>
 #include <QMenu>
 #include <QAction>
+#include <QInputDialog>
 #include <QMenuBar>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -396,6 +397,11 @@ void MainWindow::ConnectSignals()
     connect(&vm_, &GraphViewModel::executionStarted, this, &MainWindow::onExecutionStarted);
     connect(&vm_, &GraphViewModel::executionFinished, this, &MainWindow::onExecutionFinished);
     connect(&vm_, &GraphViewModel::executingChanged, this, &MainWindow::onExecutingChanged);
+    connect(&vm_, &GraphViewModel::pausedChanged, this, &MainWindow::UpdateRunActions);
+    connect(&vm_, &GraphViewModel::runFinished, this, [this](int idx, bool ok, int, int, double) {
+        UpdateStatusBar();
+        Q_UNUSED(idx); Q_UNUSED(ok);
+    });
 
     // 图像结果：执行完成且采集到图像后，填充下拉框并默认显示
     connect(&vm_, &GraphViewModel::imageResultsReady, this, &MainWindow::onImageResultsReady);
@@ -449,6 +455,16 @@ void MainWindow::CreateMenuBar()
     stopAction_->setShortcut(QKeySequence("Ctrl+."));
     stopAction_->setEnabled(false);
     connect(stopAction_, &QAction::triggered, this, &MainWindow::ActionStop);
+    runMenu->addSeparator();
+    // 运行模型扩展：连续 N 次 / 循环运行（可暂停/取消，核心层 RunLoop 驱动）
+    runNAction_ = runMenu->addAction("Run N Times...");
+    connect(runNAction_, &QAction::triggered, this, &MainWindow::ActionRunN);
+    runLoopAction_ = runMenu->addAction("Run Loop (until Stop)");
+    connect(runLoopAction_, &QAction::triggered, this, &MainWindow::ActionRunLoop);
+    pauseAction_ = runMenu->addAction("Pause");
+    pauseAction_->setShortcut(QKeySequence("Ctrl+P"));
+    pauseAction_->setEnabled(false);
+    connect(pauseAction_, &QAction::triggered, this, &MainWindow::ActionPauseResume);
 
     auto* helpMenu = menuBar()->addMenu("&Help");
     auto* aboutAction = helpMenu->addAction("About Graph Studio");
@@ -1787,8 +1803,35 @@ void MainWindow::UpdateUndoRedoActions()
 void MainWindow::UpdateRunActions()
 {
     const bool exec = vm_.isExecuting();
+    const bool paused = vm_.isPaused();
     if (runAction_) runAction_->setEnabled(!exec);
+    if (runNAction_) runNAction_->setEnabled(!exec);
+    if (runLoopAction_) runLoopAction_->setEnabled(!exec);
     if (stopAction_) stopAction_->setEnabled(exec);
+    if (pauseAction_) {
+        pauseAction_->setEnabled(exec);
+        pauseAction_->setText(paused ? "Resume" : "Pause");
+    }
+}
+
+void MainWindow::ActionRunN()
+{
+    bool ok = false;
+    int n = QInputDialog::getInt(this, "Run N Times",
+                                 "Number of runs:", 5, 1, 100000, 1, &ok);
+    if (ok) vm_.runN(n);
+}
+
+void MainWindow::ActionRunLoop()
+{
+    vm_.runLoopMode();
+}
+
+void MainWindow::ActionPauseResume()
+{
+    if (vm_.isPaused()) vm_.resume();
+    else vm_.pause();
+    UpdateRunActions();
 }
 
 void MainWindow::ActionRun()

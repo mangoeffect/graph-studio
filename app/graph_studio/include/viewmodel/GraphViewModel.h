@@ -13,9 +13,13 @@
 
 #include <any>
 #include <memory>
+#include <optional>
+#include <thread>
 
 #include "../model/GraphModel.h"
-#include <task_graph_api.hpp>
+#include "viewmodel/ImageResultStore.h"
+#include "catalog/TaskCatalog.h"
+#include <task_graph/run_loop.hpp>
 
 namespace task_graph {
 class DAGExecutor;
@@ -47,6 +51,7 @@ class GraphViewModel : public QObject
     Q_PROPERTY(int edgeCount READ edgeCount NOTIFY edgeCountChanged)
     Q_PROPERTY(QString selectedNodeId READ selectedNodeId NOTIFY selectionChanged)
     Q_PROPERTY(bool executing READ isExecuting NOTIFY executingChanged)
+    Q_PROPERTY(bool paused READ isPaused NOTIFY pausedChanged)
 
 public:
     explicit GraphViewModel(GraphModel& model, QObject* parent = nullptr);
@@ -106,6 +111,16 @@ public:
     Q_INVOKABLE void execute();
     Q_INVOKABLE void stop();
 
+    // —— 运行模型（task_graph::RunLoop 驱动，阻塞在内部工作线程）——
+    // runOnce = execute()；runN 连续 n 次；runLoopMode 循环直到 stop()。
+    // 每轮结束发 runFinished + imageResultsReady（仅最新一轮，单槽）。
+    Q_INVOKABLE void runOnce() { execute(); }
+    Q_INVOKABLE void runN(int n);
+    Q_INVOKABLE void runLoopMode();
+    Q_INVOKABLE void pause();
+    Q_INVOKABLE void resume();
+    bool isPaused() const { return runLoop_ && runLoop_->is_paused(); }
+
     // 执行后的图像结果查询。key 格式 "nodeId:port"（单输出端口名为 "out"）。
     // 仅在 finishExecution 后填充；执行前/失败节点不产生条目。
     // 收集阶段只做类型探测、不做转换——GPU 驻留（gpu_texture）的输出保持
@@ -162,6 +177,9 @@ signals:
     void executionStarted();
     void executionFinished();
     void executingChanged();
+    void pausedChanged();
+    // 每轮运行结束（runN/runLoopMode 下的轮粒度信号；execute 单轮也发）
+    void runFinished(int runIndex, bool ok, int completedTasks, int failedTasks, double durationMs);
     void imageResultsReady(QStringList keys);
     void profileDataReady(int frameIndex);
 
@@ -170,8 +188,10 @@ private:
     void onDagChanged(const task_graph::DAGChangeEvent& e);
     void onExecutionEvent(const task_graph::ExecutionEvent& e);
     bool canReach(const QString& from, const QString& to) const;
-    void finishExecution();
-    void ensureExecutor();
+    // GraphReset 后从 DAG 重建节点/连线信号（走 catalog 缓存）
+    void rebuildNodesFromDag();
+    // 由 DAG 构造单个节点的展示数据（id/type/位置/参数/端口）
+    NodeData makeNodeData(const std::string& id) const;
     // loadFromFile/loadFromString 共同实现：json + 相对路径基准 + 日志文案
     bool loadFromJsonData(const QString& json, const QString& graphDir,
                           const QString& logLabel);
@@ -182,20 +202,32 @@ private:
     mutable QHash<QString, int> typeCounter_;
     size_t dagSubId_{0};
 
-    std::unique_ptr<task_graph::DAGExecutor> executor_;
+    TaskCatalog catalog_;        // task 类型内省缓存（端口/参数 spec）
+    ImageResultStore imageStore_;  // 执行后图像结果（懒转换 + 单槽）
+
+    // 运行会话（RunLoop 内含 DAGExecutor）。会话在 runThread_ 上阻塞驱动，
+    // 事件经 QueuedConnection 编组回 UI 线程；跨轮重数据只保留最新一轮
+    // （retention=LastRun），满足循环模式不积累大内存的约束。
+    std::unique_ptr<task_graph::RunLoop> runLoop_;
+    std::thread runThread_;
     bool executing_ = false;
+    bool sessionActive_{false};
 
-    // 执行后采集的图像结果（原始输出，未转换）：key="nodeId:port" ->
-    // std::any（task_graph::Image 或 cv::Mat）。Image 可能 GPU 驻留——保持
-    // 原输出形态（纹理不回 CPU），只在 imageResult() 被选中显示时按需
-    // ensure_cpu 下载并缓存 QImage（零拷贝共享源像素，cleanup function
-    // 持有引用计数）。GPU 纹理由 Image 内 shared_ptr<GpuTexture> 保活，
-    // 全局 GpuBackend（GpuBootstrap）活过 executor，懒下载安全。
-    QHash<QString, std::any> imageResults_;
-    mutable QHash<QString, QImage> imageResultCache_;  // 首次转换后缓存
+    // 运行会话内部流程（均在 UI 线程调用，除非注明）
+    void startSession(task_graph::RunPolicy policy);
+    void appendProfileFrame(task_graph::RunPolicy::Mode mode);  // 工作线程回调内调用
+    void onRunSummary(const task_graph::RunSummary& s,
+                      std::optional<task_graph::RunResult> full);  // UI 线程（编组后）
+    void finishSession();  // UI 线程（编组后）
+    int profileFrameCap(task_graph::RunPolicy::Mode mode) const {
+        return mode == task_graph::RunPolicy::Mode::Loop ? LOOP_PROFILE_FRAMES
+                                                         : MAX_PROFILE_FRAMES;
+    }
 
-    // 性能分析数据：多帧历史（每次执行追加一帧，最多 MAX_PROFILE_FRAMES）
+    // 性能分析数据：多帧历史（每次执行追加一帧，最多 MAX_PROFILE_FRAMES；
+    // 循环模式下降为 LOOP_PROFILE_FRAMES，避免 trace 字符串积累）
     static constexpr int MAX_PROFILE_FRAMES = 100;
+    static constexpr int LOOP_PROFILE_FRAMES = 10;
     QList<ProfileFrame> profileFrames_;
 };
 

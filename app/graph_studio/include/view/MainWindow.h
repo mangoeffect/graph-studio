@@ -179,6 +179,9 @@ private:
     void ActionRedo();
     void ActionRun();
     void ActionStop();
+    void ActionRunN();
+    void ActionRunLoop();
+    void ActionPauseResume();
     void UpdateUndoRedoActions();
     void UpdateRunActions();
 
@@ -250,6 +253,9 @@ private:
     QAction* redoAction_ = nullptr;
     QAction* runAction_ = nullptr;
     QAction* stopAction_ = nullptr;
+    QAction* pauseAction_ = nullptr;    // 运行中暂停/继续（同一项切换文案）
+    QAction* runNAction_ = nullptr;     // 连续 N 次（N 由对话框输入）
+    QAction* runLoopAction_ = nullptr;  // 循环运行（直到 Stop）
 };
 
 } // namespace graph_studio

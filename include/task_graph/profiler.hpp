@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include <plugin_api.hpp>
 #include <chrono>
@@ -85,6 +85,10 @@ public:
     // 事件采集接口（由 executor 回调，多线程安全）
     void on_task_event(const TaskProfileEvent& event);
     void on_dag_event(const DagProfileEvent& event);
+
+    // 清空已采集事件（多轮会话下 executor 在每轮开始前调用，保证统计
+    // 按轮隔离、循环模式不随轮数累积内存）
+    void clear();
 
     // 聚合结果查询
     const std::vector<TaskProfileEvent>& raw_events() const { return raw_events_; }

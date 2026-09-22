@@ -9,12 +9,16 @@
 #include <algorithm>
 #include <task_graph_api.hpp>
 #include <nlohmann/json.hpp>
-#include <opencv2/opencv.hpp>
 #include "CrashReporter.h"
 
 using namespace graph_studio;
 
-// ---- ParamSpec 桥接：把 lib 侧 ParamSpec 拆成 QVariantMap（明确类型） ----
+// 本文件职责（P4a 拆分后）：
+//   - 图编辑操作（节点/连线/参数）+ DAG 事件 -> Qt 信号翻译
+//   - 执行编排（DAGExecutor 驱动、事件编组、结果/性能数据采集）
+// 参数/端口内省桥接见 catalog/TaskCatalog，图像结果采集与懒转换见
+// viewmodel/ImageResultStore。
+
 namespace {
 
 const int kLogTrace = static_cast<int>(task_graph::LogLevel::TRACE);
@@ -30,228 +34,6 @@ void syncGraphCrashContext(GraphModel& model, const QString& filePath) {
     SetGraphContext(QFileInfo(filePath).fileName().toStdString(),
                     static_cast<int>(model.dag().num_tasks()),
                     static_cast<int>(model.dag().edge_list().size()));
-}
-
-QVariantMap paramSpecToVariant(const task_graph::ParamSpec& s) {
-    QVariantMap m;
-    m["name"] = QString::fromStdString(s.name);
-    m["description"] = QString::fromStdString(s.description);
-    switch (s.type) {
-        case task_graph::ParamType::Int:    m["type"] = QStringLiteral("int");    break;
-        case task_graph::ParamType::Float:  m["type"] = QStringLiteral("float");  break;
-        case task_graph::ParamType::String: m["type"] = QStringLiteral("string"); break;
-        case task_graph::ParamType::Bool:   m["type"] = QStringLiteral("bool");   break;
-        case task_graph::ParamType::Enum:   m["type"] = QStringLiteral("enum");   break;
-    }
-    if (s.min_value) m["min"] = *s.min_value;
-    if (s.max_value) m["max"] = *s.max_value;
-    if (s.step)      m["step"] = *s.step;
-    if (auto v = s.default_as_int())        m["default"] = *v;
-    else if (auto v = s.default_as_float()) m["default"] = *v;
-    else if (auto v = s.default_as_bool())  m["default"] = *v;
-    else if (auto v = s.default_as_string()) m["default"] = QString::fromStdString(*v);
-    if (s.type == task_graph::ParamType::Enum && !s.enum_values.empty()) {
-        QVariantList labels, values;
-        for (const auto& [label, value] : s.enum_values) {
-            labels.append(QString::fromStdString(label));
-            values.append(value);
-        }
-        m["enumLabels"] = labels;
-        m["enumValues"] = values;
-    }
-    if (!s.widget_hint.empty()) m["widget"] = QString::fromStdString(s.widget_hint);
-    if (!s.file_filter.empty()) m["fileFilter"] = QString::fromStdString(s.file_filter);
-    // 显隐/联动提示（属性面板消费；见 ParamSpec 字段注释）
-    if (s.hidden) m["hidden"] = true;
-    if (!s.visible_when.empty()) {
-        m["visibleWhen"] = QString::fromStdString(s.visible_when);
-        QVariantList vals;
-        for (int v : s.visible_when_values) vals.append(v);
-        m["visibleWhenValues"] = vals;
-        if (s.reset_on_visible_when_change) m["resetOnLinkChange"] = true;
-    }
-    return m;
-}
-
-std::vector<task_graph::ParamSpec> queryParamSpecs(const std::string& task_type) {
-    if (!task_graph::PluginRegistry::instance().has_task(task_type)) return {};
-    auto probe = task_graph::PluginRegistry::instance().create_task(task_type);
-    return probe ? probe->param_specs() : std::vector<task_graph::ParamSpec>{};
-}
-
-// 端口名查询：input=true 查 input_specs()，否则 output_specs()。未注册类型返回空。
-std::vector<std::string> queryPortNames(const std::string& task_type, bool is_input) {
-    if (!task_graph::PluginRegistry::instance().has_task(task_type)) return {};
-    std::vector<task_graph::PortSpec> specs;
-    if (auto probe = task_graph::PluginRegistry::instance().create_task(task_type)) {
-        specs = is_input ? probe->input_specs() : probe->output_specs();
-    }
-    std::vector<std::string> names;
-    names.reserve(specs.size());
-    for (const auto& s : specs) names.push_back(s.name);
-    return names;
-}
-
-QStringList toQStringList(const std::vector<std::string>& v) {
-    QStringList out;
-    out.reserve(static_cast<int>(v.size()));
-    for (const auto& s : v) out.append(QString::fromStdString(s));
-    return out;
-}
-
-// 解析连线时的默认端口：输出取第一个声明的输出口（无则 "out"）。
-QString defaultOutputPort(const std::string& task_type) {
-    auto names = queryPortNames(task_type, false);
-    return names.empty() ? QStringLiteral("out") : QString::fromStdString(names.front());
-}
-
-// 输入端口：优先第一个 required 输入口；否则第一个输入口；无则 "in"。
-QString defaultInputPort(const std::string& task_type) {
-    if (!task_graph::PluginRegistry::instance().has_task(task_type)) return QStringLiteral("in");
-    std::vector<task_graph::PortSpec> specs;
-    if (auto probe = task_graph::PluginRegistry::instance().create_task(task_type)) {
-        specs = probe->input_specs();
-    }
-    for (const auto& s : specs) {
-        if (s.required) return QString::fromStdString(s.name);
-    }
-    if (!specs.empty()) return QString::fromStdString(specs[0].name);
-    return QStringLiteral("in");
-}
-
-QVariantMap defaultParamsForType(const std::string& task_type) {
-    QVariantMap out;
-    for (const auto& s : queryParamSpecs(task_type)) {
-        QVariantMap vm = paramSpecToVariant(s);
-        if (vm.contains("default")) out[QString::fromStdString(s.name)] = vm["default"];
-    }
-    return out;
-}
-
-QVariantMap taskParamsToVariant(const task_graph::TaskParams& p,
-                                 const std::vector<task_graph::ParamSpec>& specs) {
-    QVariantMap out;
-    std::unordered_map<std::string, const task_graph::ParamSpec*> by_name;
-    for (const auto& s : specs) by_name[s.name] = &s;
-
-    for (const auto& s : specs) {
-        QString k = QString::fromStdString(s.name);
-        switch (s.type) {
-            case task_graph::ParamType::Int:
-            case task_graph::ParamType::Enum:
-                if (auto v = p.get_int(s.name)) out[k] = *v;
-                break;
-            case task_graph::ParamType::Float:
-                if (auto v = p.get_float(s.name)) out[k] = *v;
-                break;
-            case task_graph::ParamType::String:
-                if (auto v = p.get_string(s.name)) out[k] = QString::fromStdString(*v);
-                break;
-            case task_graph::ParamType::Bool:
-                if (auto v = p.get_bool(s.name)) out[k] = *v;
-                break;
-        }
-    }
-    for (const auto& [key, _] : p.params()) {
-        if (by_name.contains(key)) continue;
-        QString k = QString::fromStdString(key);
-        if (auto v = p.get_int(key))         out[k] = *v;
-        else if (auto v = p.get_float(key))  out[k] = *v;
-        else if (auto v = p.get_bool(key))   out[k] = *v;
-        else if (auto v = p.get_string(key)) out[k] = QString::fromStdString(*v);
-    }
-    return out;
-}
-
-void applyVariantToParams(const QString& key, const QVariant& value,
-                          const task_graph::ParamSpec& spec,
-                          task_graph::TaskParams& out) {
-    const std::string k = key.toStdString();
-    switch (spec.type) {
-        case task_graph::ParamType::Int:
-        case task_graph::ParamType::Enum:
-            out.set_int(k, value.toInt()); break;
-        case task_graph::ParamType::Float:
-            out.set_float(k, value.toFloat()); break;
-        case task_graph::ParamType::String:
-            out.set_string(k, value.toString().toStdString()); break;
-        case task_graph::ParamType::Bool:
-            out.set_bool(k, value.toBool()); break;
-    }
-    }
-}  // namespace
-
-// ---- 零拷贝图像转换：cv::Mat / task_graph::Image -> QImage ----
-// QImage 通过 cleanup function 持有源数据的引用计数，直接共享像素缓冲，
-// 析构时回调释放源对象，避免 QImage::copy() 二次拷贝。
-namespace {
-
-void matCleanup(void* info) {
-    delete static_cast<cv::Mat*>(info);
-}
-
-QImage matToQImage(const cv::Mat& src) {
-    if (src.empty()) return {};
-    cv::Mat mat = src;  // refcount++，共享像素缓冲
-    QImage::Format fmt = QImage::Format_Invalid;
-    switch (mat.channels()) {
-        case 1:  fmt = QImage::Format_Grayscale8; break;   // 灰度(Sobel/Laplacian)
-        case 3:  fmt = QImage::Format_BGR888;      break;  // BGR 直接映射，零拷贝
-        case 4: {                                          // BGRA：Qt 无 BGRA8888 格式
-            cv::Mat t;
-            cv::cvtColor(mat, t, cv::COLOR_BGRA2RGBA);
-            mat = t;
-            fmt = QImage::Format_RGBA8888;
-            break;
-        }
-        default: return {};
-    }
-    // keep 持 Mat 引用计数；QImage 析构时 delete keep，refcount 归零才释放像素
-    auto* keep = new cv::Mat(mat);
-    return QImage(keep->data, keep->cols, keep->rows, keep->step,
-                  fmt, matCleanup, keep);
-}
-
-void imageDataCleanup(void* info) {
-    delete static_cast<std::shared_ptr<std::vector<uint8_t>>*>(info);
-}
-
-QImage imageToQImage(const task_graph::Image& src) {
-    // 拷贝 Image 结构体（浅拷贝，共享 data 的 shared_ptr）；ensure_cpu 可能改状态，隔离之
-    task_graph::Image img = src;
-    if (!img.ensure_cpu() || !img.data || img.data->empty()) return {};
-    QImage::Format fmt = QImage::Format_Invalid;
-    switch (img.channels) {
-        case 1: fmt = QImage::Format_Grayscale8; break;
-        case 3: fmt = (img.pixel_format == task_graph::PixelFormat::BGR)
-                          ? QImage::Format_BGR888 : QImage::Format_RGB888; break;
-        case 4: fmt = QImage::Format_RGBA8888; break;
-        default: return {};
-    }
-    // keep 持 shared_ptr<vector<uint8_t>> 引用计数，QImage 析构时释放
-    auto* keep = new std::shared_ptr<std::vector<uint8_t>>(img.data);
-    return QImage(keep->get()->data(), img.width, img.height,
-                  img.width * img.channels, fmt, imageDataCleanup, keep);
-}
-
-// 从 std::any 提取图像转 QImage。type-check-first：WASM -fno-exceptions 下
-// any_cast 失败会 abort，必须先用 type() 比对。GPU 驻留 Image 在此触发
-// ensure_cpu 下载——仅由 imageResult()（用户选中显示）按需调用。
-std::optional<QImage> anyToQImage(const std::any& v) {
-    if (!v.has_value()) return std::nullopt;
-    if (v.type() == typeid(cv::Mat)) {
-        return matToQImage(std::any_cast<cv::Mat>(v));
-    }
-    if (v.type() == typeid(task_graph::Image)) {
-        return imageToQImage(std::any_cast<task_graph::Image>(v));
-    }
-    return std::nullopt;
-}
-
-// 结果采集阶段的类型探测（不转换、不触发 GPU→CPU 同步）。
-bool isImageAny(const std::any& v) {
-    return v.has_value() && (v.type() == typeid(task_graph::Image) ||
-                             v.type() == typeid(cv::Mat));
 }
 
 }  // namespace
@@ -295,10 +77,8 @@ GraphViewModel::~GraphViewModel()
 {
     task_graph::clear_log_sink();
     model_.dag().unsubscribe(dagSubId_);
-    if (executor_) {
-        executor_->cancel();
-        executor_->wait();
-    }
+    if (runLoop_) runLoop_->cancel();
+    if (runThread_.joinable()) runThread_.join();
 }
 
 int GraphViewModel::taskCount() const { return static_cast<int>(model_.dag().num_tasks()); }
@@ -328,9 +108,9 @@ void GraphViewModel::onDagChanged(const task_graph::DAGChangeEvent& e) {
         QPointF pos = positions_.value(nd.id);
         nd.x = pos.x();
         nd.y = pos.y();
-        nd.params = defaultParamsForType(e.task_type);
-        nd.inputPorts = toQStringList(queryPortNames(e.task_type, true));
-        nd.outputPorts = toQStringList(queryPortNames(e.task_type, false));
+        nd.params = catalog_.defaultParams(nd.type);
+        nd.inputPorts = catalog_.inputPorts(nd.type);
+        nd.outputPorts = catalog_.outputPorts(nd.type);
         emit taskAdded(nd);
         emit taskCountChanged();
         emit logMessage(kLogInfo, "Task added: " + nd.id + " (" + nd.type + ")");
@@ -375,34 +155,39 @@ void GraphViewModel::onDagChanged(const task_graph::DAGChangeEvent& e) {
     }
     case Type::GraphReset: {
         emit graphReset();
-        const auto& dag = model_.dag();
-        for (const auto& id : dag.task_ids()) {
-            NodeData nd;
-            nd.id = QString::fromStdString(id);
-            nd.type = QString::fromStdString(dag.task_type(id));
-            QPointF pos = positions_.value(nd.id);
-            nd.x = pos.x();
-            nd.y = pos.y();
-            auto cfg = dag.task_config(id);
-            nd.params = taskParamsToVariant(cfg ? cfg->params : task_graph::TaskParams{},
-                                            queryParamSpecs(dag.task_type(id)));
-            nd.inputPorts = toQStringList(queryPortNames(dag.task_type(id), true));
-            nd.outputPorts = toQStringList(queryPortNames(dag.task_type(id), false));
-            emit taskAdded(nd);
-        }
-        for (const auto& e : dag.edges()) {
-            EdgeData ed;
-            ed.fromId = QString::fromStdString(e.from);
-            ed.toId = QString::fromStdString(e.to);
-            ed.fromPort = QString::fromStdString(e.from_port);
-            ed.toPort = QString::fromStdString(e.to_port);
-            emit edgeAdded(ed);
-        }
+        rebuildNodesFromDag();
         emit taskCountChanged();
         emit edgeCountChanged();
         emit selectionChanged({});
         break;
     }
+    }
+}
+
+// GraphReset 后从 DAG 重建全部节点/连线信号（走 catalog 缓存查询）
+void GraphViewModel::rebuildNodesFromDag() {
+    const auto& dag = model_.dag();
+    for (const auto& id : dag.task_ids()) {
+        NodeData nd;
+        nd.id = QString::fromStdString(id);
+        nd.type = QString::fromStdString(dag.task_type(id));
+        QPointF pos = positions_.value(nd.id);
+        nd.x = pos.x();
+        nd.y = pos.y();
+        auto cfg = dag.task_config(id);
+        nd.params = TaskCatalog::paramsToVariant(cfg ? cfg->params : task_graph::TaskParams{},
+                                                 catalog_.infoOrEmpty(nd.type));
+        nd.inputPorts = catalog_.inputPorts(nd.type);
+        nd.outputPorts = catalog_.outputPorts(nd.type);
+        emit taskAdded(nd);
+    }
+    for (const auto& e : dag.edges()) {
+        EdgeData ed;
+        ed.fromId = QString::fromStdString(e.from);
+        ed.toId = QString::fromStdString(e.to);
+        ed.fromPort = QString::fromStdString(e.from_port);
+        ed.toPort = QString::fromStdString(e.to_port);
+        emit edgeAdded(ed);
     }
 }
 
@@ -443,9 +228,10 @@ bool GraphViewModel::moveNode(const QString& taskId, qreal x, qreal y)
 bool GraphViewModel::addEdge(const QString& fromId, const QString& toId)
 {
     // 便捷重载：按两侧 task 类型自动解析端口名（保留旧调用语义的默认解析）
-    auto fromType = nodeData(fromId).type.toStdString();
-    auto toType = nodeData(toId).type.toStdString();
-    return addEdge(fromId, defaultOutputPort(fromType), toId, defaultInputPort(toType));
+    auto fromType = nodeData(fromId).type;
+    auto toType = nodeData(toId).type;
+    return addEdge(fromId, catalog_.defaultOutputPort(fromType),
+                   toId, catalog_.defaultInputPort(toType));
 }
 
 bool GraphViewModel::addEdge(const QString& fromId, const QString& fromPort,
@@ -522,20 +308,27 @@ QList<NodeData> GraphViewModel::nodes() const
     QList<NodeData> result;
     const auto& dag = model_.dag();
     for (const auto& id : dag.task_ids()) {
-        NodeData nd;
-        nd.id = QString::fromStdString(id);
-        nd.type = QString::fromStdString(dag.task_type(id));
-        QPointF pos = positions_.value(nd.id);
-        nd.x = pos.x();
-        nd.y = pos.y();
-        auto cfg = dag.task_config(id);
-        nd.params = taskParamsToVariant(cfg ? cfg->params : task_graph::TaskParams{},
-                                        queryParamSpecs(dag.task_type(id)));
-        nd.inputPorts = toQStringList(queryPortNames(dag.task_type(id), true));
-        nd.outputPorts = toQStringList(queryPortNames(dag.task_type(id), false));
-        result.append(nd);
+        result.append(makeNodeData(id));
     }
     return result;
+}
+
+NodeData GraphViewModel::makeNodeData(const std::string& id) const
+{
+    NodeData nd;
+    nd.id = QString::fromStdString(id);
+    const auto& dag = model_.dag();
+    if (!dag.has_task(id)) return nd;
+    nd.type = QString::fromStdString(dag.task_type(id));
+    QPointF pos = positions_.value(nd.id);
+    nd.x = pos.x();
+    nd.y = pos.y();
+    auto cfg = dag.task_config(id);
+    nd.params = TaskCatalog::paramsToVariant(cfg ? cfg->params : task_graph::TaskParams{},
+                                             catalog_.infoOrEmpty(nd.type));
+    nd.inputPorts = catalog_.inputPorts(nd.type);
+    nd.outputPorts = catalog_.outputPorts(nd.type);
+    return nd;
 }
 
 QList<EdgeData> GraphViewModel::edges() const
@@ -559,30 +352,12 @@ bool GraphViewModel::hasNode(const QString& taskId) const
 
 NodeData GraphViewModel::nodeData(const QString& taskId) const
 {
-    NodeData nd;
-    nd.id = taskId;
-    auto id = taskId.toStdString();
-    const auto& dag = model_.dag();
-    if (!dag.has_task(id)) return nd;
-    nd.type = QString::fromStdString(dag.task_type(id));
-    QPointF pos = positions_.value(taskId);
-    nd.x = pos.x();
-    nd.y = pos.y();
-    auto cfg = dag.task_config(id);
-    nd.params = taskParamsToVariant(cfg ? cfg->params : task_graph::TaskParams{},
-                                    queryParamSpecs(dag.task_type(id)));
-    nd.inputPorts = toQStringList(queryPortNames(dag.task_type(id), true));
-    nd.outputPorts = toQStringList(queryPortNames(dag.task_type(id), false));
-    return nd;
+    return makeNodeData(taskId.toStdString());
 }
 
 QVariantList GraphViewModel::paramSpecs(const QString& taskType) const
 {
-    QVariantList out;
-    for (const auto& s : queryParamSpecs(taskType.toStdString())) {
-        out.append(paramSpecToVariant(s));
-    }
-    return out;
+    return catalog_.paramSpecs(taskType);
 }
 
 QVariantMap GraphViewModel::nodeParams(const QString& taskId) const
@@ -591,7 +366,8 @@ QVariantMap GraphViewModel::nodeParams(const QString& taskId) const
     const auto& dag = model_.dag();
     auto cfg = dag.task_config(id);
     if (!cfg) return {};
-    return taskParamsToVariant(cfg->params, queryParamSpecs(dag.task_type(id)));
+    return TaskCatalog::paramsToVariant(cfg->params,
+                                        catalog_.infoOrEmpty(dag.task_type(id)));
 }
 
 bool GraphViewModel::setNodeParam(const QString& taskId, const QString& key, const QVariant& value)
@@ -600,18 +376,13 @@ bool GraphViewModel::setNodeParam(const QString& taskId, const QString& key, con
     const auto& dag = model_.dag();
     if (!dag.has_task(id)) return false;
 
-    std::string type = dag.task_type(id);
-    auto specs = queryParamSpecs(type);
-    for (const auto& s : specs) {
-        if (s.name == key.toStdString()) {
-            task_graph::TaskParams params = model_.task_params(id);
-            applyVariantToParams(key, value, s, params);
-            model_.update_task_params(id, params);
-            emit logMessage(kLogInfo, "Param updated: " + taskId + "." + key);
-            return true;
-        }
-    }
-    return false;
+    const TaskCatalog::TypeInfo* ti = catalog_.info(dag.task_type(id));
+    if (!ti) return false;
+    task_graph::TaskParams params = model_.task_params(id);
+    if (!TaskCatalog::setParam(params, key, value, *ti)) return false;
+    model_.update_task_params(id, params);
+    emit logMessage(kLogInfo, "Param updated: " + taskId + "." + key);
+    return true;
 }
 
 QStringList GraphViewModel::availableTaskTypes() const
@@ -681,12 +452,12 @@ QString GraphViewModel::classifyTask(const QString& type)
 
 QStringList GraphViewModel::inputPorts(const QString& taskType) const
 {
-    return toQStringList(queryPortNames(taskType.toStdString(), true));
+    return catalog_.inputPorts(taskType);
 }
 
 QStringList GraphViewModel::outputPorts(const QString& taskType) const
 {
-    return toQStringList(queryPortNames(taskType.toStdString(), false));
+    return catalog_.outputPorts(taskType);
 }
 
 void GraphViewModel::clear()
@@ -873,7 +644,45 @@ void GraphViewModel::autoLayout()
 
 void GraphViewModel::execute()
 {
-    if (executing_) {
+    // 单次运行同样保留最新一轮完整结果（LastRun 单槽）：UI 需要采集图像输出。
+    task_graph::RunPolicy p;
+    p.mode = task_graph::RunPolicy::Mode::Once;
+    p.retention = task_graph::RunPolicy::ResultRetention::LastRun;
+    startSession(std::move(p));
+}
+
+void GraphViewModel::runN(int n)
+{
+    task_graph::RunPolicy p;
+    p.mode = task_graph::RunPolicy::Mode::NTimes;
+    p.count = static_cast<size_t>(std::max(1, n));
+    p.retention = task_graph::RunPolicy::ResultRetention::LastRun;
+    startSession(std::move(p));
+}
+
+void GraphViewModel::runLoopMode()
+{
+    task_graph::RunPolicy p;
+    p.mode = task_graph::RunPolicy::Mode::Loop;
+    p.retention = task_graph::RunPolicy::ResultRetention::LastRun;
+    startSession(std::move(p));
+}
+
+void GraphViewModel::pause()
+{
+    if (runLoop_) runLoop_->pause();
+    emit pausedChanged();
+}
+
+void GraphViewModel::resume()
+{
+    if (runLoop_) runLoop_->resume();
+    emit pausedChanged();
+}
+
+void GraphViewModel::startSession(task_graph::RunPolicy policy)
+{
+    if (sessionActive_) {
         emit logMessage(kLogWarn, "Execution already in progress");
         return;
     }
@@ -893,7 +702,7 @@ void GraphViewModel::execute()
                             .arg(issue.task_id.empty() ? QString()
                                                        : QStringLiteral("%1: ").arg(QString::fromStdString(issue.task_id)))
                             .arg(issue.port_name.empty() ? QString()
-                                                          : QStringLiteral("[%1] ").arg(QString::fromStdString(issue.port_name)))
+                                                         : QStringLiteral("[%1] ").arg(QString::fromStdString(issue.port_name)))
                             .arg(QString::fromStdString(issue.message)));
     }
     if (hasError) {
@@ -901,33 +710,133 @@ void GraphViewModel::execute()
         return;
     }
 
-    executing_ = true;
-    emit executingChanged();
-    emit executionStarted();
-    emit logMessage(kLogInfo, QStringLiteral("Executing %1 tasks...").arg(taskCount()));
-
-    ensureExecutor();
-
-    try {
-        executor_->execute(model_.dag());
-    } catch (const std::exception& ex) {
-        emit logMessage(kLogError, QStringLiteral("Failed to start execution: %1").arg(ex.what()));
-        executing_ = false;
-        emit executingChanged();
-        return;
-    }
-}
-
-void GraphViewModel::ensureExecutor()
-{
-    if (executor_) return;
+    // —— 组装 RunLoop（每会话新建，规避跨会话状态残留）——
     task_graph::ExecutorConfig config;
     config.enable_profiling = true;
+    // 任务事件编组回 UI 线程（节点状态动画 / 日志 / 崩溃 breadcrumb）。
+    // DagCompleted 不在此处理：轮粒度流程由 run callback 驱动。
     config.callback = [this](const task_graph::ExecutionEvent& e) {
+        if (e.type == task_graph::ExecutionEvent::Type::DagCompleted) return;
         QMetaObject::invokeMethod(this, [this, e]() { onExecutionEvent(e); },
                                   Qt::QueuedConnection);
     };
-    executor_ = std::make_unique<task_graph::DAGExecutor>(config);
+    runLoop_ = std::make_unique<task_graph::RunLoop>(std::move(policy), std::move(config));
+
+    // 每轮 summary：工作线程侧在轮间读 profiler 生成 ProfileFrame（安全窗口），
+    // 完整结果快照（LastRun 策略）一并编组回 UI 线程交付
+    const auto policyMode = runLoop_->policy().mode;
+    runLoop_->set_run_callback([this, policyMode](const task_graph::RunSummary& s) {
+        std::optional<task_graph::RunResult> full;
+        if (auto last = runLoop_->last_result()) full = std::move(*last);
+        appendProfileFrame(policyMode);
+        QMetaObject::invokeMethod(this, [this, s, full]() {
+            onRunSummary(s, full);
+        }, Qt::QueuedConnection);
+    });
+
+    executing_ = true;
+    sessionActive_ = true;
+    emit executingChanged();
+    emit executionStarted();
+    emit logMessage(kLogInfo, QStringLiteral("Executing %1 tasks...")
+                        .arg(taskCount()));
+
+    const auto* dagPtr = &model_.dag();
+    if (runThread_.joinable()) runThread_.join();
+    runThread_ = std::thread([this, dagPtr]() {
+        runLoop_->run_all(*dagPtr);
+        QMetaObject::invokeMethod(this, [this]() { finishSession(); },
+                                  Qt::QueuedConnection);
+    });
+}
+
+void GraphViewModel::appendProfileFrame(task_graph::RunPolicy::Mode mode)
+{
+    if (!runLoop_) return;
+    const auto& profiler = runLoop_->executor().profiler();
+    const auto dagStats = profiler.compute_dag_stats();
+    const auto taskStats = profiler.compute_task_stats();
+
+    ProfileFrame frame;
+    frame.dag.totalMs = std::chrono::duration<double, std::milli>(dagStats.total_duration).count();
+    frame.dag.totalTasks = static_cast<int>(dagStats.total_tasks);
+    frame.dag.completedTasks = static_cast<int>(dagStats.completed_tasks);
+    frame.dag.failedTasks = static_cast<int>(dagStats.failed_tasks);
+    frame.dag.skippedTasks = static_cast<int>(dagStats.skipped_tasks);
+    frame.dag.criticalPathMs = std::chrono::duration<double, std::milli>(dagStats.critical_path).count();
+
+    for (const auto& ts : taskStats) {
+        ProfileTaskInfo info;
+        info.taskId = QString::fromStdString(ts.task_id);
+        info.taskType = QString::fromStdString(ts.task_type);
+        info.waitMs = std::chrono::duration<double, std::milli>(ts.wait_duration).count();
+        info.execMs = std::chrono::duration<double, std::milli>(ts.exec_duration).count();
+        info.totalMs = std::chrono::duration<double, std::milli>(ts.total_duration).count();
+        if (dagStats.has_start && ts.has_start) {
+            info.startMs = std::chrono::duration<double, std::milli>(
+                ts.start_time - dagStats.start_time).count();
+        }
+        if (dagStats.has_start && ts.has_end) {
+            info.endMs = std::chrono::duration<double, std::milli>(
+                ts.end_time - dagStats.start_time).count();
+        }
+        if (ts.final_status == task_graph::TaskStatus::COMPLETED) info.status = 0;
+        else if (ts.final_status == task_graph::TaskStatus::FAILED) info.status = 1;
+        else if (ts.final_status == task_graph::TaskStatus::SKIPPED) info.status = 2;
+        else info.status = 1;
+        frame.tasks.append(info);
+    }
+
+    frame.traceJson = QString::fromStdString(profiler.to_trace_string(false));
+    frame.reportJson = QString::fromStdString(profiler.to_json_string(true));
+
+    profileFrames_.append(frame);
+    const int cap = profileFrameCap(mode);
+    while (profileFrames_.size() > cap) {
+        profileFrames_.removeFirst();
+    }
+}
+
+void GraphViewModel::onRunSummary(const task_graph::RunSummary& s,
+                                  std::optional<task_graph::RunResult> full)
+{
+    const double ms = std::chrono::duration<double, std::milli>(s.duration).count();
+    emit logMessage(kLogInfo, QStringLiteral("Run %1 finished: %2 ok, %3 failed (%4 ms)")
+                        .arg(s.run_index)
+                        .arg(s.completed_tasks)
+                        .arg(s.failed_tasks)
+                        .arg(ms, 0, 'f', 2));
+    if (!s.ok && !s.first_failure_task_id.empty()) {
+        emit logMessage(kLogError, QStringLiteral("Run %1 first failure: %2: %3")
+                                      .arg(s.run_index)
+                                      .arg(QString::fromStdString(s.first_failure_task_id))
+                                      .arg(QString::fromStdString(s.first_failure_reason)));
+    }
+
+    // 每轮刷新图像结果（单槽：只保留最新一轮，循环模式不积累）
+    if (full) {
+        imageStore_.collectFrom(full->results);
+    }
+    emit runFinished(static_cast<int>(s.run_index), s.ok,
+                     static_cast<int>(s.completed_tasks),
+                     static_cast<int>(s.failed_tasks), ms);
+    if (full && !imageStore_.isEmpty()) {
+        emit imageResultsReady(imageStore_.keys());
+    }
+    if (!profileFrames_.isEmpty()) {
+        emit profileDataReady(profileFrames_.size() - 1);
+    }
+}
+
+void GraphViewModel::finishSession()
+{
+    if (!sessionActive_) return;
+    sessionActive_ = false;
+    executing_ = false;
+    emit executingChanged();
+    emit pausedChanged();
+    emit executionFinished();
+    emit logMessage(kLogInfo, "Session finished");
 }
 
 void GraphViewModel::onExecutionEvent(const task_graph::ExecutionEvent& e) {
@@ -956,9 +865,6 @@ void GraphViewModel::onExecutionEvent(const task_graph::ExecutionEvent& e) {
         // 报告里能看到最近的失败任务与原因。
         AddExecutionBreadcrumb(e.task_id, e.failure_reason);
         break;
-    case Type::DagCompleted:
-        finishExecution();
-        break;
     default:
         break;
     }
@@ -966,118 +872,11 @@ void GraphViewModel::onExecutionEvent(const task_graph::ExecutionEvent& e) {
 
 void GraphViewModel::stop()
 {
-    if (!executing_ || !executor_) return;
+    if (!sessionActive_ || !runLoop_) return;
     emit logMessage(kLogWarn, "Cancelling execution...");
-    executor_->cancel();
-    finishExecution();
-}
-
-void GraphViewModel::finishExecution()
-{
-    if (!executing_) return;
-
-    int completed = 0, failed = 0;
-    imageResults_.clear();    // 清空上一轮结果
-    imageResultCache_.clear();
-    QStringList imageKeys;
-    if (executor_) {
-        auto results = executor_->get_results();
-        for (auto& [id, result] : results) {
-            const bool ok = result.is_success();
-            completed += ok ? 1 : 0;
-            failed += ok ? 0 : 1;
-            const double ms = std::chrono::duration<double, std::milli>(result.duration).count();
-            emit logMessage(ok ? kLogInfo : kLogError,
-                            QStringLiteral("%1  (%2 ms)")
-                                .arg(QString::fromStdString(id))
-                                .arg(ms, 0, 'f', 2));
-
-            // 采集图像结果：多输出节点按端口，单输出(value)按 "out"。
-            // 只探测类型、move 原始输出——GPU 驻留（纹理）结果保持原样，
-            // 不默认同步回 CPU（选中显示时 GraphViewModel::imageResult
-            // 才按需 ensure_cpu）。
-            if (ok) {
-                const QString qid = QString::fromStdString(id);
-                if (!result.outputs.empty()) {
-                    for (auto& [port, anyVal] : result.outputs) {
-                        if (isImageAny(anyVal)) {
-                            QString key = qid + ":" + QString::fromStdString(port);
-                            imageResults_[key] = std::move(anyVal);
-                            imageKeys.append(key);
-                        }
-                    }
-                } else if (isImageAny(result.value)) {
-                    QString key = qid + ":out";
-                    imageResults_[key] = std::move(result.value);
-                    imageKeys.append(key);
-                }
-            }
-        }
-    }
-    emit logMessage(kLogInfo, QStringLiteral("Execution finished: %1 ok, %2 failed")
-                        .arg(completed)
-                        .arg(failed));
-
-    // 采集性能分析数据（executor 销毁前），存为一帧
-    if (executor_) {
-        const auto& profiler = executor_->profiler();
-        const auto dagStats = profiler.compute_dag_stats();
-        const auto taskStats = profiler.compute_task_stats();
-
-        ProfileFrame frame;
-
-        frame.dag.totalMs = std::chrono::duration<double, std::milli>(dagStats.total_duration).count();
-        frame.dag.totalTasks = static_cast<int>(dagStats.total_tasks);
-        frame.dag.completedTasks = static_cast<int>(dagStats.completed_tasks);
-        frame.dag.failedTasks = static_cast<int>(dagStats.failed_tasks);
-        frame.dag.skippedTasks = static_cast<int>(dagStats.skipped_tasks);
-        frame.dag.criticalPathMs = std::chrono::duration<double, std::milli>(dagStats.critical_path).count();
-
-        for (const auto& ts : taskStats) {
-            ProfileTaskInfo info;
-            info.taskId = QString::fromStdString(ts.task_id);
-            info.taskType = QString::fromStdString(ts.task_type);
-            info.waitMs = std::chrono::duration<double, std::milli>(ts.wait_duration).count();
-            info.execMs = std::chrono::duration<double, std::milli>(ts.exec_duration).count();
-            info.totalMs = std::chrono::duration<double, std::milli>(ts.total_duration).count();
-
-            if (dagStats.has_start && ts.has_start) {
-                info.startMs = std::chrono::duration<double, std::milli>(
-                    ts.start_time - dagStats.start_time).count();
-            }
-            if (dagStats.has_start && ts.has_end) {
-                info.endMs = std::chrono::duration<double, std::milli>(
-                    ts.end_time - dagStats.start_time).count();
-            }
-
-            if (ts.final_status == task_graph::TaskStatus::COMPLETED) info.status = 0;
-            else if (ts.final_status == task_graph::TaskStatus::FAILED) info.status = 1;
-            else if (ts.final_status == task_graph::TaskStatus::SKIPPED) info.status = 2;
-            else info.status = 1;
-
-            frame.tasks.append(info);
-        }
-
-        frame.traceJson = QString::fromStdString(profiler.to_trace_string(false));
-        frame.reportJson = QString::fromStdString(profiler.to_json_string(true));
-
-        profileFrames_.append(frame);
-        if (profileFrames_.size() > MAX_PROFILE_FRAMES) {
-            profileFrames_.removeFirst();
-        }
-    }
-
-    executing_ = false;
-    emit executingChanged();
-    emit executionFinished();
-
-    if (!profileFrames_.isEmpty()) {
-        emit profileDataReady(profileFrames_.size() - 1);
-    }
-
-    if (!imageKeys.isEmpty()) {
-        emit imageResultsReady(imageKeys);
-    }
+    // cancel 同时解除暂停；工作线程的 run_all 随当前轮返回后收尾，
+    // finishSession 由队列事件驱动（不在此直接改状态）。
+    runLoop_->cancel();
 }
 
 bool GraphViewModel::canReach(const QString& from, const QString& to) const
@@ -1105,29 +904,12 @@ bool GraphViewModel::canReach(const QString& from, const QString& to) const
 
 QStringList GraphViewModel::imageResultKeys() const
 {
-    return imageResults_.keys();
+    return imageStore_.keys();
 }
 
 QImage GraphViewModel::imageResult(const QString& key) const
 {
-    // 已转换过直接返回缓存（GPU 驻留结果只下载一次）
-    auto cached = imageResultCache_.constFind(key);
-    if (cached != imageResultCache_.constEnd()) return cached.value();
-
-    auto it = imageResults_.constFind(key);
-    if (it == imageResults_.constEnd()) return QImage();
-
-    // 按需转换：GPU 驻留 Image 在此 ensure_cpu 同步回 CPU（全局 GpuBackend
-    // 活过 executor，懒下载安全）；QImage 经 cleanup function 零拷贝共享
-    // 下载后的像素，缓存避免重复下载。
-    QImage img;
-    if (auto converted = anyToQImage(it.value())) {
-        img = std::move(*converted);
-    }
-    if (!img.isNull()) {
-        imageResultCache_.insert(key, img);
-    }
-    return img;
+    return imageStore_.image(key);
 }
 
 QString GraphViewModel::profileTraceJson() const

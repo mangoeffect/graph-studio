@@ -78,6 +78,8 @@ set(PROJECT_SOURCES
     src/GpuBootstrap.cpp
     src/ModelBootstrap.cpp
     src/model/GraphModel.cpp
+    src/catalog/TaskCatalog.cpp
+    src/viewmodel/ImageResultStore.cpp
     src/viewmodel/GraphViewModel.cpp
     src/command/CommandStack.cpp
     src/view/MainWindow.cpp
@@ -297,6 +299,8 @@ qt_add_executable(test_graph_view_model
     include/model/GraphModel.h
     include/viewmodel/GraphViewModel.h
     src/model/GraphModel.cpp
+    src/catalog/TaskCatalog.cpp
+    src/viewmodel/ImageResultStore.cpp
     src/viewmodel/GraphViewModel.cpp
     src/CrashReporter.cpp
 )
@@ -310,6 +314,8 @@ qt_add_executable(test_command_stack
     include/viewmodel/GraphViewModel.h
     include/command/CommandStack.h
     src/model/GraphModel.cpp
+    src/catalog/TaskCatalog.cpp
+    src/viewmodel/ImageResultStore.cpp
     src/viewmodel/GraphViewModel.cpp
     src/CrashReporter.cpp
     src/command/CommandStack.cpp
@@ -324,6 +330,8 @@ qt_add_executable(test_integration
     include/viewmodel/GraphViewModel.h
     include/command/CommandStack.h
     src/model/GraphModel.cpp
+    src/catalog/TaskCatalog.cpp
+    src/viewmodel/ImageResultStore.cpp
     src/viewmodel/GraphViewModel.cpp
     src/CrashReporter.cpp
     src/command/CommandStack.cpp
@@ -349,6 +357,8 @@ qt_add_executable(test_gui
     include/view/ImageViewer.h
     include/view/AboutDialog.h
     src/model/GraphModel.cpp
+    src/catalog/TaskCatalog.cpp
+    src/viewmodel/ImageResultStore.cpp
     src/viewmodel/GraphViewModel.cpp
     src/CrashReporter.cpp
     src/command/CommandStack.cpp

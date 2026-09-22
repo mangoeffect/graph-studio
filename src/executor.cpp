@@ -123,12 +123,17 @@ void DAGExecutor::wait() {
 
 void DAGExecutor::cancel() {
     if (!running_) {
+        // 未在运行也要解除暂停态：cancel 隐含 resume（唤醒挂起者令其退出）。
+        paused_ = false;
+        pause_cv_.notify_all();
         return;
     }
-    
+
     cancelled_ = true;
+    paused_ = false;
+    pause_cv_.notify_all();
     TG_LOG_WARN("DAG execution cancelled");
-    
+
     if (execution_future_.valid()) {
         try {
             execution_future_.wait_for(std::chrono::seconds(1));
@@ -137,6 +142,21 @@ void DAGExecutor::cancel() {
         }
     }
     running_ = false;
+}
+
+void DAGExecutor::pause() {
+    paused_ = true;
+}
+
+void DAGExecutor::resume() {
+    paused_ = false;
+    pause_cv_.notify_all();
+}
+
+void DAGExecutor::wait_if_paused() {
+    if (!paused_) return;
+    std::unique_lock<std::mutex> lock(pause_mutex_);
+    pause_cv_.wait(lock, [this] { return !paused_.load() || cancelled_.load(); });
 }
 
 std::unordered_map<TaskId, TaskResult> DAGExecutor::get_results() const {
@@ -365,8 +385,17 @@ void DAGExecutor::run_stream(const DAG& dag, NodePtr src, IStreamSource* stream_
     size_t frame_idx = 0;
     if (!failed) {
         stream_src->reset_stream();
+        // 每轮流开始前同步重置 cone 内汇（多轮会话下 writer 据此换名/续写）
+        for (auto* k : cone_sinks) {
+            try { k->reset_stream(); }
+            catch (...) { TG_LOG_ERROR("stream sink reset_stream threw, ignoring"); }
+        }
     }
     while (!failed && !cancelled_) {
+        // 暂停检查点（帧间）：保持源打开、游标不推进，resume 后继续读。
+        wait_if_paused();
+        if (cancelled_) break;  // 暂停中 cancel：立即退出帧循环（收尾仍执行）
+
         TaskContext src_ctx(src->config().params, {}, {}, {});
         seed_context_values(src_ctx);
         emit_event(ExecutionEvent::Type::TaskStarted, src->id(), src->type());
@@ -441,6 +470,9 @@ void DAGExecutor::run_stream(const DAG& dag, NodePtr src, IStreamSource* stream_
 // 维护每个任务的剩余依赖计数，任务完成时递减下游依赖计数，归零即加入就绪队列
 void DAGExecutor::run(const DAG& dag) {
     try {
+        // 每轮开始前清空 profiler：多轮会话（RunLoop）下统计按轮隔离，
+        // 循环模式不随轮数累积内存。单轮语义不变。
+        profiler_.clear();
         {
             ExecutionEvent e;
             e.type = ExecutionEvent::Type::DagStarted;
@@ -546,10 +578,18 @@ void DAGExecutor::run(const DAG& dag) {
                              &fail_and_propagate]() {
                 TaskPtr task = dag.get_task(tid);
 
+                // 暂停检查点（任务间）：worker 取到任务、派发执行前挂起。
+                // 需在 cancelled_ 判定之前——cancel 会解除暂停，两者顺序
+                // 保证"暂停中 cancel"的正确退出。锁外调用（此时无锁）。
+                wait_if_paused();
+
                 if (cancelled_) {
                     TG_LOG_DEBUG("Task '" + tid + "' skipped due to cancellation");
                     emit_event(ExecutionEvent::Type::TaskSkipped, tid,
                                task ? task->type() : std::string{});
+                    // 必须唤醒调度主循环：它可能正阻塞在 queue_cv 上等事件，
+                    // 而 completed_count 未增（跳过不计），不通知则死锁。
+                    queue_cv.notify_one();
                     return;
                 }
 

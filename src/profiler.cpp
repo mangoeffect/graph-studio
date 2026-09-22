@@ -52,6 +52,13 @@ void ProfileCollector::on_dag_event(const DagProfileEvent& event) {
     }
 }
 
+void ProfileCollector::clear() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    raw_events_.clear();
+    dag_start_.reset();
+    dag_end_.reset();
+}
+
 std::vector<TaskStats> ProfileCollector::compute_task_stats() const {
     std::lock_guard<std::mutex> lock(mutex_);
 
