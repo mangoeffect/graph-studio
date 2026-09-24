@@ -16,7 +16,7 @@ Parameters 分组定位。
   expect_results   执行后结果下拉中应出现的 task_type 子串（None=不查下拉）
   expect_files     执行后应存在的磁盘文件（相对 report.run_dir，绝对路径开头
                    的按绝对路径查）——如 image_writer 的输出
-  expect_log       执行日志中应出现的子串（None=只要求 Execution finished 且 0 failed）
+  expect_log       执行日志中应出现的子串（None=只要求 Run N finished 且 0 failed）
 """
 
 from __future__ import annotations

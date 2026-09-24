@@ -36,8 +36,9 @@ from gs import repo_root
 from .adb import AdbDevice, AdbError
 
 # 与 macOS/WASM 同源的完成行契约（MainWindow::onLogMessage 的 [gs] 镜像 →
-# GraphViewModel::finishExecution 的 "Execution finished: N ok, M failed"）。
-FINISHED_RE = re.compile(r"\[gs\] Execution finished:\s*(\d+)\s*ok,\s*(\d+)\s*failed")
+# GraphViewModel::onRunSummary 的 "Run <i> finished: N ok, M failed (<ms> ms)"，
+# ff18697 运行模型扩展后的形态；tg_e2e_runner 同步打同形行）。
+FINISHED_RE = re.compile(r"\[gs\] Run \d+ finished:\s*(\d+)\s*ok,\s*(\d+)\s*failed")
 LOADED_RE = re.compile(r"\[gs\] Graph loaded:\s*(\d+)\s*nodes,\s*(\d+)\s*edges")
 SELFCHECK_RE = re.compile(r"\[gs\] selfcheck:\s*abi=(\S+)\s+tasks=(\d+)")
 TASK_RE = re.compile(r"\[gs\] task:\s+(\S+)")
@@ -222,11 +223,11 @@ def boot(device: AdbDevice, runner: DeviceRunner, ctx: dict) -> str:
 # ---------- run：单图冒烟 ----------
 
 def run_graph(runner: DeviceRunner, ctx: dict, graph_rel: str = "smoke/e2e_graph.json") -> str:
-    """单图冒烟：冷启动 -> 日志 'Execution finished: 1 ok, 0 failed'。"""
+    """单图冒烟：冷启动 -> 日志 'Run 0 finished: 1 ok, 0 failed'。"""
     ok, failed = runner.graph_case(graph_rel, nodes=1, edges=0, timeout=90)
     if ok != 1 or failed != 0:
         raise ScenarioError(f"期望 1 ok / 0 failed，实得 {ok} ok / {failed} failed")
-    return f"run OK（runner: Execution finished: {ok} ok, {failed} failed）"
+    return f"run OK（runner: Run 0 finished: {ok} ok, {failed} failed）"
 
 
 # ---------- files：全量子模块图逐张冷启动 ----------

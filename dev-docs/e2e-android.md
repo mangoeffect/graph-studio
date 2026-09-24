@@ -56,10 +56,11 @@ console 程序承担 macOS 侧 `graph_studio --open <json> --run` 的角色。�
 
 ```
 [gs] Graph loaded: 3 nodes, 2 edges
-[gs] img  (4.03 ms)                  # 对齐 finishExecution 的 "%1  (%2 ms)"
+[gs] img  (4.03 ms)                  # 对齐 onExecutionEvent 的完成行
 [gs] blur: <failure_reason>          # 对齐 onExecutionEvent 的失败行
 [gs] task 'err' failed: JS: test error   # Android 附加诊断行（见下）
-[gs] Execution finished: 3 ok, 0 failed
+[gs] Run 0 finished: 3 ok, 0 failed (12.34 ms)   # 对齐 onRunSummary
+                                                  # （ff18697 运行模型扩展后）
 ```
 
 统计口径也照抄 app：`is_success()` 计 ok，其余（FAILED/SKIPPED/PENDING）计 failed。

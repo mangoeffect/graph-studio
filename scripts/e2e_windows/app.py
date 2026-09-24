@@ -52,7 +52,9 @@ _user32.SendMessageW.argtypes = [ctypes.c_void_p, ctypes.c_uint,
                                  ctypes.c_void_p, ctypes.c_void_p]
 _user32.SendMessageW.restype = ctypes.c_ssize_t
 
-FINISHED_RE = re.compile(r"Execution finished:\s*(\d+)\s*ok,\s*(\d+)\s*failed")
+# 完成行契约（ff18697 运行模型扩展后，GraphViewModel::onRunSummary）：
+# 每轮一条 "Run <i> finished: <ok> ok, <failed> failed (<ms> ms)"。
+FINISHED_RE = re.compile(r"Run \d+ finished:\s*(\d+)\s*ok,\s*(\d+)\s*failed")
 PROFILE_RE = re.compile(
     r"tasks\s*\((\d+)\s*ok,\s*(\d+)\s*failed,\s*(\d+)\s*skipped\)")
 
@@ -440,7 +442,7 @@ class AppSession:
         return ""
 
     def finished_counts(self, log: str | None = None) -> int:
-        """日志中 'Execution finished: N ok, M failed' 出现次数（跨多次 Run 累计）。"""
+        """日志中 'Run N finished: N ok, M failed' 出现次数（跨多次 Run 累计）。"""
         return len(FINISHED_RE.findall(log if log is not None else self.log_text()))
 
     # ---------- 菜单 / 工具栏 ----------

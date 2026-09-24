@@ -31,7 +31,7 @@ app 侧（`entry.cpp` + `MainWindow::OpenGraphAtStartup`）：
 驱动侧（`scenarios.cli_graph_case`）：每张图**冷启动一个干净进程**
 （`posix_spawn` + stdout/stderr dup2 到 `app_logs/*.log`）→ 等窗口标题含
 文件名（= 打开成功）→ 可选 countsLabel 校验 → 轮询镜像日志等
-`Execution finished` → SIGTERM 收尾。批跑期间**零输入注入**，无键盘焦点
+`Run N finished`（ff18697 运行模型扩展后的完成行契约）→ SIGTERM 收尾。批跑期间**零输入注入**，无键盘焦点
 竞态；进程隔离还消除了图与图之间的状态残留。
 
 ### 历史教训：NSOpenPanel 自动化为什么被放弃
@@ -52,7 +52,7 @@ sheet 输路径），整条链路全是时序雷，最终放弃：
 
 `MainWindow::onLogMessage` 有 `qInfo() << "[gs]"` 镜像（WASM 进浏览器
 console、桌面进 stderr，两端 E2E 的统一断言通道）。驱动把子进程
-stdout/stderr dup2 到文件后轮询 `Execution finished: N ok, M failed`。
+stdout/stderr dup2 到文件后轮询 `Run N finished: N ok, M failed`。
 
 不能 AX 读 Log 面板的原因：`onExecutionFinished` 会把底栏**切到 Profile
 页**，QTabWidget 隐藏页的控件随即从 AX 树消失——执行一结束 Log Panel
@@ -94,7 +94,7 @@ stdout/stderr dup2 到文件后轮询 `Execution finished: N ok, M failed`。
 |---|---|
 | `core` | 右键画布 → 上下文菜单建 2 节点（Input/opencv_image_read + OpenCV Filter/opencv_blur_filter）→ 端口 CGEvent 拖线（node 宽 140，端口在中心 ±70）→ countsLabel 断言 → Cmd+Z / Cmd+Shift+Z |
 | `files` | **全部子模块单测图逐张 `--open --run` 冷启动执行**（覆盖面对齐 e2e_windows/scenarios_files.py）：枚举 `submodules/**/tests/graphs/*.json`（68 张/10 模块，js_error.json 反例除外），图+资产复制到运行目录（writer 输出不污染仓库）→ 标题/计数校验 → 镜像日志断言 0 failed。skip 规则：夹具资产缺失（gpu rgba.png、video_io 合成视频、render shaders）。每张图一个用例 `files/graph:<module>/<name>` |
-| `run` | 单图冒烟（生成的 tiny png 图）`--open --run` → `Execution finished: 1 ok, 0 failed` |
+| `run` | 单图冒烟（生成的 tiny png 图）`--open --run` → `Run 0 finished: 1 ok, 0 failed` |
 | `lifecycle` | Cmd+Q → 进程正常退出（exit 0） |
 | `crash` | `--test-crash` 独立进程，预期 SIGSEGV（镜像 verify_crash_reporting 的语义） |
 

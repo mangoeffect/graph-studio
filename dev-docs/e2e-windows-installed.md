@@ -99,7 +99,7 @@ UIA 树转储、`summary.json`。
 | 进程退出码 / stderr | `[CrashReporter] initialized` | console 子系统 exe，stdout 可见 |
 
 日志面板（logPanel QPlainTextEdit）的 UIA 文本可读性在试点中验证；可用则作为
-「Execution finished: N ok, M failed」的主断言，否则以上表为冗余组合。
+「Run N finished: N ok, M failed」的主断言，否则以上表为冗余组合。
 
 ### 应用侧可测试性改进（已随本方案落地）
 

@@ -9,7 +9,7 @@ tab（run/files，对齐 macOS E2E 的 CLI 冷启动）。断言走两条通道�
 
 图输入走 URL 启动参数（app 侧 ?open=<url>&run=1，见 entry.cpp——对齐桌面
 --open/--run）：每张图一个新 tab（= 冷启动进程隔离），app 自动 fetch 图与
-相对资产进 MEMFS 并立即执行，驱动只等 console 的 Execution finished。
+相对资产进 MEMFS 并立即执行，驱动只等 console 的 Run N finished。
 """
 
 import re
@@ -21,7 +21,10 @@ import e2e_graph_cases as gc
 from .cdp_browser import CdpBrowser, CdpTab
 
 BOOT_TIMEOUT = 120  # wasm 编译 + Qt 启动在冷缓存时可能较慢
-FINISHED_RE = re.compile(r"\[gs\] Execution finished:\s*(\d+)\s*ok,\s*(\d+)\s*failed")
+# 完成行契约（ff18697 运行模型扩展后，GraphViewModel::onRunSummary）：
+# 每轮一条 "[gs] Run <i> finished: <ok> ok, <failed> failed (<ms> ms)"，
+# 单次执行（?run=1）恰好一条。
+FINISHED_RE = re.compile(r"\[gs\] Run \d+ finished:\s*(\d+)\s*ok,\s*(\d+)\s*failed")
 
 # wasm 侧不可执行的子模块（二进制 strings 实测的任务注册为准；当前构建
 # 已把 gpu/render 子模块编入 wasm，清单为空，保留机制供未来使用）。
@@ -188,7 +191,7 @@ def url_graph_case(browser: CdpBrowser, base_url: str, graph_url: str, *,
     """`?open=<url>&run=1` 新 tab 冷启动执行一张图，返回 (ok, failed)。
 
     app 侧自动 fetch 图 + 相对资产进 MEMFS 并立即执行（entry.cpp 的
-    EM_ASM 通道）；本函数只等 console 镜像的 Execution finished。完成行
+    EM_ASM 通道）；本函数只等 console 镜像的 Run N finished。完成行
     早于轮询开始也安全：CdpTab 的 console 缓冲从 tab 创建起累计。
     失败在关 tab 前截图 + 收 console 尾部，包进 GraphCaseError。
     """
@@ -300,14 +303,14 @@ def files_run(browser: CdpBrowser, base_url: str, report, ctx: dict) -> int:
 
 
 def run_graph(browser: CdpBrowser, base_url: str, ctx: dict) -> str:
-    """单图冒烟：?open+run 冷启动 -> console 'Execution finished: 1 ok, 0 failed'。"""
+    """单图冒烟：?open+run 冷启动 -> console 'Run 0 finished: 1 ok, 0 failed'。"""
     artifacts: Path = ctx["artifacts"]
     ok, failed = url_graph_case(browser, base_url, "/e2e/smoke/e2e_graph.json",
                                 nodes=1, edges=0, timeout=90,
                                 artifacts=artifacts, shot_name="run_fail.png")
     if ok != 1 or failed != 0:
         raise ScenarioError(f"期望 1 ok / 0 failed，实得 {ok} ok / {failed} failed")
-    return f"run OK（?open+run: Execution finished: {ok} ok, {failed} failed）"
+    return f"run OK（?open+run: Run 0 finished: {ok} ok, {failed} failed）"
 
 
 # ---------- .tgp 工程包：单文件自带全部依赖 ----------

@@ -121,7 +121,7 @@ def cli_graph_case(runner, graph_path: Path, *, nodes=None, edges=None,
     """--open + --run 冷启动执行一张图，返回 (ok, failed)。
 
     流程：启动（stderr 镜像到 app_logs/<日志>）-> 等主窗口（标题含文件名
-    = 打开成功）-> 可选计数校验 -> 轮询镜像日志等 Execution finished ->
+    = 打开成功）-> 可选计数校验 -> 轮询镜像日志等 Run N finished ->
     SIGTERM 收尾。完成断言走 stderr 镜像文件而非 AX 读 Log 面板——执行
     结束后底栏自动切 Profile 页，隐藏的 Log 页控件会从 AX 树消失。
     失败在进程退出前采集 state_snapshot（+可选截图），包进 GraphCaseError。
@@ -217,11 +217,11 @@ def files_run(runner, report, ctx: dict) -> int:
 
 
 def run_graph(runner, report, ctx: dict, graph_path: Path) -> str:
-    """单图冒烟：--open --run 冷启动 -> 日志 'Execution finished: 1 ok, 0 failed'。"""
+    """单图冒烟：--open --run 冷启动 -> 日志 'Run 0 finished: 1 ok, 0 failed'。"""
     ok, failed = cli_graph_case(runner, graph_path, nodes=1, edges=0, timeout=60)
     if ok != 1 or failed != 0:
         raise ScenarioError(f"期望 1 ok / 0 failed，实得 {ok} ok / {failed} failed")
-    return f"run OK（--open --run: Execution finished: {ok} ok, {failed} failed）"
+    return f"run OK（--open --run: Run 0 finished: {ok} ok, {failed} failed）"
 
 
 def lifecycle(drv: MacDriver, window, artifacts: Path) -> str:

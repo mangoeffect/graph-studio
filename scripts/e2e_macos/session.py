@@ -17,7 +17,10 @@ import time
 from .ax_driver import (AxDriverError, MacDriver, kCGEventFlagMaskCommand,
                         kVK_ANSI_R)
 
-FINISHED_RE = re.compile(r"Execution finished:\s*(\d+)\s*ok,\s*(\d+)\s*failed")
+# 完成行契约（ff18697 运行模型扩展后）：GraphViewModel::onRunSummary 每轮打
+# "Run <i> finished: <ok> ok, <failed> failed (<ms> ms)"，会话收尾再打一条
+# "Session finished"。冷启动 --run 单次执行恰好一条 Run 0 finished。
+FINISHED_RE = re.compile(r"Run \d+ finished:\s*(\d+)\s*ok,\s*(\d+)\s*failed")
 COUNTS_RE = re.compile(r"Nodes:\s*(\d+)\s*\|\s*Edges:\s*(\d+)")
 
 
@@ -27,7 +30,7 @@ class SessionError(RuntimeError):
 
 def wait_finished_file(log_path, prior: int = 0,
                        timeout: float = 120.0) -> tuple[int, int]:
-    """轮询 app 的 stderr 镜像日志，等第 prior+1 条 'Execution finished'。
+    """轮询 app 的 stderr 镜像日志，等第 prior+1 条 'Run N finished'。
 
     MainWindow::onLogMessage 有 qInfo "[gs]" 镜像进 stderr（两端 E2E 的
     统一断言通道），AppRunner 启动时把它 dup2 到文件。比 AX 读 Log Panel
@@ -47,7 +50,7 @@ def wait_finished_file(log_path, prior: int = 0,
             return int(ok), int(failed)
         time.sleep(0.3)
         tail = text[-300:]
-    raise SessionError(f"app 日志未出现 Execution finished（尾部: {tail!r}）")
+    raise SessionError(f"app 日志未出现 Run N finished（尾部: {tail!r}）")
 
 
 class MacSession:
@@ -138,7 +141,7 @@ class MacSession:
 
     # ---- 执行 ----
     def wait_finished(self, prior: int = 0, timeout: float = 90.0) -> tuple[int, int]:
-        """等待日志面板出现第 prior+1 条 'Execution finished'，返回 (ok, failed)。
+        """等待日志面板出现第 prior+1 条 'Run N finished'，返回 (ok, failed)。
 
         注意：执行结束后 MainWindow 会把底栏切到 Profile 页（AX 树随即剪掉
         隐藏的 Log 页），此方法只适合执行**前**读基准 + 交互观察；
@@ -153,11 +156,11 @@ class MacSession:
                 return int(ok), int(failed)
             time.sleep(0.5)
             tail = self.log_text()[-300:]
-        raise SessionError(f"日志未出现新的 Execution finished"
+        raise SessionError(f"日志未出现新的 Run N finished"
                            f"（日志尾部: {tail!r}）")
 
     def run_and_wait(self, timeout: float = 90.0) -> tuple[int, int]:
-        """Cmd+R 并等待本次执行的 Execution finished 行，返回 (ok, failed)。
+        """Cmd+R 并等待本次执行的 Run N finished 行，返回 (ok, failed)。
 
         基准计数在点击**前**捕获；首击被偷走时小图会一直等满超时：
         重击一次再等半程。

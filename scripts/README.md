@@ -244,7 +244,8 @@ libtask_graph.a` 静态库 SDK，无 APK 工程），因此本轨道对齐 macOS
 设备的 `/data/local/tmp/gs_e2e/<时间戳>/`，由 NDK 交叉编译的 console runner
 （`tests/android/tg_e2e_runner`，由 `build_android.py --e2e` 构建）逐图冷启动执行
 ——等价于桌面 `graph_studio --open <json> --run`，断言与另两端同一契约：`[gs]
-Execution finished: N ok, M failed` 日志行。图发现/落位/裁剪（`e2e_graph_cases.py`）
+Run 0 finished: N ok, M failed (<ms> ms)` 日志行（ff18697 运行模型扩展后的
+完成行形态）。图发现/落位/裁剪（`e2e_graph_cases.py`）
 与报告（`e2e_report.py`）是三端共享模块。设计文档 `dev-docs/e2e-android.md`。
 
 ```bash

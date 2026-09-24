@@ -10,9 +10,11 @@
 // 输出契约（与桌面 app 的 qInfo "[gs]" 镜像逐字一致——MainWindow::onLogMessage
 // / GraphViewModel；驱动侧 FINISHED_RE 三端共用）：
 //   [gs] Graph loaded: <N> nodes, <M> edges
-//   [gs] <task_id>  (<ms> ms)            # 完成任务（对齐 finishExecution）
+//   [gs] <task_id>  (<ms> ms)            # 完成任务（对齐 onExecutionEvent）
 //   [gs] <task_id>: <failure_reason>     # 失败任务（对齐 onExecutionEvent）
-//   [gs] Execution finished: <N> ok, <M> failed
+//   [gs] Run 0 finished: <N> ok, <M> failed (<ms> ms)   # 对齐 onRunSummary
+//                                                     # （ff18697 运行模型
+//                                                     # 扩展后的新契约）
 //
 // 退出码：0 = 全部成功；1 = 有任务失败；2 = 图加载失败（软跳过，对齐 ctest
 // SKIP_RETURN_CODE 2 的既有惯例）。
@@ -139,10 +141,12 @@ int run_graph(const std::string& path, unsigned threads) {
     };
 
     task_graph::DAGExecutor executor(cfg);
+    const auto t0 = std::chrono::steady_clock::now();
     executor.execute(dag);
     executor.wait();
+    const auto t1 = std::chrono::steady_clock::now();
 
-    // 统计口径与 GraphViewModel::finishExecution 一致：is_success() 计 ok，
+    // 统计口径与 GraphViewModel::onRunSummary 一致：is_success() 计 ok，
     // 其余（FAILED/SKIPPED/PENDING）计 failed。
     int ok = 0, failed = 0;
     for (const auto& [id, r] : executor.get_results()) {
@@ -167,8 +171,15 @@ int run_graph(const std::string& path, unsigned threads) {
         }
 #endif
     }
-    gs_line("Execution finished: " + std::to_string(ok) + " ok, "
-            + std::to_string(failed) + " failed");
+    // 与 GraphViewModel::onRunSummary 的 "Run %1 finished: %2 ok, %3 failed
+    // (%4 ms)" 同形（单次执行 run_index 恒为 0，两位小数）。
+    const double total_ms =
+        std::chrono::duration<double, std::milli>(t1 - t0).count();
+    char done_line[128];
+    std::snprintf(done_line, sizeof(done_line),
+                  "Run 0 finished: %d ok, %d failed (%.2f ms)", ok, failed,
+                  total_ms);
+    gs_line(done_line);
     return failed == 0 ? 0 : 1;
 }
 
