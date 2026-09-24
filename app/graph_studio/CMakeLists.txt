@@ -267,9 +267,18 @@ endif()
 
 # macOS 部署配置（非 WASM）
 if(APPLE AND NOT EMSCRIPTEN)
+    # 版本来自上方"应用构建元信息"块（根 project VERSION，发布可经
+    # GRAPH_STUDIO_SENTRY_VERSION 缓存变量覆盖）；不显式设置时 Qt 会用
+    # project() 无 VERSION 的回退 1.0/1.0.0，identifier 则取本机 Xcode
+    # 偏好前缀（跨机器不确定）。BUNDLE_NAME 驱动应用菜单与
+    # About/Hide/Quit 条目标题。
     set_target_properties(graph_studio PROPERTIES
         MACOSX_BUNDLE TRUE
         MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/src/platform/macos/Info.plist.in"
+        MACOSX_BUNDLE_BUNDLE_NAME "Graph Studio"
+        MACOSX_BUNDLE_GUI_IDENTIFIER "net.mangoeffect.graph-studio"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "${GRAPH_STUDIO_SENTRY_VERSION}"
+        MACOSX_BUNDLE_BUNDLE_VERSION "${GRAPH_STUDIO_SENTRY_VERSION}"
     )
 endif()
 
