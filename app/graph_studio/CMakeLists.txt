@@ -548,6 +548,8 @@ if(EMSCRIPTEN)
         include/model/GraphModel.h
         include/viewmodel/GraphViewModel.h
         src/model/GraphModel.cpp
+        src/catalog/TaskCatalog.cpp
+        src/viewmodel/ImageResultStore.cpp
         src/viewmodel/GraphViewModel.cpp
         src/CrashReporter.cpp
     )
