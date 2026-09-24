@@ -17,17 +17,24 @@
       <publisher-CN>.cer                     — public key of the signing cert; trust it
                                                (LocalMachine\TrustedPeople) before installing
                                                a signed package locally
+      （<version> 原样保留渠道字样，如 0.1.0-alpha.42；AppxManifest 内的版本
+      是归一化后的数字四段，见 ConvertTo-AppxVersion。）
 
     Store submission notes:
       * -IdentityName must equal the name you reserved in Partner Center.
       * -Publisher must equal "CN=<Publisher ID>" from Partner Center
         (View app identity details). For local self-signed testing any CN works
         as long as the certificate subject matches.
-      * Version must increase per submission; the last quad stays 0.
+      * Version must increase per submission. Channel versions
+        (x.y.z-<channel>.<run>) put the run number into the revision quad, which
+        increases monotonically across channels (GitHub run numbers are globally
+        unique and increasing).
       * Declare the runFullTrust restricted capability in the submission.
 
 .PARAMETER Version
-    App version (default 0.1.0). Expanded to four parts with a trailing 0.
+    App version (default 0.1.0). Plain x.y.z expands to four parts with a
+    trailing 0; a channel version like 0.1.0-alpha.42 becomes the numeric quad
+    0.1.0.42 for the AppxManifest (the file name keeps the channel string).
 
 .PARAMETER Config
     Build configuration (default RelWithDebInfo so .pdb symbols are available
@@ -64,8 +71,10 @@
     Runtime SENTRY_DSN still takes precedence when set.
 
 .PARAMETER SentryRelease
-    Full channel version for the Sentry release string (e.g. 0.1.0-beta.42)
-    so crashes group per published GitHub tag; defaults to the root project
+    Full channel version (e.g. 0.1.0-beta.42): embedded as the app version
+    (About dialog / version macros) and the Sentry release string so crashes
+    group per published GitHub tag; passed even with -SkipSentry (version is
+    independent of the crash-reporting module). Defaults to the root project
     VERSION parsed by the app CMakeLists.
 
 .PARAMETER CertThumbprint
@@ -178,19 +187,31 @@ $PackagingDir = Join-Path $GsDir "packaging"
 $Arch = "x64"
 $IsDebug = ($Config -eq "Debug")
 
-# ---- version -> 4-part appx (last quad must be 0 for the Store) ----
+# ---- version -> 4-part appx ----
+# AppxManifest Version 只接受数字四段（major.minor.build.revision）。渠道版本
+# （release.yml 的 x.y.z-alpha.<run> 等）剥掉渠道后缀、把 run 号编进 revision：
+# GitHub run number 跨渠道全局唯一且单调递增，Store/侧载的版本比较都成立。
+# 文件名不走归一化（保留渠道字样），只有清单版本用 $VersionQuad。
 function ConvertTo-AppxVersion([string]$v) {
-    $parts = @($v.Split('.'))
-    if ($parts.Count -lt 4) { $parts = $parts + @("0") * (4 - $parts.Count) }
-    if ($parts.Count -gt 4) { $parts = $parts[0..3] }
-    $parts[3] = "0"
-    ($parts -join ".")
+    $base = $v
+    $rev = "0"
+    if ($v -match '^(?<base>\d+(?:\.\d+){1,2})-(?<channel>[A-Za-z]+)\.(?<run>\d+)$') {
+        $base = $Matches['base']
+        $rev = $Matches['run']
+    }
+    if ($base -notmatch '^\d+(\.\d+)*$') {
+        throw "无法把版本 '$v' 转为数字四段 appx 版本（支持 x.y.z 或渠道形式 x.y.z-<channel>.<run>）"
+    }
+    $parts = @($base.Split('.'))
+    if ($parts.Count -lt 3) { $parts = $parts + @("0") * (3 - $parts.Count) }
+    if ($parts.Count -gt 3) { $parts = $parts[0..2] }
+    ($parts + $rev) -join "."
 }
 $VersionQuad = ConvertTo-AppxVersion $Version
 if ($VersionQuad -ne $Version) {
-    Write-Step "Version '$Version' -> appx '$VersionQuad' (trailing quad forced to 0)"
+    Write-Step "Version '$Version' -> appx manifest '$VersionQuad'（清单须数字四段，文件名保留原样）"
 }
-$PackageBaseName = "graph_studio-$VersionQuad`_$Arch"
+$PackageBaseName = "graph_studio-$Version`_$Arch"
 
 if (-not $Publisher.StartsWith("CN=")) { $Publisher = "CN=$Publisher" }
 
@@ -261,9 +282,12 @@ if (-not $SkipBuild -and -not $SkipSentry) {
         Write-Step "Embedding Sentry DSN"
         $SentryDefines += "-DGRAPH_STUDIO_SENTRY_DSN=$SentryDsn"
     }
-    if ($SentryRelease) {
-        $SentryDefines += "-DGRAPH_STUDIO_SENTRY_VERSION=$SentryRelease"
-    }
+}
+# 内嵌版本与 Sentry 依赖解耦（-DGRAPH_STUDIO_SENTRY_VERSION 同时驱动 About
+# 对话框/版本宏；-SkipSentry 时也要传，与 package_macos/linux 的 cmake_defines
+# 无条件语义对齐）。缺省时 app CMake 取根 project VERSION。
+if (-not $SkipBuild -and $SentryRelease) {
+    $SentryDefines += "-DGRAPH_STUDIO_SENTRY_VERSION=$SentryRelease"
 }
 if (-not $SkipBuild) {
     $Build = Build-GraphStudioStack -Env $Env -Config $Config -Jobs $Jobs -Clean:$Clean -AppDefines $SentryDefines

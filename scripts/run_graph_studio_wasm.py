@@ -128,6 +128,9 @@ def main() -> int:
                          "trycloudflare.com 公网地址（无需账号；不影响已有命名隧道；"
                          "Ctrl+C 随 server 一起退出）")
     ap.add_argument("-j", "--jobs", type=int, default=0, help="并行编译线程数（默认 CPU 核数）")
+    ap.add_argument("--version", default="",
+                    help="内嵌应用版本（如 0.1.0-alpha.42，传入 -DGRAPH_STUDIO_SENTRY_VERSION，"
+                         "About 对话框显示用；缺省取根 project VERSION 的裸基准）")
     ap.add_argument("--wgpu", action="store_true",
                     help="wasm 编入 wgpu 统一后端（核心库 WGPU=ON + app 链接 "
                          "-sUSE_WEBGPU -sASYNCIFY；GPU/render 子模块编入）。浏览器内 "
@@ -262,6 +265,10 @@ def main() -> int:
                    # 与核心库一致：app 侧 try/catch（GraphModel 等）需要异常表
                    "-DCMAKE_CXX_FLAGS=-fexceptions",
                    "-DCMAKE_EXE_LINKER_FLAGS=-fexceptions"]
+        if args.version:
+            # 内嵌版本直通（app CMake 的版本宏块与 Sentry 共用该缓存变量；
+            # wasm 无 Sentry，但 About 对话框同样显示它）
+            qt_args.append(f"-DGRAPH_STUDIO_SENTRY_VERSION={args.version}")
         if args.wgpu:
             # app 的 EMSCRIPTEN 块按此开关链接 -sUSE_WEBGPU -sASYNCIFY
             #（GpuBootstrap 编入 wgpu 路径；插桩在最终链接由 Binaryen 施加，

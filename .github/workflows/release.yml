@@ -9,6 +9,11 @@ name: Release
 #   预览版 -> v<base>-beta.<run>    (prerelease)
 #   修复版 -> v<base>-hotfix.<run>  (prerelease)
 #   正式版 -> v<base>-stable.<run>  (latest)
+# 完整渠道版本（tag 去 v，如 0.1.0-alpha.42）由 meta job 统一产出，流经全链路：
+# Release tag、三端安装包文件名（dmg/AppImage/msix/web.zip）、app 内嵌版本
+# （-DGRAPH_STUDIO_SENTRY_VERSION → About 对话框 + macOS Info.plist + Sentry
+# release）。唯一例外：AppxManifest 版本须数字四段，build_msix.ps1 把 run 号
+# 编进 revision（0.1.0-alpha.42 → 0.1.0.42；文件名仍保留渠道字样）。
 
 on:
   workflow_dispatch:
@@ -133,10 +138,10 @@ jobs:
       - name: Derive package version
         shell: bash
         run: |
-          # project() 在 CMakeLists 里跨两行（project(task_graph \n VERSION 0.1.0），
-          # 故用 awk 跨行抓取 VERSION 字段，grep 单行匹配会失败。
-          VER=$(awk '/^project\(task_graph/{f=1;next} f&&/VERSION/{print $2;exit}' CMakeLists.txt)
-          if [ -z "$VER" ]; then echo "无法解析版本号" >&2; exit 1; fi
+          # 完整渠道版本（含 alpha/beta/hotfix/stable 后缀 + run 号）来自 meta
+          # job——安装包文件名与 app 内嵌版本统一用它，与 Release tag 严格一致。
+          VER="${{ needs.meta.outputs.release }}"
+          if [ -z "$VER" ]; then echo "meta job 未产出渠道版本" >&2; exit 1; fi
           echo "PKG_VERSION=$VER" >> "$GITHUB_ENV"
           echo "package version: $VER"
 
@@ -174,9 +179,11 @@ jobs:
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          sentry_args=(--no-sentry)
+          # --sentry-release 无 DSN 也传：它落到 -DGRAPH_STUDIO_SENTRY_VERSION，
+          # 驱动 About/Info.plist 内嵌版本（与 Sentry 依赖解耦），保持与 tag 一致。
+          sentry_args=(--no-sentry --sentry-release "$PKG_VERSION")
           if [ -n "$SENTRY_DSN" ]; then
-            sentry_args=(--dsn "$SENTRY_DSN" --sentry-release "${{ needs.meta.outputs.release }}")
+            sentry_args=(--dsn "$SENTRY_DSN" --sentry-release "$PKG_VERSION")
           fi
           python scripts/package_macos.py \
             --version "$PKG_VERSION" "${sentry_args[@]}" -c -j 3 \
@@ -212,10 +219,12 @@ jobs:
           }
           if ($env:SENTRY_DSN) {
             $splat.SentryDsn = $env:SENTRY_DSN
-            $splat.SentryRelease = "${{ needs.meta.outputs.release }}"
           } else {
             $splat.SkipSentry = $true
           }
+          # 内嵌版本（About/Sentry release）与文件名同源 = 完整渠道版本；
+          # AppxManifest 内的数字四段由脚本 ConvertTo-AppxVersion 归一化。
+          $splat.SentryRelease = "$env:PKG_VERSION"
           scripts\build_msix.ps1 @splat
 
       # ---- Linux: linuxdeployqt + appimagetool -> .AppImage ----
@@ -223,9 +232,10 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          sentry_args=(--no-sentry)
+          # 同 macOS：--sentry-release 无 DSN 也传（内嵌版本与 Sentry 解耦）。
+          sentry_args=(--no-sentry --sentry-release "$PKG_VERSION")
           if [ -n "$SENTRY_DSN" ]; then
-            sentry_args=(--dsn "$SENTRY_DSN" --sentry-release "${{ needs.meta.outputs.release }}")
+            sentry_args=(--dsn "$SENTRY_DSN" --sentry-release "$PKG_VERSION")
           fi
           python scripts/package_linux.py \
             --version "$PKG_VERSION" "${sentry_args[@]}" -c -j 3 \
@@ -329,6 +339,7 @@ jobs:
   wasm:
     name: Package (wasm web)
     runs-on: ubuntu-22.04
+    needs: meta
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -437,20 +448,23 @@ jobs:
           python3 scripts/download_face_models.py
           python3 scripts/download_matting_models.py
 
+      - name: Derive package version
+        shell: bash
+        run: |
+          # 完整渠道版本与 package job 同源（meta job 产出），zip 文件名与
+          # wasm app 内嵌版本（--version → About 对话框）统一。
+          VER="${{ needs.meta.outputs.release }}"
+          if [ -z "$VER" ]; then echo "meta job 未产出渠道版本" >&2; exit 1; fi
+          echo "PKG_VERSION=$VER" >> "$GITHUB_ENV"
+          echo "package version: $VER"
+
       - name: Build GraphStudio WASM
         shell: bash
         # --wgpu：WebGPU 后端 + gpu/render 子模块编入（浏览器内经主线程
         # Asyncify 泵初始化/读写回收；本地全量 E2E 验证通过后于 2026-09-18
         # 翻默认）。ASYNCIFY 插桩体积增量 ~7MB（wasm 32M / brotli 6M）。
-        run: python3 scripts/run_graph_studio_wasm.py --build-only --wgpu -j 4 --skip-models
-
-      - name: Derive package version
-        shell: bash
-        run: |
-          VER=$(awk '/^project\(task_graph/{f=1;next} f&&/VERSION/{print $2;exit}' CMakeLists.txt)
-          if [ -z "$VER" ]; then echo "无法解析版本号" >&2; exit 1; fi
-          echo "PKG_VERSION=$VER" >> "$GITHUB_ENV"
-          echo "package version: $VER"
+        # --version：内嵌完整渠道版本（About 对话框与三端一致）。
+        run: python3 scripts/run_graph_studio_wasm.py --build-only --wgpu -j 4 --skip-models --version "$PKG_VERSION"
 
       - name: Package web zip
         shell: bash
