@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""把 graph.json 与其相对路径依赖打包成单个 .tgp 工程包（GraphStudio）。
+"""把 graph.json 与其依赖打包成单个 .tgp 工程包（GraphStudio）。
 
-格式：ZIP 容器 = manifest.json + 原名图 JSON + 按图内引用路径原样落位的资产。
-与 C++ 侧 app/graph_studio/src/project/GraphProject.cpp 同一契约（依赖发现
-启发式、图目录 + 两级祖先探测、绝对引用不打包记 missing）。用途：批量分发、
-WASM E2E 的单文件图输入、官网示例。
+格式：ZIP 容器 = manifest.json + 原名图 JSON + 资产文件。与 C++ 侧
+src/project_bundle.cpp 同一契约：相对引用资产按引用原样落位；绝对路径 /
+../ 越界引用若解析到已存在文件，收进包内 assets/（基名 _2/_3 去重）并把
+【包内图副本】的引用重写为包内相对路径（原 json 不动；写出型任务的
+file_path/out_path 永不重写）；解析不到记 manifest.missing。用途：批量分
+发、WASM E2E 的单文件图输入、官网示例。
 
-用法：
+用法:
     python3 scripts/pack_graph_project.py <graph.json> [-o out.tgp]
     python3 scripts/pack_graph_project.py --inspect <x.tgp>
 """
@@ -67,6 +69,75 @@ def resolve_ref(graph_path: Path, ref: str) -> Path | None:
     return None
 
 
+# 以下三个 helper 与 C++ 侧 RefBasename/UniqueAssetEntry/RewriteGraphRefs 同构
+#（src/project_bundle.cpp），改动需两侧同步。被镜像的精确语义（tests/
+# test_pack_graph_project.py 与 test_project_bundle.cpp 的相同期望值锚定）：
+#   ref_basename       取首冒号后的残留（"C:y.png" 盘符形态），残留冒号/
+#                      空名等不干净形态回退 "asset"；
+#   unique_asset_entry stem/ext 按 std::filesystem 规则切分：最右点且非首
+#                      字符才作扩展名分隔（前导点属文件名、尾点属扩展名），
+#                      故 ".cube" 冲突去重为 ".cube_2" 而非 "_2.cube"。
+
+
+def ref_basename(ref: str) -> str:
+    """任意形态引用（posix 绝对 / 盘符反斜杠 / ../）→ 干净的文件基名。"""
+    name = ref.replace("\\", "/").split("/")[-1]
+    if ":" in name:
+        name = name.split(":", 1)[1]  # 与 C++ 一致取首冒号（"C:y.png" 盘符残留）
+    if not safe_entry_name(name):
+        return "asset"
+    return name
+
+
+def _split_stem_ext(name: str) -> tuple[str, str]:
+    """std::filesystem::path::stem/extension 语义（不能用 pathlib：其
+    suffix 对 "foo." 返回 ''，与 fs 的 "." 不一致）。"""
+    i = name.rfind(".")
+    if i > 0:
+        return name[:i], name[i:]
+    return name, ""
+
+
+def unique_asset_entry(basename: str, used: set[str]) -> str:
+    """assets/ 内唯一条目名：基名冲突按 _2/_3 递增（确定性）。"""
+    cand = f"assets/{basename}"
+    if cand not in used:
+        used.add(cand)
+        return cand
+    stem, ext = _split_stem_ext(basename)
+    n = 2
+    while True:
+        cand = f"assets/{stem}_{n}{ext}"
+        if cand not in used:
+            used.add(cand)
+            return cand
+        n += 1
+
+
+def rewrite_refs(data: dict, remap: dict[str, str]) -> bool:
+    """把【包内副本】的图 JSON 中等于 remap 键的参数值替换为包内条目。
+
+    写出型任务的 file_path/out_path 永不重写（重写会让运行期输出覆盖包内
+    资产）。返回是否有改动。
+    """
+    changed = False
+    for t in data.get("tasks", []):
+        ttype = str(t.get("type", ""))
+        is_writer = ttype.endswith("_write") or ttype == "video_writer"
+        params = t.get("params")
+        if not isinstance(params, dict):
+            continue
+        for key in list(params):
+            v = params[key]
+            if not isinstance(v, str) or v not in remap:
+                continue
+            if is_writer and key in ("file_path", "out_path"):
+                continue
+            params[key] = remap[v]
+            changed = True
+    return changed
+
+
 def pack(graph: Path, out: Path) -> int:
     try:
         data = json.loads(graph.read_text(encoding="utf-8"))
@@ -86,10 +157,10 @@ def pack(graph: Path, out: Path) -> int:
     }
     assets: list[tuple[str, Path]] = []
     skipped_dirs: list[str] = []
+    remapped: list[str] = []
+    used: set[str] = {"manifest.json", entry}
+    remap: dict[str, str] = {}
     for ref in collect_refs(data):
-        if not safe_entry_name(ref):
-            manifest["missing"].append(ref)  # 绝对路径 / .. 引用：v1 不打包
-            continue
         if ref == entry:
             continue
         resolved = resolve_ref(graph, ref)
@@ -99,22 +170,45 @@ def pack(graph: Path, out: Path) -> int:
         if resolved.is_dir():
             skipped_dirs.append(ref)
             continue
-        if any(p == ref for p, _ in assets):
+        if safe_entry_name(ref):
+            # 相对引用：按引用原样路径落位
+            if ref in used:
+                manifest["missing"].append(ref)  # 与已占条目撞车，防 zip 同名互覆
+                continue
+            used.add(ref)
+            assets.append((ref, resolved))
+            manifest["assets"].append({"path": ref, "size": resolved.stat().st_size})
             continue
-        assets.append((ref, resolved))
-        manifest["assets"].append({"path": ref, "size": resolved.stat().st_size})
+        # 绝对路径 / ../ 越界引用：收进包内 assets/ 并重写包内图副本
+        name = unique_asset_entry(ref_basename(ref), used)
+        assets.append((name, resolved))
+        manifest["assets"].append({"path": name, "size": resolved.stat().st_size,
+                                   "source": ref})
+        remap[ref] = name
+        remapped.append(ref)
     if not manifest["missing"]:
         del manifest["missing"]
+
+    # 存在重映射时，包内图副本改写为包内相对引用（无重映射保持原样字节）
+    if remap:
+        if rewrite_refs(data, remap):
+            entry_bytes = json.dumps(data, indent=4).encode("utf-8")
+        else:
+            entry_bytes = graph.read_bytes()
+    else:
+        entry_bytes = graph.read_bytes()
 
     out.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr("manifest.json", json.dumps(manifest, indent=2))
-        z.write(graph, entry)
+        z.writestr(entry, entry_bytes)
         for name, path in assets:
             z.write(path, name)
 
     print(f"packed {graph.name} -> {out} ({len(assets)} asset(s), "
           f"{out.stat().st_size} bytes)")
+    if remapped:
+        print(f"  bundled non-relative ref(s) into assets/: {', '.join(remapped)}")
     if skipped_dirs:
         print(f"  skipped directory refs: {', '.join(skipped_dirs)}")
     if manifest.get("missing"):
@@ -134,7 +228,10 @@ def inspect(tgp: Path) -> int:
     print(f"{tgp}: format={man.get('format')} version={man.get('version')} "
           f"entry={man.get('entry')} created={man.get('created')}")
     for a in man.get("assets", []):
-        print(f"  asset  {a['path']}  {a['size']}B")
+        line = f"  asset  {a['path']}  {a['size']}B"
+        if a.get("source"):
+            line += f"  <- {a['source']}"
+        print(line)
     for m in man.get("missing", []):
         print(f"  miss   {m}")
     extra = [n for n in names if n != "manifest.json" and n != man.get("entry")

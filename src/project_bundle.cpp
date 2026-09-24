@@ -6,6 +6,8 @@
 #include <ctime>
 #include <filesystem>
 #include <fstream>
+#include <set>
+#include <utility>
 
 #include <nlohmann/json.hpp>
 
@@ -162,6 +164,76 @@ bool IsSafeEntryName(const std::string& name)
     return true;
 }
 
+// 从任意形态引用（posix 绝对 / Windows 盘符反斜杠 / ../ 越界）提取可作包
+// 内条目名的文件基名；拿不到干净形态时回退 "asset"。
+std::string RefBasename(const std::string& ref)
+{
+    const size_t pos = ref.find_last_of("/\\");
+    std::string name = (pos == std::string::npos) ? ref : ref.substr(pos + 1);
+    const size_t colon = name.find(':');
+    if (colon != std::string::npos)
+        name = name.substr(colon + 1);  // "C:y.png" 形态的盘符残留
+    if (!IsSafeEntryName(name))
+        return "asset";
+    return name;
+}
+
+// assets/ 内唯一条目名：基名冲突按 _2/_3 递增（确定性，顺序=引用收集序）。
+std::string UniqueAssetEntry(const std::string& basename, std::set<std::string>* used)
+{
+    const std::filesystem::path p(basename);
+    const std::string stem = p.stem().string();
+    const std::string ext = p.extension().string();
+    std::string cand = "assets/" + basename;
+    for (int n = 2; used->count(cand) != 0; ++n)
+        cand = "assets/" + stem + "_" + std::to_string(n) + ext;
+    used->insert(cand);
+    return cand;
+}
+
+// 重写【包内副本】的图 JSON：把值恰好等于 remap 键的参数替换为包内条目。
+// 写出型任务的 file_path/out_path 永不重写（与 CollectRefs 排除规则一致——
+// 重写会让运行期输出覆盖包内资产）。无命中/解析失败返回空串（调用方回退
+// 原样字节）。
+std::string RewriteGraphRefs(
+    const std::string& graph_json,
+    const std::vector<std::pair<std::string, std::string>>& remap)
+{
+    nlohmann::json doc;
+    try {
+        doc = nlohmann::json::parse(graph_json);
+    } catch (...) {
+        return {};
+    }
+    if (!doc.is_object() || !doc.contains("tasks") || !doc["tasks"].is_array())
+        return {};
+    bool changed = false;
+    for (auto& t : doc["tasks"]) {
+        if (!t.is_object()) continue;
+        std::string ty;
+        if (t.contains("type") && t["type"].is_string())
+            ty = t["type"].get<std::string>();
+        const bool writer = EndsWith(ty, "_write") || EndsWith(ty, "video_writer");
+        if (!t.contains("params") || !t["params"].is_object()) continue;
+        nlohmann::json& params = t["params"];
+        const auto obj = params.get<nlohmann::json::object_t>();  // 拷贝迭代，原地赋值
+        for (const auto& [key, val] : obj) {
+            if (!val.is_string()) continue;
+            const std::string v = val.get<std::string>();
+            for (const auto& [from, to] : remap) {
+                if (v != from) continue;
+                if (writer && (key == "file_path" || key == "out_path"))
+                    continue;
+                params[key] = to;
+                changed = true;
+            }
+        }
+    }
+    if (!changed)
+        return {};
+    return doc.dump(4);
+}
+
 std::string GetStr(const nlohmann::json& obj, const char* key)
 {
     if (obj.is_object() && obj.contains(key) && obj[key].is_string())
@@ -191,6 +263,8 @@ std::string ManifestToJson(const ProjectManifest& man)
         nlohmann::json o;
         o["path"] = a.path;
         o["size"] = a.size;
+        if (!a.source.empty())
+            o["source"] = a.source;  // 由该原始引用（绝对/越界）重映射而来
         assets.push_back(std::move(o));
     }
     root["assets"] = std::move(assets);
@@ -232,6 +306,7 @@ bool ParseManifest(const std::string& bytes, ProjectManifest* man, std::string* 
             ProjectAsset a;
             a.path = GetStr(av, "path");
             a.size = GetInt(av, "size", 0);
+            a.source = GetStr(av, "source");
             man->assets.push_back(std::move(a));
         }
     }
@@ -376,17 +451,45 @@ PackReport pack_project(const std::string& graph_json_path,
         std::vector<unsigned char> bytes;
     };
     std::vector<FileEntry> files;
+    // 包内已占条目名（图自身 + manifest + 已落位资产）：assets/ 重映射去重，
+    // 也防相对引用与重映射条目同名写出重复 zip 条目。
+    std::set<std::string> used_entries{kManifestName, entry};
+    std::vector<std::pair<std::string, std::string>> remap;  // 原引用 -> 包内条目
     for (const std::string& ref : CollectRefs(graph_json)) {
-        if (!IsSafeEntryName(ref)) {
-            // 绝对路径 / 含 .. 的引用：v1 不打包（桌面无法安全解回任意绝对
-            // 路径），记入 missing 让打开端可见。
-            man.missing.push_back(ref);
-            continue;
-        }
         if (ref == entry)
             continue;  // 图自身被引用（.json 结尾的 ref），不作为资产重复打包
-        // 复用核心库探测序（图目录 + 两级祖先；绝对引用原样探测），
-        // 保证"打包进包里的文件"与"运行期会解析到的文件"一致。
+        if (!IsSafeEntryName(ref)) {
+            // 绝对路径 / ../ 越界 / 盘符引用：能解析到已存在文件则收进包内
+            // assets/（基名去重），并把包内图副本的引用重写为该包内相对路径
+            // ——单文件通道（wasm ?open/拖拽/分享）因此拿得到输入图片；解
+            // 析不到仍记 missing（打开端 WARN 可见）。
+            const std::string resolved = resolve_asset_path(graph_dir, ref);
+            std::error_code ec;
+            if (std::filesystem::is_directory(resolved, ec)) {
+                rep.skipped_dirs.push_back(ref);
+                continue;
+            }
+            if (!std::filesystem::is_regular_file(resolved, ec)) {
+                man.missing.push_back(ref);
+                continue;
+            }
+            FileEntry fe;
+            if (!ReadFileBytes(resolved, &fe.bytes)) {
+                man.missing.push_back(ref);
+                continue;
+            }
+            fe.path = UniqueAssetEntry(RefBasename(ref), &used_entries);
+            ProjectAsset a;
+            a.path = fe.path;
+            a.size = static_cast<long long>(fe.bytes.size());
+            a.source = ref;
+            remap.emplace_back(ref, fe.path);
+            files.push_back(std::move(fe));
+            man.assets.push_back(std::move(a));
+            continue;
+        }
+        // 复用核心库探测序（图目录 + 两级祖先），保证"打包进包里的文件"
+        // 与"运行期会解析到的文件"一致。相对引用按原样路径落位。
         const std::string resolved = resolve_asset_path(graph_dir, ref);
         std::error_code ec;
         if (std::filesystem::is_directory(resolved, ec)) {
@@ -397,26 +500,37 @@ PackReport pack_project(const std::string& graph_json_path,
             man.missing.push_back(ref);
             continue;
         }
+        if (used_entries.count(ref) != 0) {
+            // 与已占条目名撞车（如某绝对引用的重映射条目恰好等于本相对
+            // 引用）：改记 missing，避免 zip 内同名条目互相覆盖。
+            man.missing.push_back(ref);
+            continue;
+        }
         FileEntry fe;
         fe.path = ref;
         if (!ReadFileBytes(resolved, &fe.bytes)) {
             man.missing.push_back(ref);
             continue;
         }
-        bool dup = false;
-        for (const FileEntry& e : files) {
-            if (e.path == ref) {
-                dup = true;
-                break;
-            }
-        }
-        if (dup)
-            continue;
         ProjectAsset a;
         a.path = ref;
         a.size = static_cast<long long>(fe.bytes.size());
         files.push_back(std::move(fe));
         man.assets.push_back(std::move(a));
+        used_entries.insert(ref);
+    }
+
+    // 存在重映射时，包内图副本改写为包内相对引用（无重映射保持原样字节，
+    // 维系纯相对图的逐字节 round-trip 契约）。磁盘上的原 graph.json 不动。
+    std::vector<unsigned char> graph_out(graph_bytes);
+    if (!remap.empty()) {
+        const std::string rewritten = RewriteGraphRefs(graph_json, remap);
+        if (!rewritten.empty())
+            graph_out.assign(rewritten.begin(), rewritten.end());
+        for (const auto& [from, to] : remap) {
+            (void)to;
+            rep.remapped.push_back(from);
+        }
     }
 
     mz_zip_archive zip = {};
@@ -429,8 +543,8 @@ PackReport pack_project(const std::string& graph_json_path,
     wok = wok && mz_zip_writer_add_mem(&zip, kManifestName, man_bytes.data(),
                                        man_bytes.size(), MZ_DEFAULT_COMPRESSION);
     wok = wok
-          && mz_zip_writer_add_mem(&zip, entry.c_str(), graph_bytes.data(),
-                                   graph_bytes.size(), MZ_DEFAULT_COMPRESSION);
+          && mz_zip_writer_add_mem(&zip, entry.c_str(), graph_out.data(),
+                                   graph_out.size(), MZ_DEFAULT_COMPRESSION);
     for (const FileEntry& e : files) {
         wok = wok
               && mz_zip_writer_add_mem(&zip, e.path.c_str(), e.bytes.data(),

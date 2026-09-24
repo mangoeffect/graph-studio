@@ -342,3 +342,129 @@ TEST_F(ProjectBundleTest, MissingAndSkippedRefs)
     for (const auto& a : rep.packed)
         EXPECT_NE(a.path, "result.png");
 }
+
+TEST_F(ProjectBundleTest, RemapsAbsoluteRefsIntoBundle)
+{
+    // 绝对路径引用指向真实文件（桌面经 Browse 选图的常见形态）：收进包内
+    // assets/ 并把【包内图副本】的引用重写为包内相对路径——单文件通道
+    // （wasm ?open/拖拽/分享）因此拿得到输入图片。writer 持同一路径的
+    // file_path 不得重写（运行期输出会覆盖包内资产）；磁盘原 json 不动。
+    const std::string abs = (root_ / "data/abs_input.png").string();
+    WriteBytes(abs, asset_.data(), asset_.size());
+    const std::string json = std::string(R"JSON({
+  "version": "2.0",
+  "tasks": [
+    { "id": "src", "type": "opencv_image_read",
+      "params": { "file_path": ")JSON") + abs + R"JSON(" } },
+    { "id": "out", "type": "opencv_image_write",
+      "params": { "file_path": ")JSON" + abs + R"JSON(" } }
+  ],
+  "edges": []
+})JSON";
+    const std::string graph = (root_ / "graphs/abs_test.json").string();
+    WriteBytes(graph, json.data(), json.size());
+
+    const std::string tgp = (root_ / "abs.tgp").string();
+    const auto rep = task_graph::pack_project(graph, graph_dir_, tgp);
+    ASSERT_TRUE(rep.ok) << rep.error;
+    ASSERT_EQ(rep.remapped.size(), 1u);
+    EXPECT_EQ(rep.remapped[0], abs);
+    ASSERT_EQ(rep.packed.size(), 1u);
+    EXPECT_EQ(rep.packed[0].path, "assets/abs_input.png");
+    EXPECT_EQ(rep.packed[0].source, abs);
+    EXPECT_TRUE(rep.missing.empty());
+
+    // 磁盘上的原 graph.json 不动（只重写包内副本）
+    const auto orig_back = ReadBytes(graph);
+    EXPECT_TRUE(std::equal(orig_back.begin(), orig_back.end(), json.begin(),
+                           json.end()));
+
+    const std::string ex = ExtractDir("ex_abs");
+    task_graph::OpenedProject opened;
+    std::string err;
+    ASSERT_TRUE(task_graph::open_project(tgp, ex, &opened, &err)) << err;
+    ASSERT_EQ(opened.manifest.assets.size(), 1u);
+    EXPECT_EQ(opened.manifest.assets[0].source, abs);
+
+    // 解包布局：资产落在解包目录 assets/ 下，运行期首探即命中
+    const std::string resolved =
+        task_graph::resolve_asset_path(opened.extract_dir,
+                                       "assets/abs_input.png");
+    EXPECT_EQ(resolved,
+              (fs::path(opened.extract_dir) / "assets/abs_input.png")
+                  .lexically_normal().string());
+    EXPECT_TRUE(fs::exists(resolved));
+    const auto asset_back = ReadBytes(resolved);
+    EXPECT_TRUE(asset_back == asset_);
+
+    // 包内图副本：reader 引用已重写为包内相对路径（含 assets/ 字面量）；
+    // 绝对路径原文只应剩 writer 那一处（原 json 中出现两次）
+    const auto gbytes = ReadBytes(opened.graph_path);
+    const std::string gtext(gbytes.begin(), gbytes.end());
+    EXPECT_NE(gtext, json);  // 确为重写副本
+    EXPECT_NE(gtext.find("\"assets/abs_input.png\""), std::string::npos);
+    size_t pos = 0;
+    int count = 0;
+    while ((pos = gtext.find(abs, pos)) != std::string::npos) {
+        ++count;
+        pos += abs.size();
+    }
+    EXPECT_EQ(count, 1) << "writer 的 file_path 不应被重写";
+}
+
+TEST_F(ProjectBundleTest, RemapConflictDedupDotfiles)
+{
+    // 基名冲突去重的语义钉板（std::filesystem：最右点且非首字符才作扩展
+    // 名分隔——前导点属文件名）：两个不同目录下的同名 ".cube"（LUT 点文
+    // 件形态）收编为 assets/.cube 与 assets/.cube_2。pack_graph_project.py
+    // 同构镜像的 parity 由 tests/test_pack_graph_project.py 的相同期望值
+    // 锚定（此前 Python 侧 rpartition 会产出 "_2.cube"，无声分歧）。
+    const std::string lut_a = (root_ / "lut_a/.cube").string();
+    const std::string lut_b = (root_ / "lut_b/.cube").string();
+    WriteBytes(lut_a, "LUT_A", 5);
+    WriteBytes(lut_b, "LUT_B", 5);
+    const std::string json = std::string(R"JSON({
+  "version": "2.0",
+  "tasks": [
+    { "id": "lut1", "type": "render_lut_cube",
+      "params": { "cube_path": ")JSON") + lut_a + R"JSON(" } },
+    { "id": "lut2", "type": "render_lut_cube",
+      "params": { "cube_path": ")JSON" + lut_b + R"JSON(" } }
+  ],
+  "edges": []
+})JSON";
+    const std::string graph = (root_ / "graphs/dot_test.json").string();
+    WriteBytes(graph, json.data(), json.size());
+
+    const std::string tgp = (root_ / "dot.tgp").string();
+    const auto rep = task_graph::pack_project(graph, graph_dir_, tgp);
+    ASSERT_TRUE(rep.ok) << rep.error;
+    ASSERT_EQ(rep.remapped.size(), 2u);
+    EXPECT_EQ(rep.remapped[0], lut_a);
+    EXPECT_EQ(rep.remapped[1], lut_b);
+    ASSERT_EQ(rep.packed.size(), 2u);
+    EXPECT_EQ(rep.packed[0].path, "assets/.cube");
+    EXPECT_EQ(rep.packed[1].path, "assets/.cube_2");
+    EXPECT_EQ(rep.packed[0].source, lut_a);
+    EXPECT_EQ(rep.packed[1].source, lut_b);
+    EXPECT_TRUE(rep.missing.empty());
+
+    const std::string ex = ExtractDir("ex_dot");
+    task_graph::OpenedProject opened;
+    std::string err;
+    ASSERT_TRUE(task_graph::open_project(tgp, ex, &opened, &err)) << err;
+
+    // 包内图副本：两个引用分别重写为各自的包内条目，绝对路径原文 0 次
+    const auto gbytes = ReadBytes(opened.graph_path);
+    const std::string gtext(gbytes.begin(), gbytes.end());
+    EXPECT_NE(gtext.find("\"assets/.cube\""), std::string::npos);
+    EXPECT_NE(gtext.find("\"assets/.cube_2\""), std::string::npos);
+    EXPECT_EQ(gtext.find(lut_a), std::string::npos);
+    EXPECT_EQ(gtext.find(lut_b), std::string::npos);
+
+    // 资产内容按条目名各就各位（内容可区分，证明没有互覆）
+    const auto back_a = ReadBytes((fs::path(ex) / "assets/.cube").string());
+    const auto back_b = ReadBytes((fs::path(ex) / "assets/.cube_2").string());
+    EXPECT_EQ(back_a, (std::vector<unsigned char>{'L', 'U', 'T', '_', 'A'}));
+    EXPECT_EQ(back_b, (std::vector<unsigned char>{'L', 'U', 'T', '_', 'B'}));
+}

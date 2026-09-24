@@ -1,18 +1,22 @@
 #pragma once
 
 // .tgp（task graph project）工程包：ZIP 容器（miniz 读写，源码直接编入
-// libtask_graph），内含 manifest.json + 原名保留的图 JSON + 按图内相对引用
-// 路径原样落位的资产。
+// libtask_graph），内含 manifest.json + 原名保留的图 JSON + 资产文件。
 //
-// 设计契约：打包不重写图 JSON；打开端解包到会话目录（桌面 QTemporaryDir /
-// WASM MEMFS），图所在目录即解包目录，resolve_asset_path 首次探测命中——
-// 路径解析机制零改动。资产发现启发式与 wasm drop/?open 预取、
-// scripts/e2e_graph_cases.py 同源（路径形态 + 资产扩展名，写出型任务的
-// file_path/out_path 除外，URL 除外）。
+// 设计契约：相对引用的图 JSON 原样入包、资产按图内引用路径原样落位；
+// 绝对路径 / 含 .. 的越界引用若能解析到已存在文件，则把文件收进包内
+// assets/ 目录（基名冲突 _2/_3 递增去重），并把【包内副本】的图 JSON
+// 参数值重写为该包内相对路径——用户磁盘上的原 graph.json 永不被改写；
+// 写出型任务的 file_path/out_path 永不重写（重写会让运行期输出覆盖包内
+// 资产）。打开端解包到会话目录（桌面 QTemporaryDir / WASM MEMFS），图
+// 所在目录即解包目录，resolve_asset_path 首次探测命中——路径解析机制
+// 零改动。资产发现启发式与 wasm drop/?open 预取、scripts/e2e_graph_cases.py
+// 同源（路径形态 + 资产扩展名，写出型任务的 file_path/out_path 除外，
+// URL 除外）。
 //
-// v1 边界：绝对路径引用不打包（桌面无法安全解回任意绝对路径），与未解析
-// 引用一并记入 manifest.missing，打开端 WARN；目录引用（如 render 的
-// effects_path）不打包，仅打包报告提示；打开只读，保存=重新导出新包。
+// v1 边界：解析不到文件的引用（含不存在的绝对路径）记 manifest.missing，
+// 打开端 WARN；目录引用（如 render 的 effects_path）不打包，仅打包报告
+// 提示；打开只读，保存=重新导出新包。
 //
 // API 边界不抛异常：所有失败经返回值 + error 出参表达（对齐
 // resolve_asset_path 的 noexcept 风格，内部实现才使用异常）。
@@ -25,8 +29,11 @@ namespace task_graph {
 
 struct ProjectAsset
 {
-    std::string path;        // 包内相对路径 = 图内引用路径（posix 分隔符）
+    std::string path;        // 包内相对路径（posix 分隔符）
     long long size = 0;
+    // 非空 = 该资产由此原始引用（绝对路径 / 越界 ../）重映射收编而来，
+    // 包内图副本的对应参数已重写为 path；空 = 相对引用原样落位。
+    std::string source;
 };
 
 struct ProjectManifest
@@ -48,6 +55,9 @@ struct PackReport
     std::vector<ProjectAsset> packed;
     std::vector<std::string> missing;      // 未解析引用（已记入 manifest.missing）
     std::vector<std::string> skipped_dirs; // 解析到目录的引用（v1 不打包目录）
+    // 已收编进包内 assets/ 的原始引用（绝对路径/越界，对应包内图副本已
+    // 重写；manifest.assets[].source 记录逐条映射）。
+    std::vector<std::string> remapped;
 };
 
 struct OpenedProject
