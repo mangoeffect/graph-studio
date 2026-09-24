@@ -113,8 +113,10 @@ jobs:
       # libvision.so 用 gcc-13 构建（上一步注释），而主构建/测试链接用系统
       # gcc-11（libstdc++ ≤3.4.30）：.so 若残留对 GLIBCXX_3.4.31/3.4.32 的
       # 未定义引用，主链所有可执行文件链接期即挂（2026-09-18~21 主仓库 Tests
-      # 连红的根因）。build_mediapipe.py 的 -static-libstdc++ linkopt 已让 .so
-      # 自包含，此守护把坏档拦截在链接之前（cache 命中同样校验）。
+      # 连红的根因）。build_mediapipe.py 的 -Wl,-Bstatic,-lstdc++,-Bdynamic
+      # linkopt 已让 .so 静态自包含（不能用驱动级 -static-libstdc++：bazel 隐式
+      # 动态 -lstdc++ 抢先解析，2026-09-24 实测完全失效），此守护把坏档拦截在
+      # 链接之前（cache 命中同样校验）。
       - name: Guard libvision GLIBCXX compatibility (Linux)
         if: runner.os == 'Linux'
         shell: bash
@@ -123,7 +125,7 @@ jobs:
           [ -f "$so" ] || { echo "libvision.so 不存在（stub 构建亦正常）——跳过"; exit 0; }
           bad=$(objdump -T "$so" | grep UND | grep -c 'GLIBCXX_3\.4\.3[1-9]' || true)
           if [ "$bad" -gt 0 ]; then
-            echo "::error::libvision.so 含 $bad 个对 GLIBCXX_3.4.31+ 的未定义引用——主链 gcc-11 链接必挂。-static-libstdc++ 补丁失效或缓存坏档；删 mediapipe-linux 缓存重建。"
+            echo "::error::libvision.so 含 $bad 个对 GLIBCXX_3.4.31+ 的未定义引用——主链 gcc-11 链接必挂。静态 libstdc++ linkopt 失效或缓存坏档；删 mediapipe-linux 缓存重建。"
             exit 1
           fi
           echo "libvision.so 无高版本 GLIBCXX 未定义引用，主链 gcc-11 可链接。"

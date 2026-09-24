@@ -863,21 +863,28 @@ def patch_vision_build(mp_src: Path, vs_abs_path: Optional[str] = None) -> None:
     if vs_abs_path is None:
         vs_abs_path = str(version_map).replace("\\", "/")
     if 'name = "libvision.so"' in s:
-        # 幂等：先清掉旧补丁插入的 version-script / static-libstdc++ 行
-        # （路径形态可能变化）
+        # 幂等：先清掉旧补丁插入的 version-script / 静态 libstdc++ 行
+        # （路径形态可能变化；static-libstdc 是历史两代写法，一并清）
         s = re.sub(r' *"-Wl,--version-script=[^"]*",\n', "", s)
         s = re.sub(r' *"-static-libstdc\+\+",\n', "", s)
-        # -static-libstdc++：CI 的本 .so 用 gcc-13 构建（mediapipe v1.0.0 需要的
-        # C++20 特性 gcc-11 编不过），产物引用 GLIBCXX_3.4.31/3.4.32 符号；而主构建/
-        # 测试链接用系统默认 gcc-11（libstdc++ ≤3.4.30），链接期 undefined
-        # reference（2026-09-18 起主仓库 Tests 连红的根因）。静态链入 gcc-13 的
-        # libstdc++ 让 .so 符号自包含——C API（Mp*）边界纯 C、无跨边界 C++ 对象，
-        # 进程内双 libstdc++ 副本无 ABI 风险。
+        s = re.sub(r' *"-Wl,-Bstatic,-lstdc\+\+,-Bdynamic",\n', "", s)
+        # 静态链 libstdc++（仅 Linux .so 目标）：CI 用 gcc-13 构建（mediapipe
+        # v1.0.0 需要的 C++20 特性 gcc-11 编不过），产物引用 GLIBCXX_3.4.31/32
+        # 符号；主构建/测试链接用系统 gcc-11（libstdc++ ≤3.4.30）→ undefined
+        # reference（2026-09-18 起主仓库 Tests 连红的根因）。C API（Mp*）边界
+        # 纯 C、无跨边界 C++ 对象，进程内双 libstdc++ 副本无 ABI 风险。
+        # 必须用 -Wl,-Bstatic,-lstdc++,-Bdynamic 原位三连而不是驱动级
+        # -static-libstdc++：后者由 gcc 驱动展开后追加在命令行末尾，bazel
+        # 工具链自带的动态 -lstdc++ 在前面把全部符号解析成动态引用（2026-09-24
+        # docker 复现实测：补丁在 BUILD 里、.so 仍整库动态依赖，仅 2 个 gcc-13
+        # 新符号 _ZSt21ios_base_library_initv@3.4.32 与
+        # basic_string::_M_replace_cold@3.4.31 以高版本 UND 露出）。原位三连
+        # 在用户 linkopts 区先静态搜归档，隐式动态 -lstdc++ 晚到无符号可解析。
         s = s.replace(
             "        \"-Wl,-soname=libvision.so\",\n",
             "        \"-Wl,-soname=libvision.so\",\n"
             f"        \"-Wl,--version-script={vs_abs_path}\",\n"
-            '        "-static-libstdc++",\n', 1)
+            '        "-Wl,-Bstatic,-lstdc++,-Bdynamic",\n', 1)
         so_block = s.split('name = "libvision.so"', 1)[1]
         if 'data = ["exported_symbols.txt"]' in so_block.split("cc_binary", 1)[0]:
             s = s.replace(
@@ -1115,7 +1122,9 @@ def ensure_bazelisk_linux(mp_build: Path) -> Optional[Path]:
         console.fail(f"未知宿主架构 {machine}，无法选择 bazelisk linux 二进制")
         return None
     marker = mp_build / "tools" / "bazelisk-linux.arch"
-    if exe.is_file() and _read(marker) == machine:
+    # marker 写入带换行，比较须 strip——否则每次运行都判定失配重新下载
+    # （网络抖动时构建直接失败）。
+    if exe.is_file() and (_read(marker) or "").strip() == machine:
         return exe
     exe.parent.mkdir(parents=True, exist_ok=True)
     console.step(f"Downloading linux bazelisk ({machine}) to {exe}")
