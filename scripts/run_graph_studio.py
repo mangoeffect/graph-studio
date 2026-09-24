@@ -37,7 +37,7 @@ from gs.cmake import CMake  # noqa: E402
 def build_stack(cm: CMake, root: Path, lib_build: Path, gs_dir: Path, gs_build: Path,
                 config: str, jobs: int, qt_prefix, opencv_dir, disable_opencv: bool,
                 clean: bool, skip_app: bool = False, with_mnn: bool = False,
-                with_wgpu: bool = True) -> int:
+                with_wgpu: bool = True, json_export: bool = True) -> int:
     """构建 task_graph 根库 + subnode 插件，再把 task_graph.lib 镜像上来（Windows quirk），
     然后构建 graph_studio。返回退出码。"""
     if clean and gs_build.exists():
@@ -98,6 +98,10 @@ def build_stack(cm: CMake, root: Path, lib_build: Path, gs_dir: Path, gs_build: 
         app_defines += [f"-DTASK_GRAPH_ENABLE_WGPU=ON",
                         f"-DWGPU_INCLUDE_DIR={wgpu[0]}",
                         f"-DWGPU_LIBRARY={wgpu[1]}"]
+    # JSON 图导出门控：显式传 ON/OFF（脚本是开关的唯一事实源，防止上次
+    # CI 式调用留在 build cache 里的 OFF 污染本地默认 ON 构建）
+    app_defines.append(
+        "-DGRAPH_STUDIO_ENABLE_JSON_EXPORT=" + ("ON" if json_export else "OFF"))
     console.step("配置 graph_studio")
     if cm.configure(gs_dir, gs_build, defines=app_defines, build_type=config) != 0:
         return 1
@@ -126,6 +130,9 @@ def run() -> int:
     ap.add_argument("--no-wgpu", action="store_true",
                     help="禁用 wgpu 统一后端（默认开启：自动下载 wgpu-native 并以"
                          " WGPU=ON 配置；GPU 后端回退 Metal/Vulkan）")
+    ap.add_argument("--no-json-export", action="store_true",
+                    help="裁掉 JSON 图导出（Save As 仅 tgp + 无 Export JSON 菜单；"
+                         "默认保留——CI/发布渠道构建传此旗标）")
     ap.add_argument("--opencv-dir", default="", help="OpenCV 安装前缀（默认自动探测）")
     ap.add_argument("--cmake", default="", help="cmake 可执行文件路径")
     args = ap.parse_args()
@@ -162,7 +169,8 @@ def run() -> int:
     if not args.no_build:
         code = build_stack(cm, root, lib_build, gs_dir, gs_build, args.config, jobs,
                            qt_prefix, opencv_dir, args.disable_opencv, args.clean,
-                           with_mnn=args.mnn, with_wgpu=with_wgpu)
+                           with_mnn=args.mnn, with_wgpu=with_wgpu,
+                           json_export=not args.no_json_export)
         if code != 0:
             return code
     elif not gs_build.is_dir():

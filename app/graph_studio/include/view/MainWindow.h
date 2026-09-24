@@ -19,6 +19,8 @@
 
 #include <memory>
 
+#include <task_graph/project_bundle.hpp>
+
 #include "view/GraphView.h"
 #include "viewmodel/GraphViewModel.h"
 #include "command/CommandStack.h"
@@ -90,6 +92,12 @@ public:
     // 文件里，展示名须由通道传入）。返回是否成功。
     bool OpenProjectFile(const QString& tgpPath, bool runAfterLoad = false,
                          const QString& displayName = QString());
+    // 把当前图打包为 .tgp 工程包写到 tgpPath（不经对话框；桌面磁盘/WASM
+    // MEMFS 路径皆可），成功后非工程态会话锚定为工程态（解包目录持资产，
+    // 后续 Save 原地重打包）。供 Save/Save As 与测试直调。
+    bool SaveProjectBundleTo(const QString& tgpPath);
+    // 会话是否锚定在 .tgp 工程（Save = 原地重打包）；测试断言用。
+    bool isProjectMode() const { return projectMode_; }
     // 从 UI 之外（wasm 交换通道等）向日志面板追加一条：level 取
     // task_graph::LogLevel 的 int 值，与 logMessage 信号同语义（面板 + [gs] 镜像）。
     void PostLog(int level, const QString& msg);
@@ -170,7 +178,11 @@ private:
     void ActionOpen();
     void ActionSave();
     void ActionSaveAs();
-    void ActionExportProject();
+    // Save As 默认 tgp；JSON 文件导出仅本地构建（GRAPH_STUDIO_ENABLE_JSON_EXPORT）
+    // 保留的显式出口（菜单项 + Save As 过滤器项共用实现）。
+#ifdef GRAPH_STUDIO_ENABLE_JSON_EXPORT
+    void ActionExportJson();
+#endif
     void ActionAutoLayout();
     void ActionZoomIn();
     void ActionZoomOut();
@@ -188,6 +200,35 @@ private:
     // 加载一个图文件（File→Open 与拖放共用）：成功返回 true 并更新当前文件与标题。
     bool OpenGraphFile(const QString& path);
     void UpdateWindowTitle();
+
+    // ---- .tgp 保存链（Save/Save As/下载共用的无对话框实现）----
+    // 解析打包源并序列化当前 VM 图：工程态用解包目录（VM 先存回
+    // projectGraphPath_，资产也在该目录）；普通图用 currentFilePath_（先
+    // 落盘）；从未保存过的新图不再拒绝——staging 到函数内 QTemporaryDir
+    // 打包（相对引用无解析基准 → manifest.missing，WARN 如实告知）。
+    // stagedBase 指定 staging 图文件名（包内 entry 名），空则用当前文件
+    // 基名/graph。graphPathOut 回传打包源 json 路径。
+    task_graph::PackReport PackCurrentGraph(QString* graphPathOut = nullptr,
+                                            const QString& stagedBase = QString());
+    // 非工程态首次存成 .tgp 后的会话锚定：用刚产出的包字节 open_project_memory
+    // 解包到新会话目录（后续重打包从该目录解析资产），不重载 vm_（图内容
+    // 逐字节一致，保留 undo/选区）。工程态内 Save/Save As 不重新锚定。
+    void EnterProjectSession(const task_graph::PackReport& rep, const QString& tgpPath);
+    // 统一的打包结果日志（missing/skipped_dirs WARN + 导出 INFO）。
+    void LogPackResult(const task_graph::PackReport& rep, const QString& shownPath);
+    // 另存建议名基：当前文件基名（无后缀），空会话回退 "graph"。
+    QString SuggestedBaseName() const;
+#ifdef GRAPH_STUDIO_ENABLE_JSON_EXPORT
+    // json 落盘 + 会话 json 化（工程态 = 解包导出：退出工程态 + WARN 资产
+    // 不随行）。桌面 Save As 选 json 过滤器与 Export JSON 菜单共用。
+    void SaveJsonFileTo(const QString& path);
+    void LeaveProjectModeForJson();
+#endif
+#ifdef __EMSCRIPTEN__
+    // WASM 无文件系统写出口：内存打包 + 浏览器下载（工程态 Save / 新图
+    // Save As 共用），下载后同样锚定工程会话。
+    void DownloadProjectBundle(const QString& suggestedName);
+#endif
 
     // 图像结果面板：根据当前下拉选中显示对应 QImage；填充下拉列表
     void ShowResultImage(const QString& key);
@@ -241,12 +282,13 @@ private:
 
     QString currentFilePath_;
 
-    // ---- .tgp 工程包会话态：打开工程时解包目录由会话持有（New/Open 普通
-    // 图/再开工程时释放即自动清理）；projectMode_ 下 Save/Save As 转为
-    // 重新导出新包（v1 工程只读，不做就地回写）。
+    // ---- .tgp 工程包会话态：打开工程或 Save As 存成 .tgp 时，解包目录由
+    // 会话持有（New/Open 普通图/再开工程时释放即自动清理）；projectMode_ 下
+    // Save = 原地重打包到 currentFilePath_（v1 无就地回写，重打包即等价），
+    // Save As = 重新导出到新 .tgp 路径。
     bool projectMode_ = false;
     std::unique_ptr<QTemporaryDir> projectDir_;
-    QString projectGraphPath_;  // 解包出的图 JSON 路径（导出时的打包源）
+    QString projectGraphPath_;  // 解包出的图 JSON 路径（重打包时的打包源）
 
     CommandStack commandStack_;
     QAction* undoAction_ = nullptr;

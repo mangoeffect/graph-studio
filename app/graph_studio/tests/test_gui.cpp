@@ -182,6 +182,8 @@ private slots:
     void testFileDropPriorityOverText();
     void testNonJsonFileDropIgnored();
     void testWholeWindowFileDrop();
+    void testSaveProjectBundleAnchorsSession();
+    void testSaveProjectBundleFromUnsavedGraph();
     void testExecuteGraphCollectsImageResults();
     void testExecuteGraphFailureFinishes();
     void testAboutDialogBuildInfo();
@@ -815,6 +817,60 @@ void TestGui::testWholeWindowFileDrop()
     sendFileDrop(window_, fileA);
     QCOMPARE(vm_->taskCount(), 1);
     QVERIFY(window_->windowTitle().contains("win_drop"));
+}
+
+// .tgp 默认保存链：json 会话 SaveProjectBundleTo 产出工程包并锚定工程态
+// （后续 Save 原地重打包）；重开包经嗅探进工程分支，节点/边往返一致。
+void TestGui::testSaveProjectBundleAnchorsSession()
+{
+    QTemporaryDir tmpDir;
+    QVERIFY(tmpDir.isValid());
+
+    // 先造 json 会话（= 打开旧 json 后走默认 tgp 另存的入口状态）
+    const QString jsonPath = tmpDir.filePath("anchor.json");
+    const QString idA = vm_->addTask("alpha", 0, 0);
+    const QString idB = vm_->addTask("beta", 200, 0);
+    QVERIFY(vm_->addEdge(idA, idB));
+    QVERIFY(vm_->saveToFile(jsonPath));
+    QVERIFY(window_->OpenGraphAtStartup(jsonPath, false));
+    QVERIFY(!window_->isProjectMode());
+
+    const QString tgpPath = tmpDir.filePath("anchor.tgp");
+    QVERIFY(window_->SaveProjectBundleTo(tgpPath));
+    QVERIFY(QFile::exists(tgpPath));
+    QVERIFY(window_->isProjectMode());
+    QVERIFY(window_->windowTitle().contains("anchor.tgp"));
+
+    // 工程态内再次保存：原地重打包（打包源=解包目录），会话状态不变
+    QVERIFY(window_->SaveProjectBundleTo(tgpPath));
+    QVERIFY(window_->isProjectMode());
+
+    // 重开包：is_project_file 嗅探分流工程分支，图内容往返一致
+    QVERIFY(window_->OpenGraphAtStartup(tgpPath, false));
+    QVERIFY(window_->isProjectMode());
+    QCOMPARE(vm_->taskCount(), 2);
+    QCOMPARE(vm_->edgeCount(), 1);
+    QVERIFY(window_->windowTitle().contains("anchor.tgp"));
+}
+
+// 从未保存的新图：不再要求先存 json——staging 打包（相对引用进
+// manifest.missing 属诚实降级），保存后同样锚定工程态。
+void TestGui::testSaveProjectBundleFromUnsavedGraph()
+{
+    const QString idA = vm_->addTask("alpha", 0, 0);
+    QVERIFY(!idA.isEmpty());
+    QTemporaryDir tmpDir;
+    QVERIFY(tmpDir.isValid());
+
+    const QString tgpPath = tmpDir.filePath("fresh.tgp");
+    QVERIFY(window_->SaveProjectBundleTo(tgpPath));
+    QVERIFY(QFile::exists(tgpPath));
+    QVERIFY(window_->isProjectMode());
+    QVERIFY(window_->windowTitle().contains("fresh.tgp"));
+
+    QVERIFY(window_->OpenGraphAtStartup(tgpPath, false));
+    QCOMPARE(vm_->taskCount(), 1);
+    QVERIFY(window_->isProjectMode());
 }
 
 // "执行图"端到端：真实 DAGExecutor 经 VM 执行 producer→consumer 图，

@@ -136,6 +136,9 @@ def main() -> int:
                          "-sUSE_WEBGPU -sASYNCIFY；GPU/render 子模块编入）。浏览器内 "
                          "WebGPU 经主线程 Asyncify 泵初始化与读写回收；无 WebGPU 的"
                          "浏览器优雅降级。默认关闭：发布 CI 在全量 E2E 验证后翻默认")
+    ap.add_argument("--no-json-export", action="store_true",
+                    help="裁掉 JSON 图导出（Save As 仅 tgp 下载 + 无 Export JSON 菜单；"
+                         "发布 CI 传此旗标；本地 wasm dev 默认保留）")
     ap.add_argument("--emsdk-root", default="", help="emsdk 根目录（默认 $EMSDK_ROOT/$EMSDK）")
     ap.add_argument("--qt-wasm-root", default="",
                     help="Qt wasm 前缀（默认 $QT_WASM_ROOT，回退探测 ~/Qt/<ver>/wasm_multithread）")
@@ -269,6 +272,10 @@ def main() -> int:
             # 内嵌版本直通（app CMake 的版本宏块与 Sentry 共用该缓存变量；
             # wasm 无 Sentry，但 About 对话框同样显示它）
             qt_args.append(f"-DGRAPH_STUDIO_SENTRY_VERSION={args.version}")
+        # JSON 图导出门控：显式传 ON/OFF（脚本是开关的唯一事实源，防上次
+        # 发布构建留在 cache 里的 OFF 污染本地 wasm dev 构建）
+        qt_args.append("-DGRAPH_STUDIO_ENABLE_JSON_EXPORT="
+                       + ("OFF" if args.no_json_export else "ON"))
         if args.wgpu:
             # app 的 EMSCRIPTEN 块按此开关链接 -sUSE_WEBGPU -sASYNCIFY
             #（GpuBootstrap 编入 wgpu 路径；插桩在最终链接由 Binaryen 施加，

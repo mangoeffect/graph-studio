@@ -149,7 +149,8 @@ jobs:
           EXTRA=""
           if [ "$RUNNER_OS" != "macOS" ]; then EXTRA="--download-models"; fi
           if [ "$RUNNER_OS" != "macOS" ]; then export TG_TEST_SKIP_GPU=1; fi
-          python scripts/run_all_test.py -j 3 -v --config Debug $EXTRA --mnn --wgpu
+          # --no-json-export：UI 阶段以发布配置编译（Save As 仅 tgp）
+          python scripts/run_all_test.py -j 3 -v --config Debug $EXTRA --mnn --wgpu --no-json-export
 
       # 原生后端回归（非阻塞附加项）：gpu/render 测试默认走 wgpu 统一后端
       # （WGSL 单源），这里切回各平台原生后端对照（macOS=Metal / Linux=Vulkan）。

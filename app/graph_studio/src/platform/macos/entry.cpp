@@ -109,9 +109,9 @@ int main(int argc, char* argv[])
     // --test-crash：人为触发真实崩溃，验证 crashpad minidump 能上报。
     // 用法：SENTRY_DSN=... graph_studio --test-crash
     bool test_crash = false;
-    // --open <graph.json> [--run]：启动即打开（可选立即执行）。macOS E2E
-    // 的图输入通道——NSOpenPanel 的自动化极不稳定（见 dev-docs/e2e-macos.md），
-    // 命令行传图绕开文件选择器；失败只记日志不弹窗。
+    // --open <graph.json|project.tgp> [--run]：启动即打开（可选立即执行）。
+    // macOS E2E 的图输入通道——NSOpenPanel 的自动化极不稳定（见
+    // dev-docs/e2e-macos.md），命令行传图绕开文件选择器；失败只记日志不弹窗。
     QString openPath;
     bool openRun = false;
     for (int i = 1; i < argc; ++i) {

@@ -115,6 +115,8 @@ def build_stack(cm: CMake, root: Path, lib_build: Path, gs_dir: Path, gs_build: 
         app_defines += [f"-DTASK_GRAPH_ENABLE_WGPU=ON",
                         f"-DWGPU_INCLUDE_DIR={wgpu[0]}",
                         f"-DWGPU_LIBRARY={wgpu[1]}"]
+    # 发布渠道：裁掉 JSON 图导出（Save As 仅 tgp；打开/导入 json 兼容不受影响）
+    app_defines.append("-DGRAPH_STUDIO_ENABLE_JSON_EXPORT=OFF")
     app_defines += gs_sentry.cmake_defines(dsn=sentry_dsn, release=sentry_release)
     if sentry_dsn:
         console.step(f"嵌入 Sentry DSN: {sentry_dsn}")

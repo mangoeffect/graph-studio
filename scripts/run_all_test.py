@@ -115,6 +115,9 @@ def main() -> int:
     ap.add_argument("-v", "--verbose", action="store_true", help="ctest 详细输出")
     ap.add_argument("--cmake", default="", help="cmake 可执行文件路径")
     ap.add_argument("--qt", default="", help="Qt6 前缀（含 lib/cmake/Qt6）")
+    ap.add_argument("--no-json-export", action="store_true",
+                    help="UI 阶段以发布配置裁掉 JSON 图导出（Save As 仅 tgp；"
+                         "CI 构建传此旗标）")
     ap.add_argument("--opencv-dir", default="", help="OpenCV 安装前缀（默认自动探测）")
     ap.add_argument("--skip-framework", action="store_true", help="跳过框架测试阶段")
     ap.add_argument("--skip-submodules", action="store_true", help="跳过子模块测试阶段")
@@ -313,6 +316,9 @@ def main() -> int:
                 defines.append(f"-DCMAKE_PREFIX_PATH={qt_prefix}")
             if opencv_dir and (opencv_dir / "lib").is_dir():
                 defines.append(f"-DOpenCV_DIR={opencv_dir / 'lib'}")
+            # JSON 图导出门控：显式传 ON/OFF（防上次调用留在 cache 里的值污染）
+            defines.append("-DGRAPH_STUDIO_ENABLE_JSON_EXPORT="
+                           + ("OFF" if args.no_json_export else "ON"))
             if cm.configure(gs_dir, gs_build, defines=defines, build_type=args.config) != 0:
                 return 1
             if cm.build(gs_build, config=args.config, jobs=jobs, target=UI_TARGETS,

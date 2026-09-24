@@ -289,6 +289,10 @@ if (-not $SkipBuild -and -not $SkipSentry) {
 if (-not $SkipBuild -and $SentryRelease) {
     $SentryDefines += "-DGRAPH_STUDIO_SENTRY_VERSION=$SentryRelease"
 }
+# 发布渠道：裁掉 JSON 图导出（Save As 仅 tgp；打开/导入 json 兼容不受影响）
+if (-not $SkipBuild) {
+    $SentryDefines += "-DGRAPH_STUDIO_ENABLE_JSON_EXPORT=OFF"
+}
 if (-not $SkipBuild) {
     $Build = Build-GraphStudioStack -Env $Env -Config $Config -Jobs $Jobs -Clean:$Clean -AppDefines $SentryDefines
 } else {

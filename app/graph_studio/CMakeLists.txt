@@ -96,6 +96,19 @@ set(PROJECT_SOURCES
 # .tgp 工程包读写（miniz zip 容器）自 SDK 起编入 libtask_graph
 # （include/task_graph/project_bundle.hpp），app 只消费其 API。
 
+# ---- JSON 图导出门控（本地开发 vs CI/发布渠道）----
+# Save As 默认 tgp 工程包；JSON 文件导出（Save As 的 json 过滤器项 +
+# Export JSON 菜单）仅本地开发构建保留。CI（tests/graphstudio-build）与
+# 发布渠道（package_*/build_msix/release wasm）全部显式传 OFF。
+# 注意：必须目录级 add_compile_definitions（同 GRAPH_STUDIO_HAS_SENTRY），
+# test_gui 直接编译 MainWindow.cpp，target PRIVATE 定义测试目标看不到。
+# 图的打开/导入（json 兼容）与内部 JSON 序列化不受此开关影响。
+option(GRAPH_STUDIO_ENABLE_JSON_EXPORT
+       "Save As 可选 JSON 图导出（本地开发默认 ON；CI/发布渠道传 OFF，仅 tgp）" ON)
+if(GRAPH_STUDIO_ENABLE_JSON_EXPORT)
+    add_compile_definitions(GRAPH_STUDIO_ENABLE_JSON_EXPORT=1)
+endif()
+
 # ---- 崩溃上报模块（Sentry + Crashpad，仅桌面端）----
 # sentry-native 及其递归子模块 crashpad 由 scripts/fetch_sentry.py 拉取到
 # third_party/sentry-native（固定版本，gitignored）。未拉取时构建照常进行，

@@ -90,8 +90,10 @@ jobs:
 
       - name: Configure + build GraphStudio stack (RelWithDebInfo)
         shell: bash
+        # --no-json-export：以发布配置编译（Save As 仅 tgp），CI 顺带验证
+        # 裁掉 JSON 导出的宏关路径在三 OS 可编译。
         run: |
-          python scripts/run_graph_studio.py --build-only --config RelWithDebInfo -j 3 --mnn
+          python scripts/run_graph_studio.py --build-only --config RelWithDebInfo -j 3 --mnn --no-json-export
 
       - name: Verify build artifact exists
         shell: bash

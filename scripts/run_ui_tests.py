@@ -44,6 +44,9 @@ def main() -> int:
     ap.add_argument("--all", action="store_true", help="跑全部 graph_studio 测试（含单元/集成）")
     ap.add_argument("-v", "--verbose", action="store_true", help="ctest 详细输出")
     ap.add_argument("--qt", default="", help="Qt6 前缀（含 lib/cmake/Qt6）")
+    ap.add_argument("--no-json-export", action="store_true",
+                    help="裁掉 JSON 图导出（Save As 仅 tgp + 无 Export JSON 菜单；"
+                         "默认保留——CI 构建传此旗标与发布配置对齐）")
     ap.add_argument("--config", "--build-type", default="Debug",
                     choices=["Debug", "Release", "RelWithDebInfo", "MinSizeRel"],
                     help="构建配置（默认 Debug）")
@@ -82,6 +85,9 @@ def main() -> int:
         qt_prefix = deps.find_qt(args.qt or None)
         if qt_prefix:
             defines.append(f"-DCMAKE_PREFIX_PATH={qt_prefix}")
+        # JSON 图导出门控：显式传 ON/OFF（防上次调用留在 cache 里的值污染）
+        defines.append("-DGRAPH_STUDIO_ENABLE_JSON_EXPORT="
+                       + ("OFF" if args.no_json_export else "ON"))
         console.step("配置 graph_studio")
         if cm.configure(gs_dir, gs_build, defines=defines, build_type=args.config) != 0:
             return 1

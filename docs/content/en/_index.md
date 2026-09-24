@@ -10,7 +10,7 @@ graphStudio:
   bullets:
     - "Drag-and-drop nodes and port connections to compose graphs visually"
     - "One-click run with per-task status and duration"
-    - "Graphs save as JSON, fully interoperable with the C++ `DAGSerializer`"
+    - "Graphs save as `.tgp` project bundles (graph + assets in one shareable file); JSON stays fully interoperable with the C++ `DAGSerializer`"
     - "Ships with OpenCV / GPU / JavaScript / MediaPipe plugin tasks"
   tutorialLabel: "Read the tutorial"
 features:

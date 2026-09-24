@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import time
+import zipfile
 
 from gs import console
 from .app import AppSession, wait_until
@@ -181,13 +182,25 @@ def run(pkg, report, fixtures, ctx) -> None:
                 report.record(full, "fail", f"{type(e).__name__}: {e}",
                               exc=e, app_state=state)
 
-        # 末尾：Save As 落盘 JSON 往返（用当前画布=最后一个用例的图）
+        # 末尾：Save As 落盘 .tgp 工程包往返（用当前画布=最后一个用例的图）。
+        # 发布/E2E 构建经 build_msix.ps1 传 GRAPH_STUDIO_ENABLE_JSON_EXPORT=OFF，
+        # Save As 只有 tgp 过滤器；包校验走 zipfile（manifest + entry 图 json）。
         report.begin("core/save_roundtrip")
         try:
-            saved = report.path("core_saved.json")
+            saved = report.path("core_saved.tgp")
             s.menu_save_as(saved)
             wait_until(lambda: saved.is_file(), desc=f"保存文件出现 {saved}")
-            data = json.loads(saved.read_text(encoding="utf-8"))
+            with zipfile.ZipFile(saved) as zf:
+                names = set(zf.namelist())
+                if "manifest.json" not in names:
+                    raise AssertionError(f"包内无 manifest.json: {sorted(names)}")
+                manifest = json.loads(zf.read("manifest.json").decode("utf-8"))
+                if manifest.get("format") != "graph-studio.project":
+                    raise AssertionError(f"format 不符: {manifest.get('format')}")
+                entry = manifest.get("entry", "")
+                if entry not in names:
+                    raise AssertionError(f"entry {entry} 不在包内: {sorted(names)}")
+                data = json.loads(zf.read(entry).decode("utf-8"))
             if data.get("version") != "2.0":
                 raise AssertionError(f"version != 2.0: {data.get('version')}")
             n_tasks, n_edges = s.status_counts()
@@ -197,10 +210,10 @@ def run(pkg, report, fixtures, ctx) -> None:
             if len(data.get("edges", [])) != n_edges:
                 raise AssertionError(f"保存边数 {len(data.get('edges', []))} "
                                      f"!= 画布 {n_edges}")
-            if "core_saved.json" not in s.win.window_text():
+            if "core_saved.tgp" not in s.win.window_text():
                 raise AssertionError(f"标题未更新: {s.win.window_text()}")
             report.record("core/save_roundtrip", "pass",
-                          f"{n_tasks} tasks / {n_edges} edges 已校验",
+                          f"{n_tasks} tasks / {n_edges} edges 已校验（tgp）",
                           artifacts=[str(saved)])
         except Exception as e:
             try:

@@ -10,7 +10,7 @@ graphStudio:
   bullets:
     - "拖拽节点、连线端口，可视化构建计算图"
     - "一键运行，实时查看每个任务的状态与耗时"
-    - "图保存为 JSON，与 C++ 侧 `DAGSerializer` 完全互通"
+    - "图保存为 `.tgp` 工程包（图 + 资产单文件分享），JSON 与 C++ 侧 `DAGSerializer` 完全互通"
     - "内置 OpenCV / GPU / JS 脚本 / MediaPipe 插件任务"
   tutorialLabel: "阅读上手教程"
 features:
