@@ -103,6 +103,16 @@ def download_models(root: Path) -> None:
     console.step("下载 MediaPipe 模型")
     if runner.check([sys.executable, str(script)], what="下载 MediaPipe 模型") != 0:
         console.warn("模型下载失败（mediapipe 测试将软跳过）")
+    # matting 的 mp 模型（selfie_segmenter.tflite → tests/models/matting/）
+    # 由独立脚本产出——不补跑的话 matting_mp/auto 图在真 libvision 环境下
+    # 因模型缺失硬失败（2026-09-25 ubuntu CI 首次暴露：GLIBCXX 修复打通
+    # 测试阶段后）。modnet.mnn 转换腿需要 mnnconvert，缺失时脚本可能失败，
+    # 但 selfie 下载在前、已落盘——仅告警不阻塞（matting_mnn 软跳过）。
+    matting = root / "scripts" / "download_matting_models.py"
+    if matting.is_file():
+        console.step("下载 matting 模型")
+        if runner.check([sys.executable, str(matting)], what="下载 matting 模型") != 0:
+            console.warn("matting 模型下载/转换未全部完成（mnn 腿将软跳过）")
 
 
 def main() -> int:

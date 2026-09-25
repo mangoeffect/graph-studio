@@ -790,7 +790,8 @@ ALL_VISION_LIBS = [
 ]
 
 
-def patch_vision_build(mp_src: Path, vs_abs_path: Optional[str] = None) -> None:
+def patch_vision_build(mp_src: Path, vs_abs_path: Optional[str] = None,
+                       inject_static_libstdc: bool = False) -> None:
     """修正 VISION_LIBRARIES 为全部 11 个模块的 C API；写导出符号白名单；补 dylib linkopts。
 
     vs_abs_path：ELF version-script 的绝对路径（Docker 路径下源码挂载为 /work，
@@ -864,27 +865,32 @@ def patch_vision_build(mp_src: Path, vs_abs_path: Optional[str] = None) -> None:
         vs_abs_path = str(version_map).replace("\\", "/")
     if 'name = "libvision.so"' in s:
         # 幂等：先清掉旧补丁插入的 version-script / 静态 libstdc++ 行
-        # （路径形态可能变化；static-libstdc 是历史两代写法，一并清）
+        # （路径形态可能变化；static-libstdc 是历史两代写法，一并清——同一
+        # 源码树可能先后服务 Linux 与 Android 构建，注入必须按当次平台切换）
         s = re.sub(r' *"-Wl,--version-script=[^"]*",\n', "", s)
         s = re.sub(r' *"-static-libstdc\+\+",\n', "", s)
         s = re.sub(r' *"-Wl,-Bstatic,-lstdc\+\+,-Bdynamic",\n', "", s)
-        # 静态链 libstdc++（仅 Linux .so 目标）：CI 用 gcc-13 构建（mediapipe
-        # v1.0.0 需要的 C++20 特性 gcc-11 编不过），产物引用 GLIBCXX_3.4.31/32
-        # 符号；主构建/测试链接用系统 gcc-11（libstdc++ ≤3.4.30）→ undefined
-        # reference（2026-09-18 起主仓库 Tests 连红的根因）。C API（Mp*）边界
-        # 纯 C、无跨边界 C++ 对象，进程内双 libstdc++ 副本无 ABI 风险。
-        # 必须用 -Wl,-Bstatic,-lstdc++,-Bdynamic 原位三连而不是驱动级
-        # -static-libstdc++：后者由 gcc 驱动展开后追加在命令行末尾，bazel
-        # 工具链自带的动态 -lstdc++ 在前面把全部符号解析成动态引用（2026-09-24
-        # docker 复现实测：补丁在 BUILD 里、.so 仍整库动态依赖，仅 2 个 gcc-13
-        # 新符号 _ZSt21ios_base_library_initv@3.4.32 与
-        # basic_string::_M_replace_cold@3.4.31 以高版本 UND 露出）。原位三连
-        # 在用户 linkopts 区先静态搜归档，隐式动态 -lstdc++ 晚到无符号可解析。
+        # 静态链 libstdc++（仅 Linux 本机/Docker 的 .so 构建，inject_static_libstdc
+        # 控制）：CI 用 gcc-13 构建（mediapipe v1.0.0 需要的 C++20 特性 gcc-11 编
+        # 不过），产物引用 GLIBCXX_3.4.31/32 符号；主构建/测试链接用系统 gcc-11
+        # （libstdc++ ≤3.4.30）→ undefined reference（2026-09-18 起主仓库 Tests
+        # 连红的根因）。C API（Mp*）边界纯 C、无跨边界 C++ 对象，进程内双
+        # libstdc++ 副本无 ABI 风险。必须用 -Wl,-Bstatic,-lstdc++,-Bdynamic
+        # 原位三连而不是驱动级 -static-libstdc++：后者由 gcc 驱动展开后追加在
+        # 命令行末尾，bazel 工具链自带的动态 -lstdc++ 在前面把全部符号解析成
+        # 动态引用（2026-09-24 docker 复现实测：补丁在 BUILD 里、.so 仍整库动态
+        # 依赖，仅 2 个 gcc-13 新符号以高版本 UND 露出）。原位三连在用户
+        # linkopts 区先静态搜归档，隐式动态 -lstdc++ 晚到无符号可解析。
+        # **Android 绝不能注入**：同一个 libvision.so 目标被 --config=android_arm64
+        # 交叉构建，NDK 工具链没有 libstdc++（Android 用 libc++），ld.lld 直接
+        # "unable to find library -lstdc++"（2026-09-25 CI android-sdk job 实证）。
+        version_script_line = (
+            f"        \"-Wl,--version-script={vs_abs_path}\",\n")
+        if inject_static_libstdc:
+            version_script_line += '        "-Wl,-Bstatic,-lstdc++,-Bdynamic",\n'
         s = s.replace(
             "        \"-Wl,-soname=libvision.so\",\n",
-            "        \"-Wl,-soname=libvision.so\",\n"
-            f"        \"-Wl,--version-script={vs_abs_path}\",\n"
-            '        "-Wl,-Bstatic,-lstdc++,-Bdynamic",\n', 1)
+            "        \"-Wl,-soname=libvision.so\",\n" + version_script_line, 1)
         so_block = s.split('name = "libvision.so"', 1)[1]
         if 'data = ["exported_symbols.txt"]' in so_block.split("cc_binary", 1)[0]:
             s = s.replace(
@@ -1428,10 +1434,12 @@ def main() -> int:
         patch_linux_opencv4(mp_src)
         # vision BUILD 补丁（锚点 srcs + 导出清单 + ELF version script）对
         # Docker 内的 .so 构建同样必需：容器里跑的就是这份挂载源码，未补丁时
-        # 产出的同样是空壳 .so；version script 传容器内视角路径
+        # 产出的同样是空壳 .so；version script 传容器内视角路径。静态
+        # libstdc++ 三连仅 Linux .so 需要（Android NDK 无 libstdc++）。
         patch_vision_build(
             mp_src,
-            vs_abs_path="/work/mediapipe/tasks/c/vision/vision_export.map")
+            vs_abs_path="/work/mediapipe/tasks/c/vision/vision_export.map",
+            inject_static_libstdc=True)
         code = run_docker_linux_build(mp_src, mp_build, jobs, eigen_patched)
         if code != 0:
             console.fail(f"Docker Linux 构建失败 (exit {code})")
@@ -1476,7 +1484,13 @@ def main() -> int:
         # 此前漏掉 SO targets，CI 上 BUILD 从未打补丁 → 空 .so 复发）
         patched_targets = MP_TARGETS_FULL + MP_TARGETS_WIN + MP_TARGETS_SO
         if any(t in patched_targets for t in mp_targets):
-            patch_vision_build(mp_src)
+            # 静态 libstdc++ 三连只在 Linux 本机构建 .so 时注入（CI ubuntu 的
+            # --platform host；Android/iOS/Windows/macOS 不注——NDK 无 libstdc++，
+            # 其余平台不需要。同一源码树跨平台复用时靠幂等清理切换）。
+            native_linux_so = (args.platform in ("host", "linux")
+                               and platform.is_linux())
+            patch_vision_build(mp_src,
+                               inject_static_libstdc=native_linux_so)
 
         build_flags = ["--define=MEDIAPIPE_DISABLE_GPU=1"]
         if args.platform == "ios":

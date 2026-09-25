@@ -65,6 +65,24 @@ std::vector<unsigned char> ReadBytes(const std::string& path)
                                       std::istreambuf_iterator<char>());
 }
 
+// 把本机路径嵌进 JSON 字符串字面量（镜像 nlohmann dump() 的转义）。
+// Windows 原生路径带反斜杠：裸拼进 JSON 文本会形成非法转义序列
+// （\a \g …）或撞上合法转义（\t \n）静默损坏路径——打包器解析图失败后
+// 静默降级为零引用，2026-09-25 Windows CI 的两个重映射用例即栽在此。
+std::string JsonEscape(const std::string& s)
+{
+    std::string out;
+    out.reserve(s.size());
+    for (char c : s) {
+        switch (c) {
+        case '\\': out += "\\\\"; break;
+        case '"':  out += "\\\""; break;
+        default:   out += c; break;
+        }
+    }
+    return out;
+}
+
 void ReplaceAll(std::string* s, const std::string& from, const std::string& to)
 {
     ASSERT_EQ(from.size(), to.size());  // 等长替换不破坏 zip 结构
@@ -351,13 +369,14 @@ TEST_F(ProjectBundleTest, RemapsAbsoluteRefsIntoBundle)
     // file_path 不得重写（运行期输出会覆盖包内资产）；磁盘原 json 不动。
     const std::string abs = (root_ / "data/abs_input.png").string();
     WriteBytes(abs, asset_.data(), asset_.size());
+    const std::string abs_json = JsonEscape(abs);
     const std::string json = std::string(R"JSON({
   "version": "2.0",
   "tasks": [
     { "id": "src", "type": "opencv_image_read",
-      "params": { "file_path": ")JSON") + abs + R"JSON(" } },
+      "params": { "file_path": ")JSON") + abs_json + R"JSON(" } },
     { "id": "out", "type": "opencv_image_write",
-      "params": { "file_path": ")JSON" + abs + R"JSON(" } }
+      "params": { "file_path": ")JSON" + abs_json + R"JSON(" } }
   ],
   "edges": []
 })JSON";
@@ -398,16 +417,17 @@ TEST_F(ProjectBundleTest, RemapsAbsoluteRefsIntoBundle)
     EXPECT_TRUE(asset_back == asset_);
 
     // 包内图副本：reader 引用已重写为包内相对路径（含 assets/ 字面量）；
-    // 绝对路径原文只应剩 writer 那一处（原 json 中出现两次）
+    // 绝对路径原文只应剩 writer 那一处（原 json 中出现两次）。dump 侧文本是
+    // JSON 转义形态（Windows 反斜杠 → \\），按转义形态计数。
     const auto gbytes = ReadBytes(opened.graph_path);
     const std::string gtext(gbytes.begin(), gbytes.end());
     EXPECT_NE(gtext, json);  // 确为重写副本
     EXPECT_NE(gtext.find("\"assets/abs_input.png\""), std::string::npos);
     size_t pos = 0;
     int count = 0;
-    while ((pos = gtext.find(abs, pos)) != std::string::npos) {
+    while ((pos = gtext.find(abs_json, pos)) != std::string::npos) {
         ++count;
-        pos += abs.size();
+        pos += abs_json.size();
     }
     EXPECT_EQ(count, 1) << "writer 的 file_path 不应被重写";
 }
@@ -423,13 +443,15 @@ TEST_F(ProjectBundleTest, RemapConflictDedupDotfiles)
     const std::string lut_b = (root_ / "lut_b/.cube").string();
     WriteBytes(lut_a, "LUT_A", 5);
     WriteBytes(lut_b, "LUT_B", 5);
+    const std::string lut_a_json = JsonEscape(lut_a);
+    const std::string lut_b_json = JsonEscape(lut_b);
     const std::string json = std::string(R"JSON({
   "version": "2.0",
   "tasks": [
     { "id": "lut1", "type": "render_lut_cube",
-      "params": { "cube_path": ")JSON") + lut_a + R"JSON(" } },
+      "params": { "cube_path": ")JSON") + lut_a_json + R"JSON(" } },
     { "id": "lut2", "type": "render_lut_cube",
-      "params": { "cube_path": ")JSON" + lut_b + R"JSON(" } }
+      "params": { "cube_path": ")JSON" + lut_b_json + R"JSON(" } }
   ],
   "edges": []
 })JSON";
@@ -454,13 +476,14 @@ TEST_F(ProjectBundleTest, RemapConflictDedupDotfiles)
     std::string err;
     ASSERT_TRUE(task_graph::open_project(tgp, ex, &opened, &err)) << err;
 
-    // 包内图副本：两个引用分别重写为各自的包内条目，绝对路径原文 0 次
+    // 包内图副本：两个引用分别重写为各自的包内条目（dump 侧为 JSON 转义
+    // 形态，绝对路径原文按转义形态断言不存在）
     const auto gbytes = ReadBytes(opened.graph_path);
     const std::string gtext(gbytes.begin(), gbytes.end());
     EXPECT_NE(gtext.find("\"assets/.cube\""), std::string::npos);
     EXPECT_NE(gtext.find("\"assets/.cube_2\""), std::string::npos);
-    EXPECT_EQ(gtext.find(lut_a), std::string::npos);
-    EXPECT_EQ(gtext.find(lut_b), std::string::npos);
+    EXPECT_EQ(gtext.find(lut_a_json), std::string::npos);
+    EXPECT_EQ(gtext.find(lut_b_json), std::string::npos);
 
     // 资产内容按条目名各就各位（内容可区分，证明没有互覆）
     const auto back_a = ReadBytes((fs::path(ex) / "assets/.cube").string());
