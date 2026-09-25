@@ -1,4 +1,4 @@
-#ifndef COMMAND_STACK_H
+﻿#ifndef COMMAND_STACK_H
 #define COMMAND_STACK_H
 
 #include <QObject>

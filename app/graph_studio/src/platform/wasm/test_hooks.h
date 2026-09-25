@@ -1,4 +1,4 @@
-#ifndef GRAPH_STUDIO_TEST_HOOKS_H
+﻿#ifndef GRAPH_STUDIO_TEST_HOOKS_H
 #define GRAPH_STUDIO_TEST_HOOKS_H
 
 namespace graph_studio {

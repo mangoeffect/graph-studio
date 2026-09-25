@@ -1,4 +1,4 @@
-// MediaPipe Vision 引擎实现（pimpl）：全部 Mp* C API 调用集中于此。
+﻿// MediaPipe Vision 引擎实现（pimpl）：全部 Mp* C API 调用集中于此。
 // TASK_GRAPH_MEDIAPIPE_AVAILABLE 时为真实实现；否则 create() 恒失败（stub）。
 #include <task_graph/mediapipe/vision_engine.hpp>
 

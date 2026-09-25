@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 // MetalGpuBackend 的 pimpl 实现类定义：metal_backend.mm 与 metal_render.mm
 // 两个翻译单元共享（私有头，不进 public include/）。

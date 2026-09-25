@@ -1,4 +1,4 @@
-#ifndef GRAPH_STUDIO_GPU_BOOTSTRAP_H
+﻿#ifndef GRAPH_STUDIO_GPU_BOOTSTRAP_H
 #define GRAPH_STUDIO_GPU_BOOTSTRAP_H
 
 namespace graph_studio {

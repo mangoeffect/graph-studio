@@ -1,4 +1,4 @@
-#ifndef TASK_CATALOG_H
+﻿#ifndef TASK_CATALOG_H
 #define TASK_CATALOG_H
 
 // TaskCatalog：task 类型内省缓存（应用侧）。

@@ -1,4 +1,4 @@
-#include "test_hooks.h"
+﻿#include "test_hooks.h"
 
 // 本文件整体为 WASM 专属（桌面 no-op）。E2E 驱动契约见 scripts/e2e_wasm/。
 #ifdef __EMSCRIPTEN__

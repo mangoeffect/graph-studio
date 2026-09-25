@@ -1,4 +1,4 @@
-#include "viewmodel/GraphViewModel.h"
+﻿#include "viewmodel/GraphViewModel.h"
 
 #include <QFile>
 #include <QFileInfo>

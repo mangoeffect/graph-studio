@@ -1,4 +1,4 @@
-// Test: JsEngine 引擎契约（核心库公共 API include/task_graph/js/）。
+﻿// Test: JsEngine 引擎契约（核心库公共 API include/task_graph/js/）。
 // 供 render 等子模块消费者引用的最小面：eval/callFunction/异常消息/
 // 多实例并行（QuickJS runtime 非线程安全，但每实例一个 runtime 互不干扰）。
 #include <task_graph/js/js_engine.hpp>

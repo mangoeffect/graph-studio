@@ -1,4 +1,4 @@
-#include "view/AboutDialog.h"
+﻿#include "view/AboutDialog.h"
 #include "Brand.h"
 
 #include <task_graph_api.hpp>

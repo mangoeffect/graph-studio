@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <task_graph/data_types.hpp>
 #include <task_graph/gpu_render_ops.hpp>

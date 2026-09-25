@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 // GPU 渲染（离屏 render-to-texture）能力的描述类型与 Image 侧辅助函数。
 //

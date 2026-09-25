@@ -1,4 +1,4 @@
-#include "viewmodel/ImageResultStore.h"
+﻿#include "viewmodel/ImageResultStore.h"
 
 #include <task_graph_api.hpp>
 #include <opencv2/opencv.hpp>

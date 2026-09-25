@@ -1,4 +1,4 @@
-#include "view/ImageViewer.h"
+﻿#include "view/ImageViewer.h"
 
 #include <QMouseEvent>
 #include <QPainter>

@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 // WgpuGpuBackend：基于 wgpu-native（C API）的统一 GPU 后端。
 //

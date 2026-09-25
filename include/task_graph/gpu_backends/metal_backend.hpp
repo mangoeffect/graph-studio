@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <task_graph/gpu_image_ops.hpp>
 

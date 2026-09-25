@@ -1,4 +1,4 @@
-#include <QApplication>
+﻿#include <QApplication>
 #include <QMainWindow>
 #include <QIcon>
 #include <QSize>

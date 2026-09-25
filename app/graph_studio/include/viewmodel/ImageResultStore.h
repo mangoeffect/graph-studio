@@ -1,4 +1,4 @@
-#ifndef IMAGE_RESULT_STORE_H
+﻿#ifndef IMAGE_RESULT_STORE_H
 #define IMAGE_RESULT_STORE_H
 
 // ImageResultStore：执行后图像结果的采集与懒转换（应用侧）。

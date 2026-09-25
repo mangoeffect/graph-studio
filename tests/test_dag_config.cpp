@@ -1,4 +1,4 @@
-// 只读 DAG JSON 配置 API 测试(DagConfigLoader/DagConfig)。
+﻿// 只读 DAG JSON 配置 API 测试(DagConfigLoader/DagConfig)。
 // 覆盖:加载与快照、v1.0 legacy、诊断(语法行列号/schema/语义)、TypeCheck、
 //       metadata、load_file/_source_dir、to_dag 与 DAGSerializer 的 golden 等价。
 #include <task_graph/task_graph.hpp>

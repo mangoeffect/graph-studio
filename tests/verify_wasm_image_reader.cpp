@@ -1,4 +1,4 @@
-// WASM MEMFS 线程验证：ImageReadTask 在 worker 线程通过 executor 执行时，
+﻿// WASM MEMFS 线程验证：ImageReadTask 在 worker 线程通过 executor 执行时，
 // 能否从 MEMFS 路径 imread 成功。
 #include <task_graph/task_graph.hpp>
 #include <task_graph/task_context.hpp>

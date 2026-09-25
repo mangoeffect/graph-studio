@@ -1,4 +1,4 @@
-// tg_e2e_runner — Android 无头 graph E2E runner（GraphStudio 自动化测试的
+﻿// tg_e2e_runner — Android 无头 graph E2E runner（GraphStudio 自动化测试的
 // Android 轨道，对齐 macOS/WASM E2E 的图执行通道与日志断言契约）。
 //
 // 为什么是 runner 而不是 app：Android 侧仓库只产出 dist/android/ 静态库 SDK

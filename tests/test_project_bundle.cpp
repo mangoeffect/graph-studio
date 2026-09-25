@@ -1,4 +1,4 @@
-// .tgp 工程包纯逻辑测试：pack→open round-trip、解包布局契约
+﻿// .tgp 工程包纯逻辑测试：pack→open round-trip、解包布局契约
 //（resolve_asset_path 对解包目录首次探测命中——运行期读任务的资产解析
 // 不经任何改写）、内存通道（open_project_memory）、zip-slip/超限拒绝、
 // manifest.missing 记录、嗅探。不做真实任务执行：带真图执行的端到端由

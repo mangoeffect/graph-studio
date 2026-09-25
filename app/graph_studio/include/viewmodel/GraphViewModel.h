@@ -1,4 +1,4 @@
-#ifndef GRAPH_VIEW_MODEL_H
+﻿#ifndef GRAPH_VIEW_MODEL_H
 #define GRAPH_VIEW_MODEL_H
 
 #include <QObject>

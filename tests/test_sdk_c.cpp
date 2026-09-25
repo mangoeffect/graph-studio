@@ -1,4 +1,4 @@
-// 纯 C API(tg_sdk_c.h)功能测试。调用方是 C++(gtest),但只经 C 接口操作。
+﻿// 纯 C API(tg_sdk_c.h)功能测试。调用方是 C++(gtest),但只经 C 接口操作。
 // 覆盖:生命周期、加载诊断(行列号/缓冲拷贝语义)、类型化绑定/拉取、图像
 //       句柄、env/globals、推模式通知回调、异步执行、diff 报告。
 #include <task_graph/tg_sdk_c.h>

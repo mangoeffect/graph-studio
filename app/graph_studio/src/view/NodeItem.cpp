@@ -1,4 +1,4 @@
-#include "view/NodeItem.h"
+﻿#include "view/NodeItem.h"
 #include "view/EdgeItem.h"
 #include "viewmodel/GraphViewModel.h"
 

@@ -1,4 +1,4 @@
-#include "view/ProfilePanel.h"
+﻿#include "view/ProfilePanel.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>

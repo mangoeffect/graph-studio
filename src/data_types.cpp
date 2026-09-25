@@ -1,4 +1,4 @@
-#include <task_graph/data_types.hpp>
+﻿#include <task_graph/data_types.hpp>
 #include <task_graph/gpu_image_ops.hpp>
 
 #ifdef TASK_GRAPH_ENABLE_OPENCV

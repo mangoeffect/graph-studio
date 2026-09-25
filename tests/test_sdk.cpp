@@ -1,4 +1,4 @@
-// TaskGraph SDK 生命周期测试。
+﻿// TaskGraph SDK 生命周期测试。
 // 覆盖:生命周期状态机、graph 加载、输入/输出绑定(拉/推模式)、类型前置校验、
 //       globals/env 上下文注入、diff 增量更新(热状态保留)、异步执行、
 //       LogSink 注销安全、与裸 DAGExecutor 的等价性。

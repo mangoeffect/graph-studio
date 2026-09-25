@@ -1,4 +1,4 @@
-#ifndef GRAPH_SCENE_H
+﻿#ifndef GRAPH_SCENE_H
 #define GRAPH_SCENE_H
 
 #include <QGraphicsScene>

@@ -1,4 +1,4 @@
-// Vulkan 渲染能力（离屏 render-to-texture）：VulkanGpuBackend 的 render 段实现。
+﻿// Vulkan 渲染能力（离屏 render-to-texture）：VulkanGpuBackend 的 render 段实现。
 //
 // 模型（与 gpu_render_ops.hpp 的接口契约一致）：
 //   - 纹理：VkImage（OPTIMAL tiling，COLOR_ATTACHMENT|SAMPLED|TRANSFER usage）+

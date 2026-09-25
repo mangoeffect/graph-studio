@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     build_msix.ps1 - One-click build + package of GraphStudio into an MSIX for
     the Microsoft Store.

@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <task_graph/compiler.hpp>
 #include <task_graph/thread_pool.hpp>

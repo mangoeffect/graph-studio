@@ -1,4 +1,4 @@
-#include "view/MainWindow.h"
+﻿#include "view/MainWindow.h"
 #include "view/GraphScene.h"
 #include "view/GraphView.h"
 #include "view/NodeItem.h"

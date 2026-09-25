@@ -1,4 +1,4 @@
-// Test: RunLoop multi-run session (Once / NTimes / Loop + pause/cancel +
+﻿// Test: RunLoop multi-run session (Once / NTimes / Loop + pause/cancel +
 // ResultRetention policies). Mock int-source graph, no OpenCV dependency.
 //
 //  1) Once mode: run_all executes exactly one run, summary ok

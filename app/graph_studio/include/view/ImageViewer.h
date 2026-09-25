@@ -1,4 +1,4 @@
-#ifndef IMAGE_VIEWER_H
+﻿#ifndef IMAGE_VIEWER_H
 #define IMAGE_VIEWER_H
 
 #include <QImage>
