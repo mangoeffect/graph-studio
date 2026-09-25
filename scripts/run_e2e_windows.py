@@ -70,9 +70,12 @@ def build_msix(args) -> Path:
         cmd += ["-Jobs", str(args.jobs)]
     if args.clean:
         cmd += ["-Clean"]
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)
+    # encoding 显式指定：powershell 在 zh-CN 控制台输出 GBK，默认 UTF-8 解码会在
+    # reader 线程抛 UnicodeDecodeError（proc.stdout 变 None，真实报错被吞）。
+    proc = subprocess.run(cmd, capture_output=True, text=True,
+                          encoding="locale", errors="replace", timeout=3600)
     if proc.returncode != 0:
-        console.fail(proc.stdout[-4000:] + proc.stderr[-2000:])
+        console.fail((proc.stdout or "")[-4000:] + (proc.stderr or "")[-2000:])
         sys.exit(1)
     out_dir = repo_root() / "dist" / "msix"
     pkgs = sorted(out_dir.glob("graph_studio-*.msix"), key=lambda p: p.stat().st_mtime)

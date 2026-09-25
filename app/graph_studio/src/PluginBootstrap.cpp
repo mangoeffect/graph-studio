@@ -1,4 +1,4 @@
-#include "PluginBootstrap.h"
+﻿#include "PluginBootstrap.h"
 
 #include <task_graph_api.hpp>
 
@@ -41,7 +41,14 @@ static QStringList collectPluginFiles(const QDir& dir, const QString& preferConf
             for (const auto& sub : allSubs) {
                 if (sub.fileName() == preferConfig) sameConfig.append(sub);
             }
-            if (!sameConfig.isEmpty()) subs = sameConfig;
+            if (!sameConfig.isEmpty()) {
+                subs = sameConfig;
+            } else {
+                // exe 配置目录名在产物目录里没有对应 <Config> 子目录（如打包态
+                // 的 "staging"）：宁可空手而归也不回退扫全部配置——异配置 DLL
+                // 跨 CRT 加载/初始化失败会毒化加载器，殃及后续所有 LoadLibrary。
+                return files;
+            }
         }
         for (const auto& sub : subs) {
             // 跳过备份/历史目录（如切换 Config 后遗留的 RelWithDebInfo.bak）：
@@ -122,9 +129,16 @@ PluginLoadResult LoadBuiltinPlugins()
 
     // 2) 开发期路径：<root>/build/submodules/*
     //    只收集与 exe 同构建配置的插件产物（见 collectPluginFiles）。
-    const QString exeConfig = QDir(QCoreApplication::applicationDirPath()).dirName();
+    //    打包布局（exe 旁有 PlugIns/）自包含，跳过 dev 树扫描：staging/安装态
+    //    的 exe 若被 deduceRepoRoot 命中仓库根，会把 build 树里异配置的 DLL
+    //    一并拖入（配置名 "staging" 匹配不到 <Config>），异配置插件初始化失败
+    //    毒化加载器后连 PlugIns\ 里的正确产物都加载不出，GUI 启动即 fastfail。
+    const QString appDir = QCoreApplication::applicationDirPath();
+    const bool packagedLayout = QDir(appDir + "/PlugIns").exists()
+                             || QDir(appDir + "/../PlugIns").exists();
+    const QString exeConfig = QDir(appDir).dirName();
     const QString root = deduceRepoRoot();
-    if (!root.isEmpty()) {
+    if (!packagedLayout && !root.isEmpty()) {
         const QDir submodsDir(root + "/build/submodules");
         if (submodsDir.exists()) {
             for (const auto& sub : submodsDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {

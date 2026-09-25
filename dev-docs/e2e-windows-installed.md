@@ -161,6 +161,16 @@ Explorer 窗口（按 HWND 差集，不动用户已有窗口）。
    `JsTask::param_specs()` 在 specs 为空时静态返回 script_path。
 2. **另存后窗口标题不更新**：`ActionSaveAs` 设置 `currentFilePath_` 后未调
    `UpdateWindowTitle()`（与 Open 行为不一致）。修复：补调用。
+3. **dev 机器上安装态启动即 fastfail（0xc0000409），插件 39/40 加载失败**
+   （2026-09-25）：staging/安装态 exe 位于仓库目录下时被 `deduceRepoRoot`
+   命中，dev 树扫描把 `build/submodules/*/{Debug,RelWithDebInfo}` 全部拖入
+   ——exe 配置目录名 "staging" 匹配不到 `<Config>` 子目录时曾回退扫全部配置，
+   Debug 版插件初始化失败毒化加载器，连 `PlugIns\` 里的正确产物都加载不出，
+   窗口创建阶段 fastfail。修复（`PluginBootstrap.cpp`）：打包布局（exe 旁有
+   `PlugIns/`）跳过 dev 树扫描；`collectPluginFiles` 的 preferConfig 无匹配时
+   宁可空手而归也不回退全配置。附带修复：`run_e2e_windows.py` 的 build_msix
+   失败路径在 zh-CN 控制台（GBK 输出 × UTF-8 解码）下自身崩溃吞掉真实报错，
+   改 `encoding="locale", errors="replace"` 并对 stdout/stderr 判空。
 
 ## 场景清单
 
