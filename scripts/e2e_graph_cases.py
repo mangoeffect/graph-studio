@@ -24,7 +24,14 @@ from pathlib import Path
 
 from gs import repo_root
 
-PRIORITY_GRAPHS = ["read_image.json", "read_image_unicode.json"]
+PRIORITY_GRAPHS = [
+    "read_image.json", "read_image_unicode.json",
+    # GPU 代表图必须进抽样必选集：GPU 任务的执行链（init 预编译/编译/
+    # dispatch）曾因执行线程回归在 wasm 上整体卡死且逃过抽样 e2e
+    #（2026-09-26 blend 事件）——抽样模式（max_graphs）下强制覆盖三类
+    # GPU 任务（blend / gpu compute / render）。
+    "blend_normal.json", "gpu_blend.json", "render_passthrough.json",
+]
 
 # 相对路径引用的探测祖先层级：夹具布局是 <tests>/graphs/*.json + 资产在
 # <tests>/{data,models,scripts}/…（框架按图自身目录解析相对路径）。
