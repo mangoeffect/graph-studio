@@ -24,6 +24,7 @@ from pathlib import Path
 
 from pywinauto import Desktop, Application
 from pywinauto.keyboard import send_keys
+from comtypes import COMError
 
 from gs import console
 from . import msix
@@ -300,6 +301,31 @@ class AppSession:
         except Exception as e:
             console.warn(f"规整窗口几何失败（继续）: {e}")
 
+    def reconnect(self):
+        """UIA 连接失效（COMError 级联，如宿主进程加载重型插件后事件订阅
+        丢失——mediapipe vision.dll 静态初始化实测触发）时重建连接。
+
+        进程存活时 Desktop 重找窗口 + 重新 connect；找不到（进程已死）
+        原样抛出，让用例按真实失败记录。
+        """
+        if not self.pid:
+            return
+        w = wait_until(self._find_window, timeout=10, desc="重找主窗口")
+        self.app = Application(backend="uia").connect(process=self.pid)
+        self.win = self.app.window(handle=w.handle)
+        self.win.wait("ready", timeout=10)
+
+    def _ensure_connection(self):
+        """廉价探活：win 不可读就重建（存活时一次 window_text 的开销）。"""
+        try:
+            self.win.window_text()
+        except Exception:
+            self.reconnect()
+
+    def title_text(self) -> str:
+        self._ensure_connection()
+        return self.win.window_text()
+
     def close(self, timeout: float = 10.0):
         if not self.pid:
             return
@@ -520,9 +546,10 @@ class AppSession:
                     send_keys("{ENTER}")
                     time.sleep(0.15)
                     return
-                except AppError as e:
+                except (AppError, COMError) as e:
                     last_err = e
                     send_keys("{ESC}")
+                    self._ensure_connection()
                     time.sleep(0.25)
             raise last_err
         last_err = None
@@ -539,9 +566,10 @@ class AppSession:
                     time.sleep(0.1)
                     real_click(*_mid(item.rectangle()))
                 return
-            except AppError as e:
+            except (AppError, COMError) as e:
                 last_err = e
                 send_keys("{ESC}")
+                self._ensure_connection()
                 time.sleep(0.3)
         raise last_err
 
@@ -564,6 +592,7 @@ class AppSession:
     def new_graph(self):
         """File > New：清空画布（vm_.clear，无确认弹窗）。效果校验 + 重试。"""
         for attempt in range(3):
+            self._ensure_connection()
             self.menu_click("File", "New")
             try:
                 wait_until(lambda: self.status_counts() == (0, 0),
@@ -771,7 +800,13 @@ class AppSession:
             base_summary = self.profile_summary_text()
 
         def _done():
-            cur = self.profile_summary_text()
+            try:
+                cur = self.profile_summary_text()
+            except COMError:
+                # 重型任务（mediapipe 初始化/推理）会让旧 UIA 连接失效，
+                # 重建后按"未完成"继续轮询。
+                self._ensure_connection()
+                return None
             if os.environ.get("E2E_DEBUG"):
                 n_texts = len(self.win.descendants(control_type="Text"))
                 print(f"[E2E_DEBUG] poll: profile={bool(cur)} base={bool(base_summary)} "
@@ -974,6 +1009,7 @@ class AppSession:
         菜单操作成功但对话框没弹也按失败处理重来。"""
         for attempt in range(attempts):
             try:
+                self._ensure_connection()
                 self.menu_click("File", "Open...")
                 self.dialog_type_path(path)
                 return

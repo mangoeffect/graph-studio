@@ -61,6 +61,17 @@ def _resolve_ref(graph_path: Path, ref: str) -> bool:
     return False
 
 
+# 模型参数是 ModelFinder 语义：任务按"名称"引用，运行时从宿主安装的
+# models/ 目录解析（打包随附 tests/models/{mediapipe,face,matting}，
+# dev 运行走 GRAPH_STUDIO_MODELS_DIR），不随图携带——图旁探测不到不算缺失。
+_MODEL_DIRS = ("mediapipe", "face", "matting")
+
+
+def _model_ref_resolvable(ref: str) -> bool:
+    base = repo_root() / "tests" / "models"
+    return any((base / d / ref).is_file() for d in _MODEL_DIRS)
+
+
 def discover_graphs() -> list[dict]:
     """枚举子模块图夹具，返回 [{path, module, name, tasks, edges, refs, missing}]。"""
     out = []
@@ -90,6 +101,8 @@ def discover_graphs() -> list[dict]:
                     continue          # 写出型任务的路径参数是输出，无需预存在
                 if _resolve_ref(g, v):
                     refs.append(v)
+                elif _model_ref_resolvable(v):
+                    refs.append(v)   # ModelFinder 按名从宿主 models/ 目录解析
                 else:
                     missing.append(v)
         out.append({"path": g, "module": g.parents[2].name, "name": g.name,

@@ -29,17 +29,29 @@ from .app import AppSession, wait_until
 SKIP_GRAPHS = {"js_error.json"}            # 故意失败的反例夹具，不进正向流
 PRIORITY_GRAPHS = ["read_image.json", "read_image_unicode.json"]
 
+# 模型参数是 ModelFinder 语义：任务按"名称"引用，运行时从宿主安装的
+# models/ 目录解析（打包随附 tests/models/{mediapipe,face,matting}），
+# 不随图携带——图旁探测不到不算缺失（与 e2e_graph_cases 同款规则）。
+_MODEL_DIRS = ("mediapipe", "face", "matting")
+
+
+def _model_ref_resolvable(ref: str) -> bool:
+    base = repo_root() / "tests" / "models"
+    return any((base / d / ref).is_file() for d in _MODEL_DIRS)
+
 
 def _resolve_ref(graph_path, ref: str) -> bool:
     """相对路径引用是否存在。
 
     夹具布局：图在 <tests>/graphs/*.json，资产在 <tests>/{data,models,scripts}/…，
     测试驱动把两者拷到同一目录再跑（框架按图自身目录解析相对路径）。
-    所以引用要按 graphs/ 的若干级祖先探测。
+    所以引用要按 graphs/ 的若干级祖先探测。目录引用也算存在
+    （render_pipeline 的 effects_path 是 shaders/ 这样的目录——is_file()
+    会把它误判成缺失，与 e2e_graph_cases 同款语义）。
     """
     for base in (graph_path.parent, graph_path.parent.parent,
                  graph_path.parent.parent.parent):
-        if (base / ref).is_file():
+        if (base / ref).exists():
             return True
     return False
 
@@ -74,6 +86,8 @@ def discover_graphs() -> list[dict]:
                     continue          # 写出型任务的路径参数是输出，无需预存在
                 if _resolve_ref(g, v):
                     refs.append(v)
+                elif _model_ref_resolvable(v):
+                    refs.append(v)   # ModelFinder 按名从宿主 models/ 目录解析
                 else:
                     missing.append(v)
         out.append({"path": g, "module": g.parents[2].name, "name": g.name,
@@ -157,7 +171,7 @@ def run(pkg, report, fixtures, ctx) -> None:
 
                 s.new_graph()
                 s.menu_open_file(graph_copy)
-                wait_until(lambda: e["name"] in s.win.window_text(),
+                wait_until(lambda: e["name"] in s.title_text(),
                            desc=f"标题含 {e['name']}")
                 counts = wait_until(
                     lambda: (lambda c: c == (len(e["tasks"]), len(e["edges"]))
@@ -209,7 +223,7 @@ def run(pkg, report, fixtures, ctx) -> None:
                 for drop_attempt in range(3):
                     s.drop_file_via_explorer(graph_copy)
                     try:
-                        wait_until(lambda: name in s.win.window_text(), timeout=6,
+                        wait_until(lambda: name in s.title_text(), timeout=6,
                                    desc=f"拖拽后标题含 {name}")
                         break
                     except Exception:
