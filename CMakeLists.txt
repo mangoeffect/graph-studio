@@ -119,8 +119,17 @@ if(TASK_GRAPH_ENABLE_WGPU AND NOT EMSCRIPTEN AND NOT TASK_GRAPH_MOBILE)
     set(WGPU_INSTALL "${CMAKE_SOURCE_DIR}/build/wgpu/install/${WGPU_ARCH_DIR}")
     find_path(WGPU_INCLUDE_DIR webgpu/webgpu.h
         HINTS "${WGPU_INSTALL}/include" "$ENV{WGPU_SDK}/include")
-    find_library(WGPU_LIBRARY NAMES wgpu_native
-        HINTS "${WGPU_INSTALL}/lib" "$ENV{WGPU_SDK}/lib")
+    if(WIN32)
+        # 优先导入库 wgpu_native.dll.lib（task_graph.dll 导入 wgpu_native.dll，
+        # 运行库部署已有专门处理）。release 包里的 wgpu_native.lib 是 Rust
+        # 静态库——链它还需手工补 std 的系统导入库（ws2_32/bcrypt/...），
+        # 且与 dll 部署模型相悖。
+        find_library(WGPU_LIBRARY NAMES wgpu_native.dll.lib wgpu_native
+            HINTS "${WGPU_INSTALL}/lib" "$ENV{WGPU_SDK}/lib")
+    else()
+        find_library(WGPU_LIBRARY NAMES wgpu_native
+            HINTS "${WGPU_INSTALL}/lib" "$ENV{WGPU_SDK}/lib")
+    endif()
     if(WGPU_INCLUDE_DIR AND WGPU_LIBRARY)
         message(STATUS "wgpu-native found: ${WGPU_LIBRARY}")
         add_definitions(-DTASK_GRAPH_ENABLE_WGPU)

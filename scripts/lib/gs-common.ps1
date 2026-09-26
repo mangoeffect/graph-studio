@@ -191,7 +191,12 @@ function Build-GraphStudioStack {
         Write-Fail "wgpu-native fetch failed; wgpu backend disabled (fallback Vulkan)"
     }
     $WgpuInc = Join-Path $RootDir "build\wgpu\install\windows-x86_64\include"
-    $WgpuLib = Join-Path $RootDir "build\wgpu\install\windows-x86_64\lib\wgpu_native.lib"
+    # 导入库 wgpu_native.dll.lib（wgpu_native.lib 是 Rust 静态库，链它需补
+    # std 的系统导入库，且与 wgpu_native.dll 部署模型相悖——不用）。
+    $WgpuLib = Join-Path $RootDir "build\wgpu\install\windows-x86_64\lib\wgpu_native.dll.lib"
+    if (-not (Test-Path $WgpuLib)) {
+        $WgpuLib = Join-Path $RootDir "build\wgpu\install\windows-x86_64\lib\wgpu_native.lib"
+    }
     $WgpuDll = Join-Path $RootDir "build\wgpu\install\windows-x86_64\lib\wgpu_native.dll"
     $HasWgpu = (Test-Path (Join-Path $WgpuInc "webgpu\webgpu.h")) -and (Test-Path $WgpuLib)
     if ($HasWgpu) { $TgArgs += "-DTASK_GRAPH_ENABLE_WGPU=ON" }

@@ -79,14 +79,17 @@ def wgpu_paths(root: Path) -> Optional[tuple]:
     """wgpu-native 产物 (include_dir, library) 探测；缺失返回 None。
 
     库名对齐 fetch_wgpu.py 的落位：macOS/Linux libwgpu_native.<dylib|so>、
-    Windows wgpu_native.dll（import 库 wgpu_native.lib 同目录）。
+    Windows 导入库 wgpu_native.dll.lib（同目录的 wgpu_native.lib 是 Rust
+    静态库，链接它需补 std 的系统导入库，且与 dll 部署模型相悖——不用）。
     """
     install = wgpu_install_dir(root)
     inc = install / "include"
     if not (inc / "webgpu" / "webgpu.h").is_file():
         return None
     if is_windows():
-        lib = install / "lib" / "wgpu_native.lib"
+        lib = install / "lib" / "wgpu_native.dll.lib"
+        if not lib.is_file():  # 兼容旧布局
+            lib = install / "lib" / "wgpu_native.lib"
     else:
         lib = install / "lib" / ("libwgpu_native" + shlib_suffix())
     if not lib.is_file():
