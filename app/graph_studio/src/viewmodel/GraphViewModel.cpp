@@ -743,11 +743,23 @@ void GraphViewModel::startSession(task_graph::RunPolicy policy)
 
     const auto* dagPtr = &model_.dag();
     if (runThread_.joinable()) runThread_.join();
+#ifdef __EMSCRIPTEN__
+    // wasm：执行链必须留在主线程。emscripten 的 webgpu JS glue 句柄表
+    // 每 JS 上下文独立（worker 上查不到主线程注册的 device/buffer），
+    // GPU 任务的 init() 预编译 / compile_kernel / dispatch 在 worker 上
+    // 会抛 TypeError 杀死 executor 所在线程，图执行永久卡死（桌面用
+    // wgpu-native 纯 C API，std::thread 无此限制）。主线程同步执行期间
+    // Asyncify 窗口照常泵 UI 事件，暂停/取消与"执行中排队信号"语义同
+    // 桌面（executor 的 cv 等待在主线程本就有忙等兜底）。
+    runLoop_->run_all(*dagPtr);
+    finishSession();
+#else
     runThread_ = std::thread([this, dagPtr]() {
         runLoop_->run_all(*dagPtr);
         QMetaObject::invokeMethod(this, [this]() { finishSession(); },
                                   Qt::QueuedConnection);
     });
+#endif
 }
 
 void GraphViewModel::appendProfileFrame(task_graph::RunPolicy::Mode mode)
