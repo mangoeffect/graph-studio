@@ -70,7 +70,11 @@ function(add_subnode_module name)
     set(type "${SUBMODULE_${name}_TYPE}")
 
     if("${type}" STREQUAL "local")
-        get_filename_component(ABS_PATH "${url}" ABSOLUTE BASE_DIR "${CMAKE_SOURCE_DIR}")
+        # 相对 URL 以本仓库根为基准解析，不能用 CMAKE_SOURCE_DIR——被外部
+        # 工程 add_subdirectory 消费时（如 mbox）顶层 source dir 不是本仓库，
+        # 路径会整体落空。PROJECT_SOURCE_DIR 在两种形态下都是本仓库根。
+        get_filename_component(ABS_PATH "${url}" ABSOLUTE
+            BASE_DIR "${PROJECT_SOURCE_DIR}")
         
         if(NOT EXISTS "${ABS_PATH}")
             message(WARNING "Local submodule path not found: ${ABS_PATH}")
