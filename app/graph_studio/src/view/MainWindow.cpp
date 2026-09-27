@@ -25,6 +25,7 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QPushButton>
+#include <QToolButton>
 #include <QGroupBox>
 #include <QFormLayout>
 #include <QTimer>
@@ -485,7 +486,9 @@ void MainWindow::CreateMenuBar()
             "Middle-drag - Pan\n"
             "Drag task from left panel - Create node\n"
             "Drag output port to input port - Create edge\n"
-            "Delete - Remove selected\n");
+            "Delete - Remove selected\n"
+            "Image viewer: Scroll - Zoom, Drag - Pan, Double-click - Fit\n"
+            "Image viewer keys: +/- Zoom, F - Fit, 1 - Actual Pixels\n");
     });
     connect(helpMenu->addAction("About Qt"), &QAction::triggered, this, [this]() {
         QMessageBox::aboutQt(this);
@@ -641,6 +644,55 @@ QWidget* MainWindow::CreateImageResultPanel()
     imageViewer_ = new ImageViewer();
     imageViewer_->setMinimumSize(300, 200);
     layout->addWidget(imageViewer_, 1);
+
+    // 缩放控制行：百分比语义为真实放大率（100% = 1:1 像素）。文本不带
+    // "Zoom:" 前缀——画布 zoomLabel_ 已占用该前缀，test_gui 按 startsWith
+    // ("Zoom:") 定位画布标签，混入同前缀会破坏其查找。
+    auto* zoomRow = new QHBoxLayout();
+    auto* btnZoomOut = new QToolButton();
+    btnZoomOut->setText(QStringLiteral("-"));
+    btnZoomOut->setToolTip(QStringLiteral("Zoom Out (-)"));
+    auto* btnZoomIn = new QToolButton();
+    btnZoomIn->setText(QStringLiteral("+"));
+    btnZoomIn->setToolTip(QStringLiteral("Zoom In (+/=)"));
+    viewerZoomLabel_ = new QLabel("-");
+    viewerZoomLabel_->setObjectName("viewerZoomLabel");
+    viewerZoomLabel_->setAlignment(Qt::AlignCenter);
+    viewerZoomLabel_->setMinimumWidth(48);
+    auto* btnFit = new QToolButton();
+    btnFit->setText(QStringLiteral("Fit"));
+    btnFit->setToolTip(QStringLiteral("Fit to View (F)"));
+    auto* btn1to1 = new QToolButton();
+    btn1to1->setText(QStringLiteral("1:1"));
+    btn1to1->setToolTip(QStringLiteral("Actual Pixels (1)"));
+    zoomRow->addWidget(btnZoomOut);
+    zoomRow->addWidget(btnZoomIn);
+    zoomRow->addWidget(viewerZoomLabel_);
+    zoomRow->addWidget(btnFit);
+    zoomRow->addWidget(btn1to1);
+    zoomRow->addStretch(1);
+    layout->addLayout(zoomRow);
+
+    connect(btnZoomIn, &QToolButton::clicked, imageViewer_, &ImageViewer::zoomIn);
+    connect(btnZoomOut, &QToolButton::clicked, imageViewer_, &ImageViewer::zoomOut);
+    connect(btnFit, &QToolButton::clicked, imageViewer_, &ImageViewer::resetView);
+    connect(btn1to1, &QToolButton::clicked, imageViewer_, &ImageViewer::zoomTo1to1);
+    connect(imageViewer_, &ImageViewer::zoomChanged, this, [this](float mag) {
+        viewerZoomLabel_->setText(QString::number(int(mag * 100)) + '%');
+    });
+
+    // 快捷键仅作用于图像面板（WidgetWithChildrenShortcut），不污染全局：
+    // 画布缩放走菜单/工具栏按钮，全局 + - 键会与画布操作串扰。
+    const std::initializer_list<std::pair<const char*, void (ImageViewer::*)()>> viewerKeys = {
+        {"+", &ImageViewer::zoomIn}, {"=", &ImageViewer::zoomIn},
+        {"-", &ImageViewer::zoomOut}, {"F", &ImageViewer::resetView},
+        {"1", &ImageViewer::zoomTo1to1},
+    };
+    for (const auto& [key, slot] : viewerKeys) {
+        auto* sc = new QShortcut(QKeySequence(QLatin1String(key)), container);
+        sc->setContext(Qt::WidgetWithChildrenShortcut);
+        connect(sc, &QShortcut::activated, imageViewer_, slot);
+    }
 
     // Pixel info bar
     pixelInfoLabel_ = new QLabel("x: -, y: -");

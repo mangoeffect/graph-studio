@@ -13,6 +13,7 @@ ImageViewer::ImageViewer(QWidget* parent)
     : QWidget(parent)
 {
     setMouseTracking(true);
+    setFocusPolicy(Qt::WheelFocus);  // WidgetWithChildrenShortcut 快捷键需要面板可持焦点
     setMinimumSize(200, 150);
 }
 
@@ -53,6 +54,8 @@ void ImageViewer::resetView() {
     panX_ = 0.0f;
     panY_ = 0.0f;
     update();
+    if (!image_.isNull())
+        emit zoomChanged(currentMagnification());
 }
 
 void ImageViewer::paintEvent(QPaintEvent*) {
@@ -86,6 +89,9 @@ void ImageViewer::paintEvent(QPaintEvent*) {
 
 void ImageViewer::resizeEvent(QResizeEvent* e) {
     QWidget::resizeEvent(e);
+    // fit 放大率随视口尺寸变化，同步缩放标签
+    if (!image_.isNull())
+        emit zoomChanged(currentMagnification());
 }
 
 void ImageViewer::clampPan() {
@@ -156,27 +162,63 @@ void ImageViewer::updatePixelInfo(const QPoint& mousePos) {
     emit pixelInfoChanged(text);
 }
 
+void ImageViewer::applyZoom(float newZoom, const QPointF& anchorNdc) {
+    const float k = newZoom / zoom_;  // 实际生效比（newZoom 已 clamp，触界时饱和）
+
+    // 锚定 anchorNdc 下的图像点：q = (ndc - pan) / scale 且 scale ∝ zoom，保持 q
+    // 不变 ⇒ pan' = anchor·(1-k) + k·pan（精确闭式，x/y 同形）
+    zoom_ = newZoom;
+    panX_ = anchorNdc.x() * (1.0f - k) + k * panX_;
+    panY_ = anchorNdc.y() * (1.0f - k) + k * panY_;
+
+    clampPan();
+    update();
+    emit zoomChanged(currentMagnification());
+}
+
+float ImageViewer::currentMagnification() const {
+    if (image_.isNull()) return 1.0f;
+    float sx, sy;
+    quadScale(sx, sy);
+    const float w = static_cast<float>(width());
+    const float iw = static_cast<float>(image_.width());
+    if (w <= 0 || iw <= 0) return 1.0f;
+    return sx * w / iw;  // 恒等于 sy*h/ih（quad 约定的纵横比锁定）
+}
+
+void ImageViewer::zoomIn() {
+    if (image_.isNull()) return;
+    applyZoom(std::clamp(zoom_ * 1.15f, MIN_ZOOM, MAX_ZOOM), QPointF(0, 0));
+}
+
+void ImageViewer::zoomOut() {
+    if (image_.isNull()) return;
+    applyZoom(std::clamp(zoom_ / 1.15f, MIN_ZOOM, MAX_ZOOM), QPointF(0, 0));
+}
+
+void ImageViewer::zoomTo1to1() {
+    if (image_.isNull()) return;
+    const float vw = static_cast<float>(width());
+    const float vh = static_cast<float>(height());
+    const float iw = static_cast<float>(image_.width());
+    const float ih = static_cast<float>(image_.height());
+    if (vw <= 0 || vh <= 0 || iw <= 0 || ih <= 0) return;
+    // quad 约定下 x/y 放大率恒一致：zoom = max(iw/vw, ih/vh) 即屏幕像素 1:1
+    applyZoom(std::clamp(std::max(iw / vw, ih / vh), MIN_ZOOM, MAX_ZOOM), QPointF(0, 0));
+}
+
 void ImageViewer::wheelEvent(QWheelEvent* event) {
     if (image_.isNull()) return;
+    if (event->angleDelta().y() == 0) return;  // 纯水平滚动不缩放
 
     const QPointF mousePos = event->position();
     const float vw = static_cast<float>(width());
     const float vh = static_cast<float>(height());
-    const float ndcX = (2.0f * mousePos.x() / vw) - 1.0f;
-    const float ndcY = 1.0f - (2.0f * mousePos.y() / vh);
+    const QPointF anchorNdc(2.0f * mousePos.x() / vw - 1.0f,
+                            1.0f - 2.0f * mousePos.y() / vh);
 
-    const float prevZoom = zoom_;
     const float factor = (event->angleDelta().y() > 0) ? 1.15f : 1.0f / 1.15f;
-    zoom_ = std::clamp(zoom_ * factor, MIN_ZOOM, MAX_ZOOM);
-    const float k = zoom_ / prevZoom;  // 实际生效比（zoom 触界时饱和）
-
-    // 锚定光标下的图像点：q = (ndc - pan) / scale 且 scale ∝ zoom，保持 q
-    // 不变 ⇒ pan' = ndc·(1-k) + k·pan（精确闭式，x/y 同形）
-    panX_ = ndcX * (1.0f - k) + k * panX_;
-    panY_ = ndcY * (1.0f - k) + k * panY_;
-
-    clampPan();
-    update();
+    applyZoom(std::clamp(zoom_ * factor, MIN_ZOOM, MAX_ZOOM), anchorNdc);
     updatePixelInfo(mousePos.toPoint());
 }
 
