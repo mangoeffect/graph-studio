@@ -2,7 +2,9 @@ name: Release
 
 # 三端 GraphStudio 打包 + 发布（手动触发）。
 # 按 release_type 计算版本 tag 与 prerelease 标记，三端并行打包，
-# 汇总后创建一个 GitHub Release 并上传三件安装包（.dmg / .msix / .AppImage）。
+# 汇总后创建一个 GitHub Release 并上传安装包（.dmg / .msi / .msix / .AppImage
+# + Web zip）。Windows 双格式：.msi 未签名（非商店渠道，双击安装无证书步骤）、
+# .msix 自签名（Store 版格式）。
 #
 # 版本策略（无状态）：基准版本取自 CMakeLists.txt (project VERSION)，叠加渠道后缀 + run 号：
 #   测试版 -> v<base>-alpha.<run>   (prerelease)
@@ -10,10 +12,11 @@ name: Release
 #   修复版 -> v<base>-hotfix.<run>  (prerelease)
 #   正式版 -> v<base>-stable.<run>  (latest)
 # 完整渠道版本（tag 去 v，如 0.1.0-alpha.42）由 meta job 统一产出，流经全链路：
-# Release tag、三端安装包文件名（dmg/AppImage/msix/web.zip）、app 内嵌版本
+# Release tag、安装包文件名（dmg/msi/msix/AppImage/web.zip）、app 内嵌版本
 # （-DGRAPH_STUDIO_SENTRY_VERSION → About 对话框 + macOS Info.plist + Sentry
-# release）。唯一例外：AppxManifest 版本须数字四段，build_msix.ps1 把 run 号
-# 编进 revision（0.1.0-alpha.42 → 0.1.0.42；文件名仍保留渠道字样）。
+# release）。唯一例外：AppxManifest 版本与 MSI ProductVersion 须数字四段，
+# build_msix.ps1 / build_msi.ps1 把 run 号编进 revision（0.1.0-alpha.42 →
+# 0.1.0.42；文件名仍保留渠道字样）。
 
 on:
   workflow_dispatch:
@@ -100,7 +103,7 @@ jobs:
           - os: macos-14
             artifact: mac-dmg
           - os: windows-2022
-            artifact: win-msix
+            artifact: win-packages
           - os: ubuntu-22.04
             artifact: linux-appimage
 
@@ -227,6 +230,19 @@ jobs:
           $splat.SentryRelease = "$env:PKG_VERSION"
           scripts\build_msix.ps1 @splat
 
+      # ---- Windows: WiX -> 未签名 .msi（非商店/GitHub Releases 渠道）----
+      - name: Build + package Windows .msi
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # 未签名 MSI 是非商店渠道的推荐安装包：用户双击安装即可，无需像 msix
+          # 那样先信任 GraphStudioDev.cer；SmartScreen/UAC 的“未知发布者”提示属
+          # 预期，Release 正文已写明点击路径。WiX v6 dotnet tool 由脚本按需自装。
+          # -SkipBuild 复用上一步 build_msix.ps1 刚构建完的同一棵树（同 Config），
+          # staging/VC 运行库/布局收割由脚本完成，产出 dist/msi/*.msi(+.sha256)。
+          $splat = @{ Version = "$env:PKG_VERSION"; Config = "RelWithDebInfo"; SkipBuild = $true }
+          scripts\build_msi.ps1 @splat
+
       # ---- Linux: linuxdeployqt + appimagetool -> .AppImage ----
       - name: Build + package Linux .AppImage
         if: runner.os == 'Linux'
@@ -323,6 +339,8 @@ jobs:
           name: ${{ matrix.artifact }}
           path: |
             dist/dmg/*.dmg
+            dist/msi/*.msi
+            dist/msi/*.sha256
             dist/msix/*.msix
             dist/msix/*.cer
             dist/appimage/*.AppImage
@@ -504,7 +522,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p assets
-          find installers -type f \( -name '*.dmg' -o -name '*.msix' -o -name '*.cer' -o -name '*.AppImage' -o -name '*.zip' \) \
+          find installers -type f \( -name '*.dmg' -o -name '*.msi' -o -name '*.sha256' -o -name '*.msix' -o -name '*.cer' -o -name '*.AppImage' -o -name '*.zip' \) \
                -exec cp {} assets/ \;
           ls -lh assets/
 
@@ -527,7 +545,8 @@ jobs:
 
             ### 安装包
             - macOS：`.dmg`（拖入 Applications 安装）
-            - Windows：`.msix`（首次安装需先信任发布者证书：双击附件 `GraphStudioDev.cer` → 安装证书 → 存储位置选“本地计算机” → “受信任的根证书颁发机构”或“受信任人”；之后所有版本无需重复。上架 Microsoft Store 后由 Store 重签名，届时无需此步骤）
+            - Windows：`.msi`（推荐，双击直接安装，无需信任任何证书；首次安装如遇 SmartScreen“Windows 已保护你的电脑”，点「更多信息 → 仍要运行」即可，UAC“未知发布者”提示点「是」；`.sha256` 为对应安装包的 SHA256 校验和）
+            - Windows Store 格式：`.msix`（需先信任发布者证书：双击附件 `GraphStudioDev.cer` → 安装证书 → 存储位置选“本地计算机” → “受信任的根证书颁发机构”或“受信任人”；之后所有版本无需重复。上架 Microsoft Store 后由 Store 重签名，届时无需此步骤）
             - Linux：`.AppImage`（`chmod +x` 后直接运行）
             - Web：`GraphStudio-*-web.zip`（WASM 版，无需安装）——官网[在线体验](https://studio.mangoeffect.net/web/)直接运行；zip 可解压到任意 HTTPS 静态托管自部署
 
@@ -541,7 +560,8 @@ jobs:
 
             ### Installers
             - macOS: `.dmg` (drag into Applications to install)
-            - Windows: `.msix` (the first install requires trusting the publisher certificate: double-click the attached `GraphStudioDev.cer` → Install Certificate → store location "Local Machine" → "Trusted Root Certification Authorities" or "Trusted People"; later versions won't ask again. Once the app is listed on the Microsoft Store, the Store re-signs it and this step goes away)
+            - Windows: `.msi` (recommended — double-click to install, no certificate trust needed; on the first SmartScreen "Windows protected your PC" prompt choose "More info → Run anyway" and accept the "Unknown publisher" UAC prompt; `.sha256` files hold the SHA256 checksums)
+            - Windows Store format: `.msix` (requires trusting the publisher certificate first: double-click the attached `GraphStudioDev.cer` → Install Certificate → store location "Local Machine" → "Trusted Root Certification Authorities" or "Trusted People"; later versions won't ask again. Once the app is listed on the Microsoft Store, the Store re-signs it and this step goes away)
             - Linux: `.AppImage` (`chmod +x`, then run)
             - Web: `GraphStudio-*-web.zip` (WASM build, nothing to install) — runs right in the [online demo](https://studio.mangoeffect.net/web/); or unzip onto any HTTPS static host to self-host
 
@@ -550,6 +570,8 @@ jobs:
           generate_release_notes: true
           files: |
             assets/*.dmg
+            assets/*.msi
+            assets/*.sha256
             assets/*.msix
             assets/*.cer
             assets/*.AppImage

@@ -188,26 +188,9 @@ $Arch = "x64"
 $IsDebug = ($Config -eq "Debug")
 
 # ---- version -> 4-part appx ----
-# AppxManifest Version 只接受数字四段（major.minor.build.revision）。渠道版本
-# （release.yml 的 x.y.z-alpha.<run> 等）剥掉渠道后缀、把 run 号编进 revision：
-# GitHub run number 跨渠道全局唯一且单调递增，Store/侧载的版本比较都成立。
-# 文件名不走归一化（保留渠道字样），只有清单版本用 $VersionQuad。
-function ConvertTo-AppxVersion([string]$v) {
-    $base = $v
-    $rev = "0"
-    if ($v -match '^(?<base>\d+(?:\.\d+){1,2})-(?<channel>[A-Za-z]+)\.(?<run>\d+)$') {
-        $base = $Matches['base']
-        $rev = $Matches['run']
-    }
-    if ($base -notmatch '^\d+(\.\d+)*$') {
-        throw "无法把版本 '$v' 转为数字四段 appx 版本（支持 x.y.z 或渠道形式 x.y.z-<channel>.<run>）"
-    }
-    $parts = @($base.Split('.'))
-    if ($parts.Count -lt 3) { $parts = $parts + @("0") * (3 - $parts.Count) }
-    if ($parts.Count -gt 3) { $parts = $parts[0..2] }
-    ($parts + $rev) -join "."
-}
-$VersionQuad = ConvertTo-AppxVersion $Version
+# 归一化规则见 gs-common.ps1 的 ConvertTo-NumericVersion：文件名保留渠道字样
+# （$Version 原样），只有清单版本用数字四段 $VersionQuad（run 号进 revision）。
+$VersionQuad = ConvertTo-NumericVersion $Version
 if ($VersionQuad -ne $Version) {
     Write-Step "Version '$Version' -> appx manifest '$VersionQuad'（清单须数字四段，文件名保留原样）"
 }
@@ -296,119 +279,24 @@ if (-not $SkipBuild) {
 if (-not $SkipBuild) {
     $Build = Build-GraphStudioStack -Env $Env -Config $Config -Jobs $Jobs -Clean:$Clean -AppDefines $SentryDefines
 } else {
+    # -SkipBuild 也要把 wgpu_native.dll 进包（完整构建分支由
+    # Build-GraphStudioStack 返回；这里按固定安装路径探测，fetch 失败时为
+    # 空 → GpuBootstrap 降级 Vulkan，与构建分支语义一致）
+    $WgpuDll = Join-Path $RootDir "build\wgpu\install\windows-x86_64\lib\wgpu_native.dll"
     $Build = @{
         RootDir  = $RootDir
         LibBuild = Join-Path $RootDir "build"
         GsDir    = $GsDir
         GsBuild  = Join-Path $GsDir "build"
+        WgpuDll  = $(if (Test-Path $WgpuDll) { $WgpuDll } else { $null })
     }
-}
-
-$exeSource = Join-Path $Build.GsBuild "$Config\graph_studio.exe"
-$libDllSource = Join-Path $Build.LibBuild "$Config\task_graph.dll"
-foreach ($f in @($exeSource, $libDllSource)) {
-    if (-not (Test-Path $f)) { Write-Fail "Missing build artifact: $f (run without -SkipBuild)."; exit 1 }
 }
 
 # ---- 2) stage package layout ----
+# 文件布局与 build_msi.ps1 完全共享（gs-common.ps1 的 Stage-GsAppLayout）：
+# exe/task_graph.dll/wgpu/crashpad/OpenCV/PlugIns/vision.dll/models + windeployqt。
 $Staging = Join-Path $OutDir "staging"
-if (Test-Path $Staging) { Remove-Item -Recurse -Force $Staging }
-New-Item -ItemType Directory -Force -Path $Staging | Out-Null
-Write-Step "Staging package layout: $Staging"
-
-Copy-Item $exeSource    (Join-Path $Staging "graph_studio.exe")
-Copy-Item $libDllSource (Join-Path $Staging "task_graph.dll")
-
-# libwgpu_native.dll next to the exe (default GPU backend runtime; absent when
-# the prebuild fetch failed — the app then degrades to the Vulkan backend)
-if ($Build.WgpuDll) { Copy-Item $Build.WgpuDll (Join-Path $Staging "wgpu_native.dll") }
-
-# crashpad_handler.exe next to the exe (Sentry release builds)
-$crashpad = Join-Path $Build.GsBuild "$Config\crashpad_handler.exe"
-if (Test-Path $crashpad) { Copy-Item $crashpad (Join-Path $Staging "crashpad_handler.exe") }
-
-# OpenCV runtime DLLs (world build; skip the debug '*d.dll' in release kits)
-if (-not $Env.DisableOpenCv -and $Env.OpenCvDir) {
-    $opencvBin = Join-Path $Env.OpenCvDir "bin"
-    if (-not (Test-Path $opencvBin)) { Write-Fail "OpenCV bin dir missing: $opencvBin"; exit 1 }
-    Get-ChildItem $opencvBin -Filter "opencv_*.dll" |
-        Where-Object { $IsDebug -or $_.Name -notmatch 'd\.dll$' } |
-        ForEach-Object { Copy-Item $_.FullName (Join-Path $Staging $_.Name) }
-}
-
-# subnode plugins -> PlugIns\ (collected by PluginBootstrap from <exe dir>/PlugIns)
-$pluginDirs = Get-GsPluginDirs -LibBuild $Build.LibBuild -Config $Config
-if ($pluginDirs) {
-    New-Item -ItemType Directory -Force -Path (Join-Path $Staging "PlugIns") | Out-Null
-    foreach ($dir in $pluginDirs) {
-        foreach ($dll in (Get-ChildItem $dir -Filter "*.dll")) {
-            # vision.dll 是 mediapipe_vision.dll 的依赖而非插件：其依赖解析走
-            # loader 标准搜索（exe 目录优先），拷到包根（见下方）；进 PlugIns
-            # 是 10MB 死重且永远加载不到。
-            if ($dll.Name -eq "vision.dll") { continue }
-            Copy-Item $dll.FullName (Join-Path $Staging "PlugIns\$($dll.Name)") -Force
-        }
-    }
-} else {
-    Write-Fail "No submodule plugin DLLs found under $($Build.LibBuild)\submodules\<name>\$Config\."
-    exit 1
-}
-
-# MediaPipe vision.dll -> 包根（exe 同级）。PlugIns\ 里的 mediapipe_vision.dll
-# 依赖它，而 loader 对依赖的搜索顺序是 exe 目录 → system → PATH，不搜索 PlugIns
-# 自身。install 缺失（stub 构建，如最小化 CI）时跳过，不阻断打包。
-$mpVision = Join-Path $Build.LibBuild "mediapipe\install\bin\vision.dll"
-if (Test-Path $mpVision) {
-    Copy-Item $mpVision (Join-Path $Staging "vision.dll") -Force
-    Write-Step "Bundled MediaPipe vision.dll -> $Staging\vision.dll"
-}
-
-# 模型文件 -> models\（exe 同级）。任务参数里只填模型名，ModelBootstrap
-#（<exe 目录>/models 布局）从这里查找。三集合：mediapipe（.task/.tflite，
-# mp 后端）+ face/matting（.mnn，mnn 后端）。缺模型先跑下载脚本（幂等、
-# 已存在即跳过）；下载失败则打包失败，-SkipModels 可跳过随包。
-if ($SkipModels) {
-    Write-Step "Skipping bundled models (-SkipModels)"
-} else {
-    $ModelSets = @(
-        @{ Script = "download_mediapipe_models.py"; Dir = "tests\models\mediapipe";
-           Exts = @(".task", ".tflite") },
-        @{ Script = "download_face_models.py";     Dir = "tests\models\face";
-           Exts = @(".mnn") },
-        @{ Script = "download_matting_models.py";  Dir = "tests\models\matting";
-           Exts = @(".mnn") }
-    )
-    $ModelsDst = Join-Path $Staging "models"
-    New-Item -ItemType Directory -Force -Path $ModelsDst | Out-Null
-    $Copied = 0
-    foreach ($Set in $ModelSets) {
-        $Code = Invoke-Native "python" @((Join-Path $ScriptDir $Set.Script))
-        if ($Code -ne 0) {
-            Write-Fail "Model download failed ($($Set.Script), network?). Retry, or pass -SkipModels."
-            exit $Code
-        }
-        $ModelsSrc = Join-Path $RootDir $Set.Dir
-        $ModelFiles = @(Get-ChildItem -File $ModelsSrc -ErrorAction SilentlyContinue |
-                        Where-Object { $_.Extension -in $Set.Exts })
-        if ($ModelFiles.Count -eq 0) {
-            Write-Fail "No model files found under: $ModelsSrc"
-            exit 1
-        }
-        $ModelFiles | ForEach-Object {
-            Copy-Item $_.FullName (Join-Path $ModelsDst $_.Name) -Force
-            $Copied++
-        }
-    }
-    Write-Step "Bundled model files -> $ModelsDst ($Copied files)"
-}
-
-# order matters for windeployqt: run on the exe in the staging tree
-Write-Step "Running windeployqt (Qt $Config kit)"
-$WdeployArgs = @(if ($IsDebug) { "--debug" } else { "--release" },
-                 "--no-translations", "--compiler-runtime",
-                 (Join-Path $Staging "graph_studio.exe"))
-$Code = Invoke-Native $Windeployqt $WdeployArgs
-if ($Code -ne 0) { exit $Code }
+Stage-GsAppLayout -Staging $Staging -Build $Build -Env $Env -Config $Config -SkipModels:$SkipModels
 
 # ---- 3) manifest + assets ----
 Write-Step "Writing AppxManifest.xml"

@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  msi-product.wxs.in - WiX v4+ product template for the GraphStudio MSI,
+  rendered by scripts/build_msi.ps1 (@GS_MSI_*@ substituted at pack time).
+
+  Unsigned by design for non-Store distribution (GitHub Releases etc.):
+  an unsigned MSI installs fine — users click through the SmartScreen
+  "Windows protected your PC" prompt (More info -> Run anyway) and the
+  "Unknown publisher" UAC prompt, and no publisher-certificate (.cer) trust
+  step is needed, unlike the self-signed MSIX. Add Authenticode signing on
+  top (signtool on the produced .msi) only if SmartScreen reputation ever
+  becomes a real adoption blocker.
+
+  UpgradeCode is permanent: NEVER change it between releases, or upgrades
+  turn into side-by-side installs. @GS_MSI_VERSION@ is the MSI ProductVersion
+  (numeric quad; the channel version's GitHub run number lands in the
+  .revision field, so MajorUpgrade ordering matches the release channels).
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="@GS_MSI_NAME@"
+           Manufacturer="@GS_MSI_MANUFACTURER@"
+           Version="@GS_MSI_VERSION@"
+           Scope="perMachine"
+           Compressed="yes"
+           UpgradeCode="85ea5430-d636-4f15-a6f6-892e2ce6d68b">
+
+    <SummaryInformation Description="@GS_MSI_DESCRIPTION@"
+                        Comments="Visual DAG editor and task execution framework built on task_graph." />
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed. Uninstall it before installing this version." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Feature Id="Main" Title="@GS_MSI_NAME@" Level="1" AllowAbsent="no">
+      <ComponentGroupRef Id="AppFiles" />
+      <ComponentGroupRef Id="MenuCleanup" />
+    </Feature>
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="@GS_MSI_NAME@" />
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="AppMenuFolder" Name="@GS_MSI_NAME@" />
+    </StandardDirectory>
+  </Package>
+
+  <!-- Keep the start-menu folder removal clean on uninstall: the keypath
+       registry value makes this component uninstall-time stable, the
+       RemoveFolder deletes the (now empty) AppMenuFolder. -->
+  <Fragment>
+    <ComponentGroup Id="MenuCleanup">
+      <Component Directory="AppMenuFolder" Guid="*">
+        <RegistryValue Root="HKCU"
+                       Key="Software\@GS_MSI_MANUFACTURER@\@GS_MSI_NAME@"
+                       Name="StartMenuFolder" Type="integer" Value="1" KeyPath="yes" />
+        <RemoveFolder Id="RemoveAppMenuFolder" Directory="AppMenuFolder" On="uninstall" />
+      </Component>
+    </ComponentGroup>
+  </Fragment>
+</Wix>

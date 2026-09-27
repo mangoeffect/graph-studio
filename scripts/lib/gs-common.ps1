@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     gs-common.ps1 - Shared helpers for the GraphStudio Windows PowerShell
     scripts (run_graph_studio.ps1, build_msix.ps1).
@@ -146,6 +146,30 @@ function Resolve-GsEnv {
     }
 }
 
+# ---- version helpers --------------------------------------------------------
+
+# Normalize an app version into a strictly numeric four-part version. The MSIX
+# manifest and the MSI ProductVersion both accept digits only: channel
+# versions (release.yml's x.y.z-<channel>.<run>) drop the suffix and fold the
+# GitHub run number into the revision quad (0.1.0-alpha.42 -> 0.1.0.42). Run
+# numbers are globally unique and monotonically increasing, so version
+# ordering holds across channels. File names keep the original channel string.
+function ConvertTo-NumericVersion([string]$v) {
+    $base = $v
+    $rev = "0"
+    if ($v -match '^(?<base>\d+(?:\.\d+){1,2})-(?<channel>[A-Za-z]+)\.(?<run>\d+)$') {
+        $base = $Matches['base']
+        $rev = $Matches['run']
+    }
+    if ($base -notmatch '^\d+(\.\d+)*$') {
+        throw "无法把版本 '$v' 转为数字四段版本（支持 x.y.z 或渠道形式 x.y.z-<channel>.<run>）"
+    }
+    $parts = @($base.Split('.'))
+    if ($parts.Count -lt 3) { $parts = $parts + @("0") * (3 - $parts.Count) }
+    if ($parts.Count -gt 3) { $parts = $parts[0..2] }
+    ($parts + $rev) -join "."
+}
+
 # ---- builds ----------------------------------------------------------------
 
 # Configure + build the root task_graph library with its subnode plugins into
@@ -246,6 +270,133 @@ function Build-GraphStudioStack {
         # to the exe. Empty when the prebuild fetch failed (wgpu disabled).
         WgpuDll   = $(if ($HasWgpu -and (Test-Path $WgpuDll)) { $WgpuDll } else { $null })
     }
+}
+
+# ---- packaging layout -------------------------------------------------------
+
+# Stage the GraphStudio app file layout shared by the Windows packagers
+# (build_msix.ps1 -> MSIX, build_msi.ps1 -> MSI): copy exe + task_graph.dll
+# (+ wgpu / crashpad), OpenCV runtime DLLs, submodule plugins into PlugIns\,
+# mediapipe vision.dll into the package root, bundle models, then run
+# windeployqt on the staged exe. Creates $Staging fresh; exits when a
+# required build artifact is missing.
+function Stage-GsAppLayout {
+    param(
+        [string]$Staging,
+        [hashtable]$Build,
+        [hashtable]$Env,
+        [ValidateSet("Debug", "Release", "RelWithDebInfo", "MinSizeRel")]
+        [string]$Config = "RelWithDebInfo",
+        [switch]$SkipModels
+    )
+    $RootDir = $script:GsRoot
+    $ScriptDir = Join-Path $RootDir "scripts"
+    $IsDebug = ($Config -eq "Debug")
+
+    $exeSource = Join-Path $Build.GsBuild "$Config\graph_studio.exe"
+    $libDllSource = Join-Path $Build.LibBuild "$Config\task_graph.dll"
+    foreach ($f in @($exeSource, $libDllSource)) {
+        if (-not (Test-Path $f)) { Write-Fail "Missing build artifact: $f (run without -SkipBuild)."; exit 1 }
+    }
+
+    if (Test-Path $Staging) { Remove-Item -Recurse -Force $Staging }
+    New-Item -ItemType Directory -Force -Path $Staging | Out-Null
+    Write-Step "Staging package layout: $Staging"
+
+    Copy-Item $exeSource    (Join-Path $Staging "graph_studio.exe")
+    Copy-Item $libDllSource (Join-Path $Staging "task_graph.dll")
+
+    # libwgpu_native.dll next to the exe (default GPU backend runtime; absent when
+    # the prebuild fetch failed — the app then degrades to the Vulkan backend)
+    if ($Build.WgpuDll) { Copy-Item $Build.WgpuDll (Join-Path $Staging "wgpu_native.dll") }
+
+    # crashpad_handler.exe next to the exe (Sentry release builds)
+    $crashpad = Join-Path $Build.GsBuild "$Config\crashpad_handler.exe"
+    if (Test-Path $crashpad) { Copy-Item $crashpad (Join-Path $Staging "crashpad_handler.exe") }
+
+    # OpenCV runtime DLLs (world build; skip the debug '*d.dll' in release kits)
+    if (-not $Env.DisableOpenCv -and $Env.OpenCvDir) {
+        $opencvBin = Join-Path $Env.OpenCvDir "bin"
+        if (-not (Test-Path $opencvBin)) { Write-Fail "OpenCV bin dir missing: $opencvBin"; exit 1 }
+        Get-ChildItem $opencvBin -Filter "opencv_*.dll" |
+            Where-Object { $IsDebug -or $_.Name -notmatch 'd\.dll$' } |
+            ForEach-Object { Copy-Item $_.FullName (Join-Path $Staging $_.Name) }
+    }
+
+    # subnode plugins -> PlugIns\ (collected by PluginBootstrap from <exe dir>/PlugIns)
+    $pluginDirs = Get-GsPluginDirs -LibBuild $Build.LibBuild -Config $Config
+    if ($pluginDirs) {
+        New-Item -ItemType Directory -Force -Path (Join-Path $Staging "PlugIns") | Out-Null
+        foreach ($dir in $pluginDirs) {
+            foreach ($dll in (Get-ChildItem $dir -Filter "*.dll")) {
+                # vision.dll 是 mediapipe_vision.dll 的依赖而非插件：其依赖解析走
+                # loader 标准搜索（exe 目录优先），拷到包根（见下方）；进 PlugIns
+                # 是 10MB 死重且永远加载不到。
+                if ($dll.Name -eq "vision.dll") { continue }
+                Copy-Item $dll.FullName (Join-Path $Staging "PlugIns\$($dll.Name)") -Force
+            }
+        }
+    } else {
+        Write-Fail "No submodule plugin DLLs found under $($Build.LibBuild)\submodules\<name>\$Config\."
+        exit 1
+    }
+
+    # MediaPipe vision.dll -> 包根（exe 同级）。PlugIns\ 里的 mediapipe_vision.dll
+    # 依赖它，而 loader 对依赖的搜索顺序是 exe 目录 → system → PATH，不搜索 PlugIns
+    # 自身。install 缺失（stub 构建，如最小化 CI）时跳过，不阻断打包。
+    $mpVision = Join-Path $Build.LibBuild "mediapipe\install\bin\vision.dll"
+    if (Test-Path $mpVision) {
+        Copy-Item $mpVision (Join-Path $Staging "vision.dll") -Force
+        Write-Step "Bundled MediaPipe vision.dll -> $Staging\vision.dll"
+    }
+
+    # 模型文件 -> models\（exe 同级）。任务参数里只填模型名，ModelBootstrap
+    #（<exe 目录>/models 布局）从这里查找。三集合：mediapipe（.task/.tflite，
+    # mp 后端）+ face/matting（.mnn，mnn 后端）。缺模型先跑下载脚本（幂等、
+    # 已存在即跳过）；下载失败则打包失败，-SkipModels 可跳过随包。
+    if ($SkipModels) {
+        Write-Step "Skipping bundled models (-SkipModels)"
+    } else {
+        $ModelSets = @(
+            @{ Script = "download_mediapipe_models.py"; Dir = "tests\models\mediapipe";
+               Exts = @(".task", ".tflite") },
+            @{ Script = "download_face_models.py";     Dir = "tests\models\face";
+               Exts = @(".mnn") },
+            @{ Script = "download_matting_models.py";  Dir = "tests\models\matting";
+               Exts = @(".mnn") }
+        )
+        $ModelsDst = Join-Path $Staging "models"
+        New-Item -ItemType Directory -Force -Path $ModelsDst | Out-Null
+        $Copied = 0
+        foreach ($Set in $ModelSets) {
+            $Code = Invoke-Native "python" @((Join-Path $ScriptDir $Set.Script))
+            if ($Code -ne 0) {
+                Write-Fail "Model download failed ($($Set.Script), network?). Retry, or pass -SkipModels."
+                exit $Code
+            }
+            $ModelsSrc = Join-Path $RootDir $Set.Dir
+            $ModelFiles = @(Get-ChildItem -File $ModelsSrc -ErrorAction SilentlyContinue |
+                            Where-Object { $_.Extension -in $Set.Exts })
+            if ($ModelFiles.Count -eq 0) {
+                Write-Fail "No model files found under: $ModelsSrc"
+                exit 1
+            }
+            $ModelFiles | ForEach-Object {
+                Copy-Item $_.FullName (Join-Path $ModelsDst $_.Name) -Force
+                $Copied++
+            }
+        }
+        Write-Step "Bundled model files -> $ModelsDst ($Copied files)"
+    }
+
+    # order matters for windeployqt: run on the exe in the staging tree
+    Write-Step "Running windeployqt (Qt $Config kit)"
+    $Windeployqt = Join-Path $Env.Qt "bin\windeployqt.exe"
+    $WdeployArgs = @(if ($IsDebug) { "--debug" } else { "--release" },
+                     "--no-translations", "--compiler-runtime",
+                     (Join-Path $Staging "graph_studio.exe"))
+    $Code = Invoke-Native $Windeployqt $WdeployArgs
+    if ($Code -ne 0) { exit $Code }
 }
 
 # ---- runtime layout helpers ------------------------------------------------
