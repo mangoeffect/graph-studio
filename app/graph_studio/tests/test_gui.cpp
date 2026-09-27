@@ -14,6 +14,7 @@
 #include <QFile>
 #include <QTemporaryDir>
 #include <QPushButton>
+#include <QWheelEvent>
 
 #include "model/GraphModel.h"
 #include "viewmodel/GraphViewModel.h"
@@ -24,6 +25,7 @@
 #include "view/GraphView.h"
 #include "view/NodeItem.h"
 #include "view/EdgeItem.h"
+#include "view/ImageViewer.h"
 #include <plugin_api.hpp>
 #include <task_graph/profiler.hpp>
 #include <task_graph/data_types.hpp>
@@ -188,6 +190,7 @@ private slots:
     void testExecuteGraphFailureFinishes();
     void testAboutDialogBuildInfo();
     void testNodeDocsLink();
+    void testImageViewerZoomUI();
 
 private:
     GraphModel* model_ = nullptr;
@@ -996,6 +999,67 @@ void TestGui::testNodeDocsLink()
     vm_->clearSelection();
     QTest::qWait(30);
     QVERIFY(!link->text().contains("href"));
+}
+
+// 图像查看器缩放 UI：zoomIn/Out/1:1/Fit 与 zoomChanged 信号/百分比标签联动，
+// 以及水平滚轮（angleDelta.y()==0）不缩放的回归。
+void TestGui::testImageViewerZoomUI()
+{
+    auto* viewer = window_->findChild<ImageViewer*>();
+    QVERIFY(viewer != nullptr);
+
+    QSignalSpy zoomSpy(viewer, &ImageViewer::zoomChanged);
+
+    // 空图：缩放入口 no-op，不崩也不发信号
+    viewer->zoomIn();
+    viewer->zoomOut();
+    viewer->zoomTo1to1();
+    viewer->resetView();
+    QCOMPARE(zoomSpy.count(), 0);
+
+    // setImage 重置为 fit，首个 zoomChanged 携带 fit 放大率（>0）
+    const QImage img(512, 512, QImage::Format_RGB32);
+    viewer->setImage(img);
+    QVERIFY(zoomSpy.count() >= 1);
+    const float fitMag = viewer->currentMagnification();
+    QVERIFY(fitMag > 0.0f);
+    QVERIFY(qAbs(zoomSpy.last().at(0).toFloat() - fitMag) < 1e-5f);
+
+    // 步进放大（+/- 与滚轮同档位系数 1.15）
+    viewer->zoomIn();
+    QVERIFY(viewer->currentMagnification() > fitMag * 1.1f);
+    viewer->zoomOut();
+    QVERIFY(qAbs(viewer->currentMagnification() - fitMag) < 0.02f);
+
+    // 1:1：viewer 最小 300x200、典型面板宽 —— 512/300 ≈ 1.71，不会触界 clamp，
+    // 放大率应为精确 100%
+    viewer->zoomTo1to1();
+    QVERIFY2(qAbs(viewer->currentMagnification() - 1.0f) < 0.01f,
+             qPrintable(QString("1:1 mag=%1").arg(viewer->currentMagnification())));
+
+    // Fit 复位回到 fit 放大率
+    viewer->resetView();
+    QVERIFY(qAbs(viewer->currentMagnification() - fitMag) < 1e-5f);
+
+    // 百分比标签已随 zoomChanged 同步（100% = 1:1 像素语义）
+    auto* zoomLabel = window_->findChild<QLabel*>("viewerZoomLabel");
+    QVERIFY(zoomLabel != nullptr);
+    QVERIFY(zoomLabel->text().contains('%'));
+
+    // 水平滚轮回归：angleDelta.y()==0 必须被忽略（此前 >0 判断会落入缩小分支）
+    const float magBefore = viewer->currentMagnification();
+    const int spyCountBefore = zoomSpy.count();
+    QWheelEvent horizontal(QPointF(50, 50), QPointF(50, 50), QPoint(120, 0), QPoint(120, 0),
+                           Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+    QApplication::sendEvent(viewer, &horizontal);
+    QVERIFY(qAbs(viewer->currentMagnification() - magBefore) < 1e-6f);
+    QCOMPARE(zoomSpy.count(), spyCountBefore);
+
+    // 垂直滚轮仍然缩放
+    QWheelEvent vertical(QPointF(50, 50), QPointF(50, 50), QPoint(0, 120), QPoint(0, 120),
+                         Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+    QApplication::sendEvent(viewer, &vertical);
+    QVERIFY(viewer->currentMagnification() > magBefore);
 }
 
 // 自定义 main：GUI 测试必须用 QApplication（而非 QCoreApplication）

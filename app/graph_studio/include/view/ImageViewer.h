@@ -34,8 +34,17 @@ public:
     // Fit image to viewport (resets zoom/pan)
     void resetView();
 
+    // 缩放 UI 入口（锚点取视口中心）；zoomTo1to1 使屏幕像素:图像像素 = 1:1
+    void zoomIn();
+    void zoomOut();
+    void zoomTo1to1();
+
+    // 当前真实放大率（屏幕像素 : 图像像素；quad 约定下 x/y 恒一致，100% = 1:1）
+    float currentMagnification() const;
+
 signals:
     void pixelInfoChanged(const QString& text);
+    void zoomChanged(float magnification);
 
 protected:
     void paintEvent(QPaintEvent* event) override;
@@ -59,6 +68,7 @@ private:
     QPointF screenToImage(const QPointF& screenPos) const;
     void clampPan();
     void quadScale(float& sx, float& sy) const;
+    void applyZoom(float newZoom, const QPointF& anchorNdc);
 
     static constexpr float MIN_ZOOM = 0.05f;
     static constexpr float MAX_ZOOM = 50.0f;

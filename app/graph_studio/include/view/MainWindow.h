@@ -250,6 +250,7 @@ private:
     TaskListWidget* taskList_ = nullptr;
     ImageViewer* imageViewer_ = nullptr;            // 结果图查看器（全平台）
     QLabel* pixelInfoLabel_ = nullptr;
+    QLabel* viewerZoomLabel_ = nullptr;             // 图像缩放百分比（100% = 1:1 像素）
     QComboBox* resultSelector_ = nullptr;
     QFormLayout* nodePropertyLayout_ = nullptr;
     QGroupBox* nodePropertyGroup_ = nullptr;
