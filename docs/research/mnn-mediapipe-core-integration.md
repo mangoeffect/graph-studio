@@ -128,14 +128,48 @@ CPU-only 构建，后续可评估。
 - 官方 xcframework/AAR 只能作为**对照基准或模型格式参考**，不能直接当链接输入。
 
 ### 4.5 WASM（判据化降级）
-- 路线 A：Bazel `--config=wasm` 交叉构建 libvision C API。已知冲突面：钉版
-  emsdk 3.1.37 vs MediaPipe wasm 工具链要求；`-fno-exceptions`（protobuf/tflite
-  需异常关闭补丁）；产物体积（预计 ≥ 数十 MB）。
-- 路线 B（当前）：WASM stub——mp_* 任务注册 + 可读错误；图的 wasm e2e 场景按此
-  标注。若需浏览器端真实推理，短期更现实的是 JS 桥接任务（包装官方
-  `@mediapipe/tasks-vision` JS API，经 scripting/宿主 JS 层编排），不进 C++ 核心。
-- 决策判据：路线 A 先做一次体积+工具链 spike（1-2 天）；abi3/异常补丁面过大或
-  体积 >30MB 即维持路线 B。
+
+**2026-09-28 spike 前置调研（方案与障碍清单；构建实测未开始）**——用户决策
+已选定路线 A 纳入范围，以下为已验证事实：
+
+- **上游无 emscripten 配置**：MediaPipe v1.0.0 的 `.bazelrc` 只有
+  android/ios/darwin/linux/windows 六族 `build:` config，**没有** `--config=wasm`
+  或任何 emscripten 条目。官方 web 路线是 `@mediapipe/tasks-vision` JS 包
+  （内部管线产物），C ABI 无 wasm 支持承诺。`--config=wasm 一把梭`不存在，
+  toolchain 必须自己注册。
+- **工具链范式冲突**：emsdk 的 bazel 工具链自 4.0.6 起 **bzlmod-only**
+  （WORKSPACE 支持已移除，`bazel/README.md` 明示）；MediaPipe v1.0.0 是
+  WORKSPACE→bzlmod 过渡态（两文件并存）。路线 A 的接线：在 MediaPipe 的
+  `MODULE.bazel` 追加 `bazel_dep(name="emsdk")` + `git_override(strip_prefix="bazel")`
+  + `emscripten_deps.config(version="3.1.46")`，`.bazelrc` 追加
+  `build:wasm` config（crosstool/emscripten_toolchain + `--platforms`）。
+  注意现有各平台 patch（zlib/eigen override、MSVC 补丁）都是 WORKSPACE
+  `--override_repository` 范式，wasm 分支要么全 bzlmod 范式，要么开
+  `--enable_workspace` 兼容。
+- **opencv 依赖必须在**：`tasks/c/vision` 的传递依赖拉 opencv（Windows
+  vision.dll 链 opencv_world 是实证）。wasm 需仿 `android_opencv` 的预编译
+  override 模式指向 `build_wasm/opencv/install`（`build_opencv_wasm.py` 产物）。
+- **atomics 注入**：链接 `-pthread` 模块要求每个 .o 带 `-matomics -mbulk-memory`
+  （MNN 教训，wasm-ld 直接拒绝缺特性的对象）——bazel 侧经 toolchain 的
+  default_copts 或 `--per_file_copt` 注入。
+- **消费端零改动**：根 CMakeLists 的 EMSCRIPTEN 探测链
+  （`build_wasm/mediapipe/install`）无排除守卫；`vision_engine.cpp` 纯 C API
+  封装对 wasm 干净；引擎 TU 由 face/matting 后端符号引用拉入。生产端缺口
+  全在 `build_mediapipe.py`（加 `--platform wasm` 分支：emsdk 探测/激活钉
+  3.1.46 对齐 MNN/release.yml、cquery `.a` 收集 + emar 合并
+  `libmediapipe_vision_c.a`、安装根 sentinel）与最后一段裸链
+  （`app/graph_studio/CMakeLists.txt` 镜像 MNN 的 `EXISTS + target_link_libraries`、
+  `run_graph_studio_wasm.py` ensure step + 守卫、release.yml 缓存/冷构建、
+  `gs/models.py` web 模型集扩 mp、`face_detect_task.cpp` 的 `__EMSCRIPTEN__`
+  backend 隐藏守卫翻案）。
+- **体积判据待测**：全量 protobuf/absl/XNNPACK/tflite 静态链的 wasm 体积
+  （brotli 后）vs 30MB 红线。QT_WASM_INITIAL_MEMORY 200MB 届时可能需上调。
+- 路线 B（当前态）：WASM stub——mp_* 任务注册 + 可读错误；图的 wasm e2e
+  按 mp stub 记 skip（`MP_STUB_MODULES`）。若需浏览器端真实推理，短期更现实
+  的是 JS 桥接任务（包装官方 `@mediapipe/tasks-vision`，不进 C++ 核心）。
+- 决策判据（维持）：补丁面过大或体积 >30MB 即维持路线 B。本机已装
+  emsdk 3.1.46（F:/emsdk）+ opencv-wasm 构建物料在途，spike 构建实测
+  为独立的 1-2 天工作项（冷构建 2-4h/轮 × 多轮补丁迭代）。
 
 ## 5. 关键坑（本次实测）
 
