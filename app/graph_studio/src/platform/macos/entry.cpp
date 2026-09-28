@@ -165,35 +165,97 @@ int main(int argc, char* argv[])
     // 浏览器 E2E 测试桥（window.__gsTest），桌面构建为 no-op
     InstallTestHooks(vm, window);
 
-    // 包内默认模型后台预取：fetch models/manifest.json → 逐个拉取写入
-    // MEMFS /models（ModelBootstrap 在 wasm 下把该目录注册进 ModelFinder，
-    // face/matting 等任务按默认模型名命中）。与 UI 启动并行、不阻塞；
-    // 失败仅告警（--skip-models 包 / dev 未 staging 时任务侧报可读错误）。
-    // 就绪 promise 挂在 window.__gsModelsReady，?open 立即执行流等它落盘。
+    // 包内默认模型按需延迟加载：启动期只拉 models/manifest.json（几百字节），
+    // 挂出 __gsModelsManifest（name→size）与 __gsModelLoad(name) 按需下载桥；
+    // ModelBootstrap 的 ModelFinder 在 MEMFS /models 未命中时经它把模型
+    // fetch 进来（Asyncify 自旋等待，见 ModelBootstrap.cpp）。Cache Storage
+    // 持久缓存（cache 名掺 manifest 摘要，模型换版自动失效），cache 已命中
+    // 的模型启动期本地回填（毫秒级、不占网络）——二次访问开箱即用，首次
+    // 访问不预取任何模型。失败仅告警（--skip-models 包 / dev 未 staging
+    // 时任务侧报可读错误）。manifest+缓存回填就绪 promise 挂
+    // window.__gsModelsReady，?open 立即执行流等它（网络下载不含在内，
+    // 由 execute 路径的 ModelFinder 按需等待）。
     EM_ASM({
         var waitForModels = setInterval(function() {
             if (typeof Module === 'undefined' || !Module.FS
                 || !Module.FS.writeFile) return;
             clearInterval(waitForModels);
+            var writeModel = function(name, bytes) {
+                try { Module.FS.mkdir('/models'); } catch (e) {}
+                Module.FS.writeFile('/models/' + name, bytes);
+            };
+            // 按需下载单个模型：cache 命中直接回填，miss 才走网络并写缓存。
+            // in-flight 去重；成功 resolve(文件名)，失败 reject。
+            window.__gsModelLoad = function(name) {
+                var flying = window.__gsModelFlying
+                    || (window.__gsModelFlying = {});
+                if (flying[name]) return flying[name];
+                var p = Promise.resolve(window.__gsModelsCache || null)
+                    .then(function(cache) {
+                        var url = 'models/' + name;
+                        var fromNet = function() {
+                            console.log('[gs] 模型下载: ' + name);
+                            return fetch(url).then(function(r) {
+                                if (!r.ok) throw new Error('HTTP ' + r.status);
+                                return r.arrayBuffer();
+                            }).then(function(buf) {
+                                if (!cache) return buf;
+                                return cache.put(url, new Response(buf))
+                                    .then(function() { return buf; });
+                            });
+                        };
+                        if (!cache) return fromNet();
+                        return cache.match(url).then(function(hit) {
+                            if (hit) return hit.arrayBuffer();
+                            return fromNet();
+                        });
+                    }).then(function(buf) {
+                        writeModel(name, new Uint8Array(buf));
+                        console.log('[gs] 模型就绪: ' + name);
+                        delete flying[name];
+                        return name;
+                    }, function(e) {
+                        delete flying[name];
+                        throw e;
+                    });
+                flying[name] = p;
+                return p;
+            };
             window.__gsModelsReady = fetch('models/manifest.json')
                 .then(function(r) {
                     if (!r.ok) throw new Error('HTTP ' + r.status);
-                    return r.json();
-                }).then(function(list) {
-                    try { Module.FS.mkdir('/models'); } catch (e) {}
-                    var jobs = (list || []).map(function(m) {
-                        return fetch('models/' + m.name).then(function(r) {
-                            if (!r.ok) throw new Error('HTTP ' + r.status);
-                            return r.arrayBuffer();
-                        }).then(function(buf) {
-                            Module.FS.writeFile('/models/' + m.name,
-                                                new Uint8Array(buf));
-                        }).catch(function(e) {
-                            console.warn('[gs] 模型拉取失败: ' + m.name
-                                         + ': ' + e.message);
+                    return r.text();
+                }).then(function(text) {
+                    var list = [];
+                    try { list = JSON.parse(text) || []; } catch (e) {}
+                    var map = {};
+                    for (var i = 0; i < list.length; ++i)
+                        map[list[i].name] = list[i].size;
+                    window.__gsModelsManifest = map;
+                    if (!('caches' in window)) return;
+                    // manifest 文本摘要做 cache 名：随包模型一换（manifest
+                    // 内容变）旧缓存整体作废，无需手动清。
+                    var h = 0;
+                    for (var i = 0; i < text.length; ++i)
+                        h = (h * 31 + text.charCodeAt(i)) | 0;
+                    return caches.open('gs-models-' + (h >>> 0).toString(36))
+                        .then(function(cache) {
+                            window.__gsModelsCache = Promise.resolve(cache);
+                            var jobs = list.map(function(m) {
+                                return cache.match('models/' + m.name)
+                                    .then(function(hit) {
+                                        if (!hit) return;
+                                        return hit.arrayBuffer()
+                                            .then(function(buf) {
+                                                writeModel(m.name,
+                                                    new Uint8Array(buf));
+                                                console.log('[gs] 模型缓存回填: '
+                                                            + m.name);
+                                            });
+                                    });
+                            });
+                            return Promise.all(jobs);
                         });
-                    });
-                    return Promise.all(jobs);
                 }).catch(function(e) {
                     console.warn('[gs] models/manifest.json 不可用'
                                  + '（--skip-models 包或 dev 未 staging）: '

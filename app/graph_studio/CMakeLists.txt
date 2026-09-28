@@ -459,6 +459,10 @@ if(EMSCRIPTEN)
     # 提供）。浏览器内初始化优雅失败（兼容层 spin 不阻塞），验证是独立里程碑。
     if(TASK_GRAPH_ENABLE_WGPU)
         target_compile_definitions(graph_studio PRIVATE TG_APP_HAS_WGPU=1)
+        # TG_APP_ASYNCIFY 与 -sASYNCIFY 同进退：ModelBootstrap 的模型按需
+        # 下载分支依赖 emscripten_sleep（Asyncify 展开），无该宏的构建里
+        # 只查 MEMFS 不下载。
+        target_compile_definitions(graph_studio PRIVATE TG_APP_ASYNCIFY=1)
         # -sASYNCIFY 必须与 -sUSE_WEBGPU 同进退：核心库 spin_until 的 wasm
         # 等待依赖 emscripten_sleep（Asyncify 展开）；非 asyncify 构建里
         # emscripten_sleep 直接 throw，启动期 GpuBootstrap 初始化即崩
