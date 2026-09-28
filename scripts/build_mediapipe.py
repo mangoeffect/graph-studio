@@ -90,12 +90,16 @@ WASM_EMSDK_VERSION = "3.1.46"
 WASM_MODULE_BLOCK = """
 
 # ---- graph-studio wasm 交叉构建（build_mediapipe.py --platform wasm 注入）----
-bazel_dep(name = "emsdk", version = "4.0.6")
+bazel_dep(name = "emsdk", version = "6.0.10")
 git_override(
     module_name = "emsdk",
     remote = "https://github.com/emscripten-core/emsdk.git",
     strip_prefix = "bazel",
-    tag = "4.0.6",
+    # emsdk master（bzlmod 集成成熟于 5.x/6.x；4.0.6 是最后一个支持
+    # WORKSPACE 的版本但当时 bazel/MODULE.bazel 还没有 module() 声明，
+    # override 进去报 "declares a different name ()"）。SDK 版本仍由
+    # emscripten_deps.config 钉 3.1.46（revisions.bzl 含历史映射）。
+    commit = "e566f7bdcc7735f44037911c24b87a58a3c93145",
 )
 emscripten_deps_ext = use_extension(
     "@emsdk//:emscripten_deps.bzl",
@@ -128,6 +132,20 @@ def patch_wasm_module(mp_src: Path) -> None:
     if "graph-studio wasm 交叉构建" in s:
         print("==> MODULE.bazel 已含 emsdk 块，跳过")
         return
+    # rules_python 提升到 emsdk master 所需版本（其 python.toolchain("3.14")
+    # 在 MediaPipe 钉死的 0.34.0 上解析失败——"Unknown Python version"）。
+    # MediaPipe 用 single_version_override 钉版本，改钉子本身；另加
+    # bazel_dep 会报 "depends on rules_python at least twice"。
+    s = s.replace(
+        'bazel_dep(name = "rules_python", version = "0.34.0", '
+        'repo_name = "rules_python_bzlmod")',
+        'bazel_dep(name = "rules_python", version = "1.8.4", '
+        'repo_name = "rules_python_bzlmod")')
+    s = s.replace(
+        'single_version_override(\n    module_name = "rules_python",\n'
+        '    version = "0.34.0",\n)',
+        'single_version_override(\n    module_name = "rules_python",\n'
+        '    version = "1.8.4",\n)')
     _write(mod, s + WASM_MODULE_BLOCK.replace("%VERSION%", WASM_EMSDK_VERSION))
     console.ok(f"MODULE.bazel 追加 emsdk bzlmod 块（SDK {WASM_EMSDK_VERSION}）")
 MP_TARGETS_MINIMAL = ["//mediapipe/tasks/c/vision/core:image"]

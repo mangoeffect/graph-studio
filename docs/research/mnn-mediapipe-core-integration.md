@@ -164,6 +164,25 @@ CPU-only 构建，后续可评估。
   backend 隐藏守卫翻案）。
 - **体积判据待测**：全量 protobuf/absl/XNNPACK/tflite 静态链的 wasm 体积
   （brotli 后）vs 30MB 红线。QT_WASM_INITIAL_MEMORY 200MB 届时可能需上调。
+- **2026-09-28 spike 实测（Windows 宿主，五轮迭代）**：`build_mediapipe.py
+  --platform wasm` 已推进到 **bazel analysis 后期**（fetch 完成、5514
+  targets configured）——module graph 层的坑已全清：
+  1. `git_override` 只收 `commit` 不收 `tag`（emsdk 4.0.6 = 24fc909c…）；
+  2. 4.0.6 的 `bazel/MODULE.bazel` 尚无 `module()` 声明，override 进去报
+     "declares a different name ()"——必须 override 到 master
+     （e566f7bdcc7735f44037911c24b87a58a3c93145，SDK 版本仍由
+     `emscripten_deps.config(version="3.1.46")` 钉，revisions.bzl 含映射）；
+  3. MediaPipe 用 `single_version_override` 把 rules_python 钉死 0.34.0，
+     emsdk master 的 `python.toolchain("3.14")` 在其上解析失败——须改钉子
+     到 1.8.4（另加 `bazel_dep` 会报 "depends on rules_python at least
+     twice"，因 MediaPipe 用了 repo_name 别名）；
+  4. 之后 fetch/analysis 畅通，直到 **Windows bazel 内部崩溃**（stat 裸
+     `\` 路径："expected an absolute Windows path"，evaluating root `/`
+     node）——emsdk master 工具链的 Windows 宿主兼容坑，无栈线索指向
+     具体文件。**下一步建议：转 Linux 宿主跑**（CI ubuntu job 或复用
+     run_docker_linux_build 的容器模式；emsdk 的 bazel CI 主力在 linux）。
+  本机 opencv-wasm 静态库已备（build_wasm/opencv/install，spike 需要时
+  override 进 opencv repo）。
 - 路线 B（当前态）：WASM stub——mp_* 任务注册 + 可读错误；图的 wasm e2e
   按 mp stub 记 skip（`MP_STUB_MODULES`）。若需浏览器端真实推理，短期更现实
   的是 JS 桥接任务（包装官方 `@mediapipe/tasks-vision`，不进 C++ 核心）。
