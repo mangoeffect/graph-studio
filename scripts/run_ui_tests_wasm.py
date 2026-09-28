@@ -74,6 +74,13 @@ setTimeout(function(){if(!window.__gsQTestReported)report();},%MAX_MS%);})();
 
 # 平台默认 Chrome 位置（有头，禁 headless —— 多线程 wasm 必须 COI）
 CHROME_CANDIDATES = {
+    "win32": [
+        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+        r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+        # Edge 也是 Chromium：无 Chrome 机器的回退（有头 + CDP 行为一致）
+        r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+        r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+    ],
     "darwin": [
         "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
         "/Applications/Chromium.app/Contents/MacOS/Chromium",

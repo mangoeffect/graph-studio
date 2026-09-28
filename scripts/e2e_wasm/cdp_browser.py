@@ -357,9 +357,13 @@ class CdpTab:
 class CdpBrowser:
     """有头 Chrome 生命周期 + 开新 tab。仅与 127.0.0.1 的 DevTools 端点通信。"""
 
-    def __init__(self, chrome: Path, cdp_port: int = 9333):
+    def __init__(self, chrome: Path, cdp_port: int = 9333,
+                 extra_args: list | None = None):
         self.http = DevtoolsHttp(cdp_port)
         self.chrome = chrome
+        # 附加命令行开关（如 --url 线上模式的 PNA/LNA 绕过 flag）；不存在的
+        # feature 名 Chrome 静默忽略
+        self.extra_args = [a for a in (extra_args or []) if a]
         self.user_data = ""
         self.pid = 0
 
@@ -369,6 +373,7 @@ class CdpBrowser:
                f"--remote-debugging-port={self.http._port}",
                "--no-first-run", "--no-default-browser-check",
                "--disable-sync", "--window-size=1500,950",
+               *self.extra_args,
                "about:blank"]
         # 参数列表直传（无 shell 解释）。POSIX 用 posix_spawn；Windows 无此
         # 接口，Popen 等价（列表参数同样不经 shell）。长驻进程无需句柄，
