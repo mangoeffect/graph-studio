@@ -666,27 +666,33 @@ SCENARIOS = ["boot", "core", "files", "run", "twice", "project", "models"]
 # 图内联（submodules/face、matting 没有 tests/graphs 夹具），输入图用宿主
 # tests/models/mediapipe/portrait.jpg（有人脸/人像，结果是否有目标不影响
 # COMPLETED 判定）。face_detect 链 ultraface+landmark 两模型，matting 链
-# modnet.mnn（13MB，首次下载最重）。旧版启动预取构建上 MEMFS 直接命中，
-# 本场景同样 pass——驱动对新旧加载行为都兼容，按需行为差异看 console 的
-# "[gs] 模型下载/缓存回填" 日志（report 快照可见）。
+# modnet.mnn（13MB，首次下载最重）。注意 reader 类型名是 opencv_image_read
+#（写错会被 DAGSerializer 用 LambdaNode 占位静默顶替——占位"COMPLETED"
+# 但输出空 any，下游 face/matting 报 missing image input，且占位节点走
+# LambdaNode 包装日志（task.cpp 的 Starting execution），实测踩过）。
+# 旧版启动预取构建上 MEMFS 直接命中，本场景同样 pass——驱动对新旧加载
+# 行为都兼容，按需行为差异看 console 的"[gs] 模型下载/缓存回填"日志
+#（report 快照可见）。
 _MODEL_GRAPH_TEMPLATES = {
     "face_detect": {
         "version": "2.0",
         "tasks": [
-            {"id": "read", "type": "image_reader",
+            {"id": "read", "type": "opencv_image_read",
              "params": {"file_path": "portrait.jpg"}},
             {"id": "face", "type": "face_detect", "params": {}},
         ],
-        "edges": [{"from": "read", "to": "face"}],
+        "edges": [{"from": "read", "from_port": "out",
+                   "to": "face", "to_port": "in"}],
     },
     "matting": {
         "version": "2.0",
         "tasks": [
-            {"id": "read", "type": "image_reader",
+            {"id": "read", "type": "opencv_image_read",
              "params": {"file_path": "portrait.jpg"}},
             {"id": "mat", "type": "matting", "params": {}},
         ],
-        "edges": [{"from": "read", "to": "mat"}],
+        "edges": [{"from": "read", "from_port": "out",
+                   "to": "mat", "to_port": "in"}],
     },
 }
 
