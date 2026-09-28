@@ -79,6 +79,9 @@ bool dir_exists(const fs::path& p) {
 constexpr const char* kModelReqPath = "/tmp/gs_model_req.txt";
 
 int query_model_download() {
+    // 注意：EM_ASM 的 JS 里不能出现数组/对象字面量的裸逗号——C 预处理器
+    // 只认 () 平衡，[] 内的逗号会拆宏参数（后半段被当 C 表达式解析），
+    // 后缀表用 split 构造（同款约束见 entry.cpp 的"不能有正则字面量"）。
     return EM_ASM_INT({
         var name = '';
         try {
@@ -89,7 +92,8 @@ int query_model_download() {
         var manifest = window.__gsModelsManifest;
         if (!manifest) return 3;
         var actual = null;
-        var suffixes = ['', '.task', '.tflite', '.mnn'];
+        var suffixes = '.task|.tflite|.mnn'.split('|');
+        suffixes.unshift('');
         for (var i = 0; i < suffixes.length; ++i) {
             if (manifest[name + suffixes[i]]) {
                 actual = name + suffixes[i];
