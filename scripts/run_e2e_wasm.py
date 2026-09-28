@@ -233,6 +233,8 @@ def main() -> int:
                     results[name] = f"project: {count} 个工程包"
                 elif name == "run":
                     results[name] = sc.run_graph(browser, base_url, ctx)
+                elif name == "twice":
+                    results[name] = sc.twice(browser, base_url, ctx)
                 report.record(name, "pass", str(results[name]))
                 console.ok(results[name])
             except (ScenarioError, TimeoutError, RuntimeError) as e:

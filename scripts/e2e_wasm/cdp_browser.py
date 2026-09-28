@@ -264,6 +264,24 @@ class CdpTab:
             time.sleep(0.2)
         raise TimeoutError(f"{timeout}s 内 console 未出现 {pattern!r}")
 
+    def wait_console_count(self, pattern: str, count: int,
+                           timeout: float = 60.0) -> list:
+        """等待 console 中匹配行累计出现 count 次，返回全部匹配行。
+        （同页多轮执行断言用：每轮各产生一条完成行，行号会随会话重置，
+        不能按行内容区分轮次，只能按累计条数。）"""
+        import re
+        deadline = time.time() + timeout
+        rx = re.compile(pattern)
+        hits = []
+        while time.time() < deadline:
+            self._drain_pending(0.1)
+            hits = [text for _, text in self.console if rx.search(text)]
+            if len(hits) >= count:
+                return hits
+            time.sleep(0.2)
+        raise TimeoutError(f"{timeout}s 内 console 匹配 {pattern!r} 仅 "
+                           f"{len(hits)} 次（需 {count} 次）")
+
     def wait_expr(self, expression: str, timeout: float = 60.0,
                   poll: float = 0.4):
         """轮询页面表达式直到真值并返回它。"""
@@ -352,9 +370,13 @@ class CdpBrowser:
                "--no-first-run", "--no-default-browser-check",
                "--disable-sync", "--window-size=1500,950",
                "about:blank"]
-        # os.posix_spawn：参数列表直传（无 shell 解释）；长驻进程无需句柄，
-        # 清理按唯一 user-data-dir pkill（见 stop）
-        self.pid = os.posix_spawn(str(self.chrome), cmd, dict(os.environ))
+        # 参数列表直传（无 shell 解释）。POSIX 用 posix_spawn；Windows 无此
+        # 接口，Popen 等价（列表参数同样不经 shell）。长驻进程无需句柄，
+        # 清理按唯一 user-data-dir 定位（见 stop）
+        if os.name == "nt":
+            self.pid = subprocess.Popen(cmd).pid
+        else:
+            self.pid = os.posix_spawn(str(self.chrome), cmd, dict(os.environ))
         self.http.wait_ready(timeout)
 
     def new_tab(self, url: str) -> CdpTab:
@@ -371,7 +393,13 @@ class CdpBrowser:
     def stop(self):
         if self.pid:
             # 按 user-data-dir 唯一标识清理本次启动的实例
-            subprocess.run(["pkill", "-f", self.user_data],
-                           capture_output=True)
+            if os.name == "nt":
+                # Windows 无 pkill；/T 连同 Chrome 拉起的子进程（各渲染
+                # 进程/worker）一并终止
+                subprocess.run(["taskkill", "/F", "/T", "/PID", str(self.pid)],
+                               capture_output=True)
+            else:
+                subprocess.run(["pkill", "-f", self.user_data],
+                               capture_output=True)
             self.pid = 0
         shutil.rmtree(self.user_data, ignore_errors=True)

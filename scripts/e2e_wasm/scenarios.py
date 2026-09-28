@@ -313,6 +313,67 @@ def run_graph(browser: CdpBrowser, base_url: str, ctx: dict) -> str:
     return f"run OK（?open+run: Run 0 finished: {ok} ok, {failed} failed）"
 
 
+# ---------- 同页连续执行两遍（回归：wasm_mt 第二遍整页死锁） ----------
+
+def twice(browser: CdpBrowser, base_url: str, ctx: dict) -> str:
+    """同页 ?open 装图后连续 execute 两遍。回归防线：wasm_multithread 构建
+    每会话重建的 ThreadPool 需把 pthread 重宿主到已退出的 Web Worker，而
+    主线程此刻正阻塞在调度等待（主线程 futex 模拟为忙等、事件循环停转），
+    重宿主永不完成——第二遍的 'Run N finished' 永不出现且主线程整页卡死
+    （2026-09-27 在线部署版实测；修复见 f110d3b：ThreadPool 所有 WASM
+    构建退化为 inline）。每会话 RunLoop 计数归零，两轮完成行都是
+    'Run 0 finished'，按累计条数断言。"""
+    artifacts: Path = ctx["artifacts"]
+    tab = browser.new_tab(
+        f"{base_url}/graph_studio.html"
+        f"?open={quote('/e2e/smoke/e2e_graph.json', safe='')}")
+    try:
+        wait_boot(tab)
+        tab.wait_expr("window.__gsTest.taskCount() === 1", 15)
+
+        # 第一遍：execute + 完成行（0 failed）
+        if not tab.evaluate("window.__gsTest.action('execute')"):
+            raise ScenarioError("第一次 execute 返回失败")
+        first = tab.wait_console(FINISHED_RE.pattern, timeout=90)
+        m = FINISHED_RE.search(first)
+        if int(m.group(2)) != 0:
+            raise ScenarioError(f"第一遍存在失败任务: {first.strip()}")
+        tab.wait_expr("window.__gsTest.executing() === false", 30)
+
+        # 第二遍：回归点。死锁构建上本调用即超时（主线程卡死在 wasm 里）；
+        # 即便调用返回，完成行也不会再出现——两条路径都由完成行计数兜底。
+        try:
+            if not tab.evaluate("window.__gsTest.action('execute')", timeout=30):
+                raise ScenarioError("第二次 execute 返回失败")
+        except TimeoutError as ex:
+            raise ScenarioError(
+                "第二次 execute 调用未返回（主线程整页卡死）——wasm 第二遍"
+                "执行死锁回归，参照修复 f110d3b（ThreadPool WASM inline 化）"
+            ) from ex
+        lines = tab.wait_console_count(FINISHED_RE.pattern, 2, timeout=60)
+        m2 = FINISHED_RE.search(lines[-1])
+        if int(m2.group(2)) != 0:
+            raise ScenarioError(f"第二遍存在失败任务: {lines[-1].strip()}")
+
+        shot = artifacts / "twice_final.png"
+        tab.screenshot(shot)
+        return (f"twice OK（同页两遍均完成: "
+                f"{' / '.join(l.strip().split('] ')[-1] for l in lines)}）")
+    except (ScenarioError, TimeoutError, RuntimeError) as ex:
+        snapshot = {"console_tail": "\n".join(
+            tab.console_text().strip().splitlines()[-30:])}
+        try:
+            tab.screenshot(artifacts / "twice_failure.png")
+        except Exception:
+            pass  # 主线程卡死时截图也会超时（回归现场本身就是这个症状）
+        err = ScenarioError(f"{type(ex).__name__}: {ex}")
+        err.snapshot = snapshot
+        raise err from ex
+    finally:
+        tab.close()
+        time.sleep(0.5)  # 给上一个实例释放 worker 的间隔
+
+
 # ---------- .tgp 工程包：单文件自带全部依赖 ----------
 
 def project_run(browser: CdpBrowser, base_url: str, report, ctx: dict) -> int:
@@ -370,4 +431,4 @@ def project_run(browser: CdpBrowser, base_url: str, report, ctx: dict) -> int:
     return ran
 
 
-SCENARIOS = ["boot", "core", "files", "run", "project"]
+SCENARIOS = ["boot", "core", "files", "run", "twice", "project"]
