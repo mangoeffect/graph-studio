@@ -183,9 +183,44 @@ CPU-only 构建，后续可评估。
      run_docker_linux_build 的容器模式；emsdk 的 bazel CI 主力在 linux）。
   本机 opencv-wasm 静态库已备（build_wasm/opencv/install，spike 需要时
   override 进 opencv repo）。
+- **2026-09-28 补充调研（上游实锤 + 社区先例扫描，相对上述的增量）**：
+  1. **官方 OSS 无源码编 wasm 路径（实锤）**：v1.0.0 的
+     `third_party/wasm_files.bzl`（auto-generated）经 WORKSPACE
+     `wasm_files()` 从 `storage.googleapis.com/mediapipe-assets` 下载
+     **预编译**的 `vision_wasm_internal.{wasm,js}`（SIMD / nosimd /
+     wasm-module 三变体，vision/text 各一套）——OSS 构建只做 JS rollup
+     打包并拼装这些二进制；wasm 本体出自 Google 内部管线。即官方永远
+     不会替社区补 `--config=wasm`，bzlmod 自注册 toolchain 是唯一路径。
+  2. **源码级 wasm 分支仍在维护（利好）**：`//mediapipe:emscripten` 是
+     `config_setting(constraint_values=["@platforms//cpu:wasm32"])`
+     （mediapipe/BUILD:201），全仓 gpu/webgpu、framework/port、
+     calculators 等大量 BUILD 带该条件的 select() 分支。spike 的
+     `--platforms=@emsdk//:platform_wasm` 与它严格配套——工具链接通后
+     这些分支自动激活，源码层 `__EMSCRIPTEN__` 兼容大部分现成。
+     旧版 `--config=wasm`（v0.7.x 的 `javascript/toolchain` crosstool，
+     `--cpu=wasm` 范式）已整体删除，不可移植，无需回头路。
+  3. **上游动态**：最新 v1.0.1（内部 0.10.36，PyPI 2026-08-14）；npm
+     `@mediapipe/tasks-vision` 自 0.10.21（2025-09）后无全量新版
+     （issue #6098，后续 release 仅 GenAI 任务）——web vision 生态放缓，
+     钉 v1.0.0 无碍且更稳。
+  4. **社区无先例**：完整 graph framework → wasm 公认难（issue #877 止步
+     讨论；Volcomix/virtual-background、Seeso 皆绕开 MediaPipe 只编
+     TFLite + 自写前后处理，且都是 2021 TF 时代）。spike 已到 analysis
+     后期（5514 targets configured），进度超过全部公开尝试；剩余风险
+     按序：① 编译期源码坑（XNNPACK/absl/protobuf 的 wasm32 select 分
+     支，analysis 不覆盖编译错误）② 体积判据 ③ atomics 注入正确性。
+  5. **路线 C（消费官方预编译 wasm）不成立**：`vision_wasm_internal.wasm`
+     的导出面是 GraphWasmCalculator / closure 内部 ABI，无 `Mp*` C API；
+     要用只能走 JS 桥（tasks-vision npm），而该 API 是异步 Promise +
+     ImageSource(canvas/Bitmap) 数据模型——与同步 `execute()` + cv::Mat
+     冲突，需 Asyncify 桥 + 双份数据拷贝 + 每任务一套 JS 胶水，复杂度
+     不低于路线 A 剩余量，且 wasm 本体闭源不可调试。三条路线里只剩
+     A（自编）与 B（维持 stub/mnn）。
 - 路线 B（当前态）：WASM stub——mp_* 任务注册 + 可读错误；图的 wasm e2e
   按 mp stub 记 skip（`MP_STUB_MODULES`）。若需浏览器端真实推理，短期更现实
-  的是 JS 桥接任务（包装官方 `@mediapipe/tasks-vision`，不进 C++ 核心）。
+  的是 JS 桥接任务（包装官方 `@mediapipe/tasks-vision`，不进 C++ 核心）；
+  但经上述 5 的评估，JS 桥的异步/数据模型改造成本被低估了，不宜作为
+  "短期更现实"的默认选项。
 - 决策判据（维持）：补丁面过大或体积 >30MB 即维持路线 B。本机已装
   emsdk 3.1.46（F:/emsdk）+ opencv-wasm 构建物料在途，spike 构建实测
   为独立的 1-2 天工作项（冷构建 2-4h/轮 × 多轮补丁迭代）。
