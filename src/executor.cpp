@@ -168,6 +168,19 @@ std::unordered_map<TaskId, TaskResult> DAGExecutor::get_results() const {
 // ====== stream 模式辅助（匿名命名空间，无实例状态）======
 namespace {
 
+// 失败任务的错误文本：插件任务惯例把可读原因放 value（string，face/matting
+// 等的 make_failed 模式），TaskFailed 事件带上它——否则 RunLoop 的
+// first_failure_reason 为空，四端 E2E 的 "first failure: <id>:" 行没内容，
+// 失败原因只剩截图（2026-09-28 线上 models 场景 face/matting 失败实踩）。
+std::string failure_text(const TaskResult& r) {
+    if (r.value.has_value()) {
+        if (const auto* s = std::any_cast<std::string>(&r.value)) {
+            return *s;
+        }
+    }
+    return "task failed (no error message)";
+}
+
 // 从 root 沿 outgoing edges 的传递可达闭包（含 root 自身）。
 std::unordered_set<TaskId> transitive_downstream(const DAG& dag, const TaskId& root) {
     std::unordered_set<TaskId> seen{root};
@@ -307,7 +320,8 @@ TaskResult DAGExecutor::execute_one(const DAG& dag, const TaskId& tid) {
     if (result.is_success()) {
         emit_event(ExecutionEvent::Type::TaskCompleted, tid, task->type(), result.duration);
     } else {
-        emit_event(ExecutionEvent::Type::TaskFailed, tid, task->type(), result.duration);
+        emit_event(ExecutionEvent::Type::TaskFailed, tid, task->type(), result.duration,
+                   failure_text(result));
     }
     return result;
 }
@@ -707,7 +721,8 @@ void DAGExecutor::run(const DAG& dag) {
                 if (result.is_success()) {
                     emit_event(ExecutionEvent::Type::TaskCompleted, tid, task->type(), result.duration);
                 } else {
-                    emit_event(ExecutionEvent::Type::TaskFailed, tid, task->type(), result.duration);
+                    emit_event(ExecutionEvent::Type::TaskFailed, tid, task->type(), result.duration,
+                               failure_text(result));
                 }
 
                 // === Step 5: 推进下游调度 ===
