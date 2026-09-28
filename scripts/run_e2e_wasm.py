@@ -336,8 +336,7 @@ def main() -> int:
                         detail = (sc.boot(tab, report.run_dir) if name == "boot"
                                   else sc.core(tab, report.run_dir))
                     finally:
-                        tab.close()
-                        time.sleep(0.5)  # 给上一个实例释放 worker 的间隔
+                        browser.close_tab(tab)  # Target.closeTarget + 等渲染进程退出
                     results[name] = detail
                 elif name == "files":
                     count = sc.files_run(browser, page_url, report, ctx)

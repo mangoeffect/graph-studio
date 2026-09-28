@@ -56,9 +56,21 @@ WEBGPU_MODULES = {
 # URL 单文件通道无法枚举目录内容：目录形 effects_path（shaders/ 整目录
 # manifest 库）的夹具记 skip——与 .tgp 打包器"目录引用不打包"是同一条
 # v1 边界（文件形 *.effect.json 的兄弟 shader 源已由 entry.cpp 补取）。
+# 另有三张"任务预期 FAILED"的夹具：bad_params/bad_seed 是失败路径设计
+#（桌面 ctest 断言 TaskStatus::FAILED）；denoise 的 fastNlMeans 属 photo
+# 模块，wasm 预编译 OpenCV（core,imgproc,imgcodecs）不含——任务保留
+# 注册、execute 返回 FAILED（image_enhance.cpp 的优雅降级约定）。执行
+# 断言 0 failed 的 E2E 对它们记 skip，失败路径由桌面 ctest 覆盖。
 WASM_UNSUPPORTED_GRAPHS = {
     "render_manifest_pipeline.json":
         "目录形 effects_path（shaders/）无法经 URL 通道枚举预取",
+    "clahe_bad_params.json":
+        "失败路径夹具（invalid tile size → 预期 FAILED），桌面 ctest 覆盖",
+    "flood_fill_bad_seed.json":
+        "失败路径夹具（seed 越界 → 预期 FAILED），桌面 ctest 覆盖",
+    "denoise.json":
+        "fastNlMeans 属 OpenCV photo 模块，wasm 预编译不含（任务注册但执行"
+        "降级 FAILED——image_enhance.cpp 约定）；桌面 ctest 覆盖",
 }
 
 
@@ -77,7 +89,7 @@ def webgpu_available(browser: CdpBrowser, page_url: str) -> bool:
     except Exception:
         return False
     finally:
-        tab.close()
+        browser.close_tab(tab)
 
 
 class ScenarioError(RuntimeError):
@@ -271,8 +283,7 @@ def url_graph_case(browser: CdpBrowser, page_url: str, graph_url: str, *,
     except (ScenarioError, TimeoutError, RuntimeError) as ex:
         raise _collect_failure(tab, ex, artifacts, shot_name) from ex
     finally:
-        tab.close()
-        time.sleep(0.5)  # 给上一个实例释放 worker 的间隔
+        browser.close_tab(tab)  # Target.closeTarget + 等渲染进程退出（wasm 大页回收慢）
 
 
 # ---------- CDP 直写通道（--url 线上模式，fetch 被拦时的降级） ----------
@@ -294,8 +305,7 @@ def fetch_channel_available(browser: CdpBrowser, page_url: str,
     except Exception:
         return False
     finally:
-        tab.close()
-        time.sleep(0.5)
+        browser.close_tab(tab)
 
 
 def _js_bytes(data: bytes) -> str:
@@ -410,8 +420,7 @@ def cdp_graph_case(browser: CdpBrowser, page_url: str, graph_file: Path, *,
     except (ScenarioError, TimeoutError, RuntimeError) as ex:
         raise _collect_failure(tab, ex, artifacts, shot_name) from ex
     finally:
-        tab.close()
-        time.sleep(0.5)  # 给上一个实例释放 worker 的间隔
+        browser.close_tab(tab)  # Target.closeTarget + 等渲染进程退出（wasm 大页回收慢）
 
 
 def files_run(browser: CdpBrowser, page_url: str, report, ctx: dict) -> int:
@@ -586,8 +595,7 @@ def twice(browser: CdpBrowser, page_url: str, ctx: dict) -> str:
         err.snapshot = snapshot
         raise err from ex
     finally:
-        tab.close()
-        time.sleep(0.5)  # 给上一个实例释放 worker 的间隔
+        browser.close_tab(tab)  # Target.closeTarget + 等渲染进程退出（wasm 大页回收慢）
 
 
 # ---------- .tgp 工程包：单文件自带全部依赖 ----------

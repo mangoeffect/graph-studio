@@ -174,6 +174,8 @@ class CdpTab:
         hostport, path = rest.split("/", 1)
         host, port = hostport.rsplit(":", 1)
         self._ws = MiniWebSocket(host, int(port), "/" + path)
+        # target id（close 时 Target.closeTarget 用）——就是 ws URL 尾段
+        self.target_id = path.rsplit("/", 1)[-1]
         self._next_id = 1
         self.console: list[tuple[str, str]] = []
         self.page_errors: list[str] = []
@@ -351,6 +353,16 @@ class CdpTab:
         self.mouse_up(x1, y1)
 
     def close(self):
+        """关闭 tab 本体（Target.closeTarget），而不只是驱动侧 websocket。
+
+        只关 ws 的话页面在 Chrome 里继续存活——每张图一个完整 wasm 实例
+       （QT_WASM_INITIAL_MEMORY 200MB + pthread worker），批量用例残留几十
+        个活实例会把浏览器内存压爆（Chrome 后期卡死/CDP 断连的根因，
+        2026-09-28 全量线上跑实踩）。响应可能随 target 销毁不到达，吞掉。"""
+        try:
+            self.cmd("Target.closeTarget", targetId=self.target_id)
+        except Exception:
+            pass
         self._ws.close()
 
 
@@ -394,6 +406,23 @@ class CdpBrowser:
         tab.cmd("Log.enable")
         tab.navigate(url)
         return tab
+
+    def close_tab(self, tab: CdpTab, timeout: float = 20.0):
+        """关闭 tab 并等它从 target 列表消失（开下一个用例前回收干净）。
+
+        closeTarget 后渲染进程退出有延迟——wasm 大页（200MB 初始内存 +
+        worker）回收更慢；不等的话下一实例叠加内存，长跑几十张后依旧
+        暴涨。超时不抛错（Chrome 慢回收只影响下一张的内存余量）。"""
+        tab.close()
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            try:
+                targets = self.http.get_json("/json/list")
+            except OSError:
+                return  # HTTP 通道没了（浏览器退出），无从等起
+            if not any(t.get("id") == tab.target_id for t in targets):
+                return
+            time.sleep(0.25)
 
     def stop(self):
         if self.pid:
