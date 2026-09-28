@@ -69,6 +69,7 @@ from typing import List, Optional
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from gs import console, platform, repo_root, runner  # noqa: E402
+from gs import emsdk as gs_emsdk  # noqa: E402
 
 MP_VERSION = "v1.0.0"
 MP_REPO = "https://github.com/google-ai-edge/mediapipe.git"
@@ -78,6 +79,57 @@ EIGEN_COMMIT = "4c38131a16803130b66266a912029504f2cf23cd"
 MP_TARGETS_FULL = ["//mediapipe/tasks/c/vision:libvision.dylib"]
 MP_TARGETS_WIN = ["//mediapipe/tasks/c/vision:vision.dll"]
 MP_TARGETS_SO = ["//mediapipe/tasks/c/vision:libvision.so"]
+
+# MediaPipe v1.0.0 上游 .bazelrc 无任何 emscripten config（官方 web 只发
+# @mediapipe/tasks-vision JS 包），wasm 交叉经 bzlmod 接入 emsdk 的 bazel
+# 工具链（emsdk 4.0.6 起 WORKSPACE 支持移除，只支持 bzlmod；MediaPipe 用
+# bazel 7.4.1，bzlmod 默认开、WORKSPACE 仍解析）。SDK 版本钉 3.1.46 对齐
+# MNN-wasm / release.yml 的 emsdk。spike 方案与判据见
+# docs/research/mnn-mediapipe-core-integration.md 4.5 节。
+WASM_EMSDK_VERSION = "3.1.46"
+WASM_MODULE_BLOCK = """
+
+# ---- graph-studio wasm 交叉构建（build_mediapipe.py --platform wasm 注入）----
+bazel_dep(name = "emsdk", version = "4.0.6")
+git_override(
+    module_name = "emsdk",
+    remote = "https://github.com/emscripten-core/emsdk.git",
+    strip_prefix = "bazel",
+    tag = "4.0.6",
+)
+emscripten_deps_ext = use_extension(
+    "@emsdk//:emscripten_deps.bzl",
+    "emscripten_deps",
+)
+emscripten_deps_ext.config(version = "%VERSION%")
+use_repo(
+    emscripten_deps_ext,
+    "emscripten_bin_linux",
+    "emscripten_bin_linux_arm64",
+    "emscripten_bin_mac",
+    "emscripten_bin_mac_arm64",
+    "emscripten_bin_win",
+)
+emscripten_cache_ext = use_extension(
+    "@emsdk//:emscripten_cache.bzl",
+    "emscripten_cache",
+)
+use_repo(emscripten_cache_ext, "emscripten_cache")
+"""
+
+
+def patch_wasm_module(mp_src: Path) -> None:
+    """MODULE.bazel 追加 emsdk bzlmod 块（幂等）。"""
+    mod = mp_src / "MODULE.bazel"
+    if not mod.is_file():
+        console.fail("wasm 交叉需要 MODULE.bazel（bzlmod），MediaPipe 源码树里没有")
+        return
+    s = _read(mod) or ""
+    if "graph-studio wasm 交叉构建" in s:
+        print("==> MODULE.bazel 已含 emsdk 块，跳过")
+        return
+    _write(mod, s + WASM_MODULE_BLOCK.replace("%VERSION%", WASM_EMSDK_VERSION))
+    console.ok(f"MODULE.bazel 追加 emsdk bzlmod 块（SDK {WASM_EMSDK_VERSION}）")
 MP_TARGETS_MINIMAL = ["//mediapipe/tasks/c/vision/core:image"]
 BAZELISK_URL = "https://github.com/bazelbuild/bazelisk/releases/download/v1.19.0/bazelisk-windows-amd64.exe"
 BAZELISK_LINUX_URLS = {
@@ -1335,8 +1387,12 @@ def main() -> int:
     ap.add_argument("--targets", default="all",
                     help="'image' 仅 MpImage / 'all' 全部 / 逗号分隔自定义")
     ap.add_argument("--platform", default="host",
-                    choices=["host", "linux", "ios", "android"],
-                    help="目标平台（host=本机；linux 在非 Linux 宿主走 Docker）")
+                    choices=["host", "linux", "ios", "android", "wasm"],
+                    help="目标平台（host=本机；linux 在非 Linux 宿主走 Docker；"
+                         "wasm 经 bzlmod emsdk 工具链交叉）")
+    ap.add_argument("--emsdk-root", default="",
+                    help="本机 emsdk 根目录（--platform wasm 的 emar 合并与 "
+                         "PATH 注入用；默认 $EMSDK_ROOT 探测）")
     ap.add_argument("--android-abi", default="arm64-v8a",
                     choices=sorted(ANDROID_ABI_CONFIG),
                     help="Android ABI（默认 arm64-v8a）")
@@ -1366,6 +1422,8 @@ def main() -> int:
     elif args.platform == "android":
         mp_install = (root / "build_android" / "mediapipe" / "install"
                       / args.android_abi)
+    elif args.platform == "wasm":
+        mp_install = root / "build_wasm" / "mediapipe" / "install"
     elif args.platform == "linux" and not platform.is_linux():
         mp_install = mp_build / "install-linux"
     else:
@@ -1381,6 +1439,8 @@ def main() -> int:
         mp_targets = MP_TARGETS_FULL
     elif args.platform == "android":
         mp_targets = MP_TARGETS_SO
+    elif args.platform == "wasm":
+        mp_targets = list(ALL_VISION_LIBS)
     elif args.platform == "linux":
         mp_targets = MP_TARGETS_SO
     elif args.targets in ("all", ""):
@@ -1469,6 +1529,15 @@ def main() -> int:
         if platform.is_macos():
             patch_macos_opencv5(mp_src)
         patch_opencv5_api(mp_src)
+        if args.platform == "wasm":
+            patch_wasm_module(mp_src)
+            emsdk_root = gs_emsdk.find_emsdk_root(args.emsdk_root or None)
+            if emsdk_root:
+                gs_emsdk.activate(emsdk_root)
+                console.ok(f"emsdk: {emsdk_root}（PATH 注入 emscripten）")
+            else:
+                console.warn("未找到本机 emsdk（EMSDK_ROOT）——bzlmod 会自行下载 "
+                             "SDK；但 emar 合并在收集阶段需要它")
         if platform.is_linux():
             # Linux 本机构建（CI ubuntu）：系统 OpenCV 是 4.x 布局
             patch_linux_opencv4(mp_src)
@@ -1495,6 +1564,21 @@ def main() -> int:
         build_flags = ["--define=MEDIAPIPE_DISABLE_GPU=1"]
         if args.platform == "ios":
             config_flags = ["--config=ios_arm64"]
+        elif args.platform == "wasm":
+            # emsdk bzlmod 工具链（MODULE.bazel 已注入）：cc toolchain resolution
+            # + wasm 平台。atomics/bulk-memory 必须逐 .o 注入——链接 -pthread
+            # 模块时 wasm-ld 对缺特性的对象直接拒绝（MNN-wasm 的教训，
+            # scripts/build_mnn.py do_wasm 同款）。
+            config_flags = [
+                "--incompatible_enable_cc_toolchain_resolution",
+                "--platforms=@emsdk//:platform_wasm",
+            ]
+            build_flags += [
+                "--copt=-matomics",
+                "--copt=-mbulk-memory",
+                "--cxxopt=-matomics",
+                "--cxxopt=-mbulk-memory",
+            ]
         elif args.platform == "android":
             config_flags = [
                 "--config=" + ANDROID_ABI_CONFIG[args.android_abi],
@@ -1623,8 +1707,8 @@ def main() -> int:
     (mp_install / "lib").mkdir(parents=True, exist_ok=True)
     (mp_install / "include").mkdir(parents=True, exist_ok=True)
 
-    # 交叉构建（ios/android）：收集目标平台产物合并成单库
-    if args.platform in ("ios", "android"):
+    # 交叉构建（ios/android/wasm）：收集目标平台产物合并成单库
+    if args.platform in ("ios", "android", "wasm"):
         console.step("Collecting + merging target-platform static libraries")
         if args.platform == "ios":
             declared = cquery_target_archives(bazel_cmd, config_flags, build_flags,
@@ -1633,6 +1717,12 @@ def main() -> int:
             archives = collect_apple_objects(declared, bazel_cmd, config_flags,
                                              build_flags, override_args, mp_src, env,
                                              mp_build)
+        elif args.platform == "wasm":
+            # emscripten toolchain 下 cc_library 物化真 .a（非 apple/android 的
+            # 对象直链），cquery 直接收集磁盘归档
+            archives = cquery_target_archives(bazel_cmd, config_flags, build_flags,
+                                              override_args, mp_src, env, mp_targets,
+                                              require_exists=True)
         else:
             # android crosstool 同样对象直链（_objs/*.o），传递 .a 不物化
             declared = cquery_target_archives(bazel_cmd, config_flags, build_flags,
@@ -1652,6 +1742,18 @@ def main() -> int:
             # strip -S 只去调试符号，不影响链接语义与全局符号表）
             console.step("Stripping debug symbols")
             subprocess.run(["strip", "-S", str(merged_lib)], check=False)
+        elif args.platform == "wasm":
+            emsdk_root = gs_emsdk.find_emsdk_root(args.emsdk_root or None)
+            emar = ""
+            if emsdk_root:
+                cand = emsdk_root / "upstream" / "emscripten"
+                emar = str(cand / ("emar.bat" if platform.is_windows() else "emar"))
+            if not emar or not Path(emar).is_file():
+                console.fail(f"未找到 emar（emsdk={emsdk_root}）——wasm 归档合并需要")
+                return 1
+            if not merge_archives_ar(archives, merged_lib, emar):
+                console.fail(f"emar MRI 合并失败: {emar}")
+                return 1
         else:
             ndk = resolve_android_ndk()
             ar_candidates = sorted((ndk / "toolchains" / "llvm" / "prebuilt")
