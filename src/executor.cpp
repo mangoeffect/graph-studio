@@ -96,9 +96,10 @@ std::shared_future<void> DAGExecutor::execute(const DAG& dag) {
     results_.clear();
 
 #ifdef __EMSCRIPTEN__
-    // WASM：直接同步执行（避免主线程 std::async 在 singlethread build 下 abort；
-    // 即便 wasm_multithread 也建议由 ThreadPool 在 Worker 内并行，主入口走同步）。
-    // run() 内部仍可通过 ThreadPool 在 pthreads build 中并行调度 task。
+    // WASM：直接同步执行（避免主线程 std::async 在 singlethread build 下 abort）。
+    // 任务也全部 inline 在本线程执行：ThreadPool 在 WASM 下退化为 inline 模式
+    //（见 thread_pool.cpp——pthreads build 的 worker 重宿主与主线程阻塞等待
+    // 互锁，同页第二次执行死锁）。调度循环的 cv 等待因条件即时满足而不阻塞。
     try {
         run(dag);
     } catch (...) {
@@ -728,7 +729,8 @@ void DAGExecutor::run(const DAG& dag) {
             // 主线程事件循环送达，且 emscripten 的 webgpu JS glue 无跨线程
             // 代理（句柄表每 JS 上下文一份）——worker 上的回调永不触发。
             // 调度循环本就在调用线程（主线程，见上方 EMSCRIPTEN 分支）同步
-            // 运行，内联即同栈执行；CPU 任务照旧进线程池并行。
+            // 运行，内联即同栈执行；CPU 任务经 submit 同样 inline 执行
+            //（ThreadPool 在 WASM 下退化为 inline，见 thread_pool.cpp）。
             {
                 TaskPtr t = dag.get_task(tid);
                 if (t && t->prefer_main_thread()) {

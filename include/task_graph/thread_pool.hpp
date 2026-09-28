@@ -32,8 +32,9 @@ public:
 
         std::future<ReturnType> future = task->get_future();
 
-#if defined(__EMSCRIPTEN__) && !defined(__EMSCRIPTEN_PTHREADS__)
-        // WASM 单线程：inline 同步执行，无需队列/notify
+#if defined(__EMSCRIPTEN__)
+        // WASM：inline 同步执行（单/多线程 build 一致；多线程下 worker
+        // 重宿主与主线程阻塞等待互锁的死锁见 thread_pool.cpp 构造注释）
         (*task)();
 #else
         {
