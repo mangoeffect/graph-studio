@@ -454,6 +454,17 @@ if(EMSCRIPTEN)
     include(${TG_ROOT}/cmake/SdkUtil.cmake)
     parse_subnode_json("${TG_ROOT}/subnode.json")
 
+    # 发布体积优化（2026-10 加载提速，见 docs/research/
+    # wasm-loading-optimization.md）：
+    #  - -sENVIRONMENT=web,worker：裁 JS 里 node 分支（zip 只上静态托管）
+    #  - 试过并否决：--closure=1（emcc 3.1.46 的 closure=1 实际以
+    #    ADVANCED_OPTIMIZATIONS 运行，与 Qt glue/EM_ASM 不兼容编译失败；
+    #    且 graph_studio.js gzip 过线仅 80KB，收益边际）
+    #  - 试过并否决：-sEVAL_CTORS=1（emcc 3.1.46 明确报错 "EVAL_CTORS is
+    #    not compatible with asyncify yet"——ASYNCIFY 是 wgpu 等待的硬依赖）
+    target_link_options(graph_studio PRIVATE
+        "-sENVIRONMENT=web,worker")
+
     # wgpu 统一后端的 wasm 编译接线：核心库以 -DTASK_GRAPH_ENABLE_WGPU=ON
     # 构建时，app 侧链接 emscripten 的 WebGPU 实现（-sUSE_WEBGPU，头由 sysroot
     # 提供）。浏览器内初始化优雅失败（兼容层 spin 不阻塞），验证是独立里程碑。
@@ -469,6 +480,14 @@ if(EMSCRIPTEN)
         #（空白加载页、近零 console）。两个旗标绑在同一处，杜绝经 cache
         # 残留拼出"有 WebGPU 无 Asyncify"的组合。
         target_link_options(graph_studio PRIVATE "-sUSE_WEBGPU=1" "-sASYNCIFY")
+        # Asyncify 插桩收窄的实验结论（2026-10，全部否决，勿再试）：
+        #  - ASYNCIFY_IGNORE_INDIRECT=1：体积 -13.2MB（34.3→21.1MB）但
+        #    unsound 实锤——干净全量 E2E 的 boot 即挂（启动期 GpuBootstrap
+        #    的 wgpu spin_until 跨未插桩间接帧，asyncify 展开断裂）。
+        #  - ASYNCIFY_REMOVE：binaryen 3.1.46 的间接扩展不看 remove 表
+        #    （^锚定 / 前缀.* 两轮实测均字节级零变化）。
+        #  - -sASYNCIFY_ADVISE 在 3.1.46 只是 verbose 透传，产不出 ONLY
+        #    白名单。详见 docs/research/wasm-loading-optimization.md。
     endif()
 
     # OpenCV WASM 静态库若已用 scripts/build_opencv_wasm.py 构建到

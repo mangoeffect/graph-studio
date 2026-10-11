@@ -103,6 +103,19 @@ def main() -> int:
         "-DCV_ENABLE_INTRINSICS=OFF",
         "-DCPU_BASELINE=",
         "-DCPU_DISPATCH=",
+        # 编解码 3rdparty 裁剪（2026-10 加载提速）：tiff/webp/openjp2 在图
+        # 夹具与产品链路中无人使用（全部 png/jpg/ppm——ppm 是 imgcodecs 内
+        # 建），却各带数百 KB；且与 Qt bundled（Libjpeg/Libpng/ZLIB）构成
+        # 双份编解码。BUILD_* 是 3rdparty 构建、WITH_* 是系统库探测，全关
+        # 让 imgcodecs 相应编解码器缺席（读 tiff/webp 会报格式不支持——
+        # 预期内）。BUILD_LIBWEBP 是 4.x 后期对 BUILD_WEBP 的更名，两者同
+        # 设兼容新旧。CI 缓存 key 随本脚本 hash 自动失效。
+        "-DBUILD_TIFF=OFF", "-DWITH_TIFF=OFF",
+        "-DBUILD_WEBP=OFF", "-DBUILD_LIBWEBP=OFF", "-DWITH_WEBP=OFF",
+        "-DBUILD_OPENJPEG=OFF", "-DWITH_OPENJPEG=OFF",
+        # jasper 是另一套 JPEG2000：OPENJPEG 关闭后 4.x 会改拉它（实测
+        # install 里冒出 liblibjasper.a 371KB），一并关掉
+        "-DBUILD_JASPER=OFF", "-DWITH_JASPER=OFF",
         "-DCMAKE_C_FLAGS=-pthread",
         "-DCMAKE_CXX_FLAGS=-pthread",
         f"-DCMAKE_INSTALL_PREFIX={install_dir}",
