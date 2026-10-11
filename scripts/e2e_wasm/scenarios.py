@@ -738,7 +738,10 @@ def models_run(browser: CdpBrowser, page_url: str, report, ctx: dict) -> int:
                     shot_name=f"model_{name}_failure.png", stage_root=per_root,
                     wait_models=True)
             else:
-                model_dir = serve_root / "e2e" / "models"
+                # 落位在 serve_root 直下（不是 serve_root/e2e/）——handler 把
+                # URL /e2e/X 映射到 serve_root/X，多套一层 e2e 会 404
+                # （files 场景的 submodule_graphs 同款约定）
+                model_dir = serve_root / "models"
                 model_dir.mkdir(parents=True, exist_ok=True)
                 graph_file = model_dir / f"{name}.json"
                 graph_file.write_text(json.dumps(graph), encoding="utf-8")
