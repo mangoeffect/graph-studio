@@ -1,8 +1,40 @@
-/*! coi-serviceworker v0.1.7 - Guido Zuidhof and contributors, licensed under MIT */
+/*! coi-serviceworker v0.1.7 - Guido Zuidhof and contributors, licensed under MIT
+ *  + GraphStudio 扩展（cache-first，见下方 GS_ 标记段）：核心产物
+ *    （wasm/glue/worker/qtloader）回放缓存，版本键由 package_web.py 打包期
+ *    烧入（"gs-web-dev" → "gs-web-<version>"）；存原始响应、回放时补
+ *    COOP/COEP（避免 coep 降级后缓存头陈旧）。 */
 let coepCredentialless = false;
 if (typeof window === 'undefined') {
+    // GS_: 核心产物 cache-first。GitHub Pages 一切资产 max-age=600，10 分钟
+    // 后回访要重新过线 11MB wasm——这里从 Cache Storage 直接回放。
+    const GS_APP_CACHE = "gs-web-dev";
+    const gsCacheable = (url) => url.origin === self.location.origin
+        && (/\.(wasm)$/.test(url.pathname)
+            || /\/(graph_studio\.js|graph_studio\.worker\.js|qtloader\.js)$/
+                .test(url.pathname));
+    const gsRewrite = (response) => {
+        const newHeaders = new Headers(response.headers);
+        newHeaders.set("Cross-Origin-Embedder-Policy",
+            coepCredentialless ? "credentialless" : "require-corp");
+        if (!coepCredentialless) {
+            newHeaders.set("Cross-Origin-Resource-Policy", "cross-origin");
+        }
+        newHeaders.set("Cross-Origin-Opener-Policy", "same-origin");
+        return new Response(response.body, {
+            status: response.status,
+            statusText: response.statusText,
+            headers: newHeaders,
+        });
+    };
+
     self.addEventListener("install", () => self.skipWaiting());
-    self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
+    self.addEventListener("activate", (event) => event.waitUntil(
+        // GS_: 认领 + 清理旧版本缓存（保留当前版本键）
+        self.clients.claim().then(() => caches.keys().then((keys) =>
+            Promise.all(keys
+                .filter((k) => k.startsWith("gs-web-") && k !== GS_APP_CACHE)
+                .map((k) => caches.delete(k)))))
+    ));
 
     self.addEventListener("message", (ev) => {
         if (!ev.data) {
@@ -32,6 +64,31 @@ if (typeof window === 'undefined') {
                 credentials: "omit",
             })
             : r;
+
+        // GS_: 核心产物 cache-first（命中直接回放补头后的响应；miss 拉取，
+        // 原始响应入缓存、补头响应返回页面）。导航/manifest/模型等仍走
+        // 下方的通用 passthrough。
+        if (r.method === "GET" && gsCacheable(new URL(r.url))) {
+            event.respondWith(
+                caches.open(GS_APP_CACHE)
+                    .then((cache) => cache.match(r).then((hit) => {
+                        if (hit) return gsRewrite(hit);
+                        return fetch(r).then((response) => {
+                            if (response.status !== 200) return gsRewrite(response);
+                            // 先 clone（tee）再取 body 构建 rewrite——
+                            // body 被新 Response 接管后 clone 会抛
+                            // "disturbed or locked"
+                            const cached = response.clone();
+                            const rewritten = gsRewrite(response);
+                            event.waitUntil(cache.put(r, cached));
+                            return rewritten;
+                        });
+                    }))
+                    .catch((e) => console.error(e))
+            );
+            return;
+        }
+
         event.respondWith(
             fetch(request)
                 .then((response) => {

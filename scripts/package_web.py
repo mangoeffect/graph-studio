@@ -41,6 +41,23 @@ from gs import models as gs_models  # noqa: E402
 
 COI_SNIPPET = '<script src="coi-serviceworker.js"></script>'
 
+# coi 的 doReload 覆盖：必须在 coi 脚本之前注入（coi 经 `...window.coi`
+# 合并配置）。coi 的 notcontrolling/updatefound reload 可能在 wasm 预取
+# 完成前抢跑（首访快网实测 71ms 即 reload，34MB 预取中止作废）——统一让
+# 所有 reload 路径（coi 的 doReload + 启动守卫的 reload）等预取落定，
+# reload 后的 fetch 命中 HTTP 缓存。coepdegrade 也等（同一页面无并发下载
+# 需求）；预取失败立即放行。
+COI_RELOAD_WAIT = """<script>
+(function () {
+    window.coi = window.coi || {};
+    window.coi.doReload = function () {
+        var pre = window.__gsPrefetchDone || Promise.resolve();
+        pre.then(function () { location.reload(); },
+                 function () { location.reload(); });
+    };
+})();
+</script>"""
+
 # 站点图标：与博客站（docs/static/，PaperMod head.html 同一引用集）保持一致，
 # Qt 生成的 shell 没有任何 favicon 声明，不注入则 /web/ 标签页是默认空白图标。
 FAVICON_FILES = ["favicon.svg", "favicon-16x16.png", "favicon-32x32.png",
@@ -65,13 +82,76 @@ BOOT_GUARD = """<script>
                 return;
             }
             if (!retried) {
-                try { sessionStorage.setItem('gs-coi-retried', '1'); } catch (e) {}
-                location.reload();
+                // 等 wasm 预取落定再 reload（预取与 SW 注册/激活重叠；reload
+                // 后的 fetch 命中 HTTP 缓存）。预取失败也照常 reload——二次
+                // 导航自己再拉。
+                var pre = window.__gsPrefetchDone || Promise.resolve();
+                pre.then(function () {
+                    try { sessionStorage.setItem('gs-coi-retried', '1'); } catch (e) {}
+                    location.reload();
+                });
                 return;
             }
             init();
         });
     };
+})();
+</script>"""
+
+# 首访（未隔离）导航即预取 wasm，字节进度写 .gs-status：
+#  - 下载与 coi SW 注册/激活/reload 往返全程重叠，进度从 t=0 可见；
+#  - Pages 的动态 gzip 无 content-length，无总量时只显示已下载 MB；
+#  - 已隔离的导航（二次导航/回访）只剩编译+启动，不重复预取。
+# body 用 reader 循环丢弃（不驻留 34MB），响应完整过线即进 HTTP 缓存。
+PREFETCH_SNIPPET = """<script>
+(function () {
+    function setStatus(text) {
+        var el = document.querySelector('.gs-status');
+        if (el) el.textContent = text;
+    }
+    function fmtMB(n) { return (n / 1048576).toFixed(1) + ' MB'; }
+    window.__gsPrefetchDone = Promise.resolve();
+    if (window.crossOriginIsolated) {
+        // .gs-status 在 body 里，head 期 setStatus 是 no-op——等 DOM 就绪
+        window.addEventListener('DOMContentLoaded', function () {
+            setStatus('Starting\u2026');
+        });
+        // 回访时主动触发 SW 更新检查（coi 在已隔离导航提前 return 不再
+        // register，浏览器默认 24h 才查一次——SW 缓存时代会拖慢新版触达）。
+        // 新 SW 经 skipWaiting+claim 接管后 controllerchange 重载进新版。
+        if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+            navigator.serviceWorker.register('coi-serviceworker.js')
+                .then(function (reg) {
+                    reg.addEventListener('updatefound', function () {
+                        navigator.serviceWorker.addEventListener(
+                            'controllerchange', function () { location.reload(); });
+                    });
+                }).catch(function () {});
+        }
+        return;
+    }
+    window.__gsPrefetchDone = new Promise(function (resolve) {
+        var done = function () { resolve(); };
+        fetch('graph_studio.wasm').then(function (resp) {
+            if (!resp.ok || !resp.body || !resp.body.getReader) {
+                return resp.arrayBuffer().then(done, done);
+            }
+            var total = 0;
+            var len = parseInt(resp.headers.get('content-length') || '0', 10);
+            var reader = resp.body.getReader();
+            var pump = function () {
+                return reader.read().then(function (chunk) {
+                    if (chunk.done) { done(); return; }
+                    total += chunk.value.length;
+                    setStatus(len > 0
+                        ? 'Loading ' + fmtMB(total) + ' / ' + fmtMB(len)
+                        : 'Loading ' + fmtMB(total));
+                    return pump();
+                });
+            };
+            pump().catch(done);
+        }).catch(done);
+    });
 })();
 </script>"""
 
@@ -85,11 +165,15 @@ BRAND_STYLE = """<style>
                     border: 3px solid rgba(59, 130, 246, .25);
                     border-top-color: #3b82f6; border-radius: 50%;
                     animation: gs-spin 1s linear infinite; }
+      .gs-status { text-align: center; margin-top: .8em; color: #64748b;
+                   font: 13px/1.4 system-ui, -apple-system, sans-serif;
+                   min-height: 1.4em; }
       @keyframes gs-spin { to { transform: rotate(360deg); } }
     </style>"""
 
 BRAND_SPINNER = """<div class="gs-brand"><img src="favicon.svg" alt="GraphStudio"></div>
-        <div class="gs-spinner" role="status" aria-label="Loading"></div>"""
+        <div class="gs-spinner" role="status" aria-label="Loading"></div>
+        <div class="gs-status">Loading\u2026</div>"""
 
 QT_LOGO_IMG = '<img src="qtlogo.svg" width="320" height="200" style="display:block"></img>'
 QT_LOGO_TITLE = "<strong>Qt for WebAssembly: graph_studio</strong>"
@@ -134,7 +218,9 @@ def patch_coi(html: str) -> str:
         marker = "<head>"
         idx = html.find(marker)
         pos = idx + len(marker) if idx >= 0 else 0
-        html = html[:pos] + "\n  " + FAVICON_LINKS + "\n  " + COI_SNIPPET + "\n  " + BOOT_GUARD + html[pos:]
+        html = html[:pos] + "\n  " + FAVICON_LINKS + "\n  " + COI_RELOAD_WAIT \
+            + "\n  " + COI_SNIPPET + "\n  " + BOOT_GUARD + "\n  " \
+            + PREFETCH_SNIPPET + html[pos:]
     if 'onload="init()"' in html:
         html = html.replace('<body onload="init()">', '<body onload="__gsBoot()">')
     return html
@@ -198,7 +284,12 @@ def main() -> int:
             zf.writestr(name, data)
         # index.html = 注入 coi 后的 shell，/web/ 目录直接可访问
         zf.writestr("index.html", html.encode("utf-8"))
-        zf.writestr("coi-serviceworker.js", coi.read_bytes())
+        # SW 版本键烧入：仓库态源文件保持 "gs-web-dev"，zip 内替换为本次
+        # 构建版本——SW 字节随版本变化触发浏览器更新流程（coi 的
+        # updatefound reload），activate 清理旧 gs-web-* 缓存。
+        coi_bytes = coi.read_bytes().replace(
+            b'"gs-web-dev"', f'"gs-web-{args.version}"'.encode("utf-8"))
+        zf.writestr("coi-serviceworker.js", coi_bytes)
         # 站点图标（与博客一致；相对路径，zip 自包含部署到任意静态托管也生效）
         for p in favicons:
             zf.write(p, p.name)
