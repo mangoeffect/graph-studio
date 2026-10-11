@@ -6,8 +6,9 @@ layout: online
 
 GraphStudio is fully compiled to WebAssembly (multi-threaded) and runs directly in the browser.
 
-**The first load is ~16 MB** (wasm module + Qt runtime) — please be patient;
-subsequent visits are much faster thanks to the browser cache.
+**The first load downloads ~11 MB** (the wasm module, gzipped in transit;
+includes the Qt runtime) — depending on your network this may take a while;
+subsequent visits are served from the browser cache in under a second.
 
 - The page **reloads itself once** after opening — that is expected: the web build
   enables cross-origin isolation via a service worker (SharedArrayBuffer, required

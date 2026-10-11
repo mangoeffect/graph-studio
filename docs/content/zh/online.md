@@ -6,7 +6,8 @@ layout: online
 
 GraphStudio 被完整编译为 WebAssembly（多线程），可以在浏览器里直接运行。
 
-**首次加载约 16 MB**（wasm 主模块 + Qt 运行时），请耐心等待；之后浏览器缓存会显著加快。
+**首次加载需下载约 11 MB**（wasm 主模块，gzip 传输；含 Qt 运行时），取决于
+网络可能需要等待较久；之后浏览器缓存会让再次打开快至约半秒。
 
 - 打开后页面**自动刷新一次**属正常现象：Web 版通过 service worker 启用跨域隔离
   （SharedArrayBuffer，多线程 wasm 的必要条件），刷新后即进入隔离上下文。
