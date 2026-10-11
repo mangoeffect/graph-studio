@@ -179,6 +179,10 @@ class CdpTab:
         self._next_id = 1
         self.console: list[tuple[str, str]] = []
         self.page_errors: list[str] = []
+        # 网络剖析（enable_network 后累积；wasm_load_profile 消费）
+        self.network: list[dict] = []
+        self.navigations: list[dict] = []
+        self._net_by_id: dict[str, dict] = {}
 
     def _dispatch(self, msg):
         method = msg.get("method", "")
@@ -194,6 +198,56 @@ class CdpTab:
             entry = msg["params"].get("entry", {})
             self.console.append((entry.get("level", "log"),
                                  entry.get("text", "")))
+        elif method == "Network.requestWillBeSent":
+            p = msg["params"]
+            req = p.get("request", {})
+            record = {"requestId": p.get("requestId"),
+                      "url": req.get("url", ""),
+                      "rtype": p.get("type", ""),
+                      "method": req.get("method", ""),
+                      "t_req": p.get("timestamp", 0.0),
+                      "wall_req": p.get("wallTime", 0.0)}
+            self._net_by_id[record["requestId"]] = record
+            self.network.append(record)
+        elif method == "Network.responseReceived":
+            p = msg["params"]
+            record = self._net_by_id.get(p.get("requestId"))
+            if record is not None:
+                resp = p.get("response", {})
+                headers = {str(k).lower(): v for k, v
+                           in (resp.get("headers") or {}).items()}
+                record.update({
+                    "status": resp.get("status"),
+                    "mime": resp.get("mimeType", ""),
+                    "protocol": resp.get("protocol", ""),
+                    "fromDiskCache": resp.get("fromDiskCache", False),
+                    "fromServiceWorker": resp.get("fromServiceWorker", False),
+                    "remote": resp.get("remoteIPAddress", ""),
+                    "contentEncoding": headers.get("content-encoding", ""),
+                    "contentType": headers.get("content-type", ""),
+                    "contentLength": headers.get("content-length", ""),
+                    "cacheControl": headers.get("cache-control", ""),
+                    "t_headers": p.get("timestamp", 0.0)})
+        elif method == "Network.loadingFinished":
+            p = msg["params"]
+            record = self._net_by_id.get(p.get("requestId"))
+            if record is not None:
+                record["encodedDataLength"] = p.get("encodedDataLength")
+                record["t_fin"] = p.get("timestamp", 0.0)
+        elif method == "Network.loadingFailed":
+            p = msg["params"]
+            record = self._net_by_id.get(p.get("requestId"))
+            if record is not None:
+                record["errorText"] = p.get("errorText", "")
+                record["canceled"] = p.get("canceled", False)
+                record["t_fin"] = p.get("timestamp", 0.0)
+        elif method == "Page.frameNavigated":
+            p = msg["params"]
+            frame = p.get("frame", {})
+            if not frame.get("parentId"):
+                # 主帧导航：coi-serviceworker 的自动 reload 会记 2 次
+                self.navigations.append({"url": frame.get("url", ""),
+                                         "t": p.get("timestamp", 0.0)})
 
     def _pump(self, want_id: int, timeout: float):
         """收消息直到拿到 want_id 的响应；期间事件入缓冲。"""
@@ -297,6 +351,56 @@ class CdpTab:
                 pass  # 页面尚未就绪（shadow DOM 未挂载等）
             time.sleep(poll)
         raise TimeoutError(f"{timeout}s 内表达式未为真: {expression[:120]}")
+
+    # ---- 网络剖析（wasm_load_profile 用；通用 CDP 透传也在这一层） ----
+
+    def enable_network(self):
+        self.cmd("Network.enable")
+
+    def add_init_script(self, source: str):
+        """Page.addScriptToEvaluateOnNewDocument：每次导航前注入。
+
+        coi-serviceworker 的 reload 文档同样生效（探针要在任何页面脚本
+        之前装好才能 monkey-patch fetch / WebAssembly）。"""
+        self.cmd("Page.addScriptToEvaluateOnNewDocument", source=source)
+
+    def emulate_network(self, latency_ms: float, down_bps: int, up_bps: int):
+        self.cmd("Network.emulateNetworkConditions", offline=False,
+                 latency=latency_ms, downloadThroughput=down_bps,
+                 uploadThroughput=up_bps)
+
+    def clear_browser_cache(self):
+        """清 HTTP 缓存（Cache Storage / SW 注册不受影响——用于分离
+        "SW 缓存"与"浏览器缓存"两种回访路径）。"""
+        self.cmd("Network.clearBrowserCache")
+
+    def performance_metrics(self) -> list:
+        self.cmd("Performance.enable")
+        return self.cmd("Performance.getMetrics").get("metrics", [])
+
+    def net_records(self, substring: str = "") -> list:
+        """已完成（收到 t_fin）的网络记录，按 URL 子串过滤。"""
+        return [r for r in self.network
+                if r.get("t_fin") is not None
+                and (not substring or substring in r["url"])]
+
+    def pending_net_count(self) -> int:
+        return sum(1 for r in self.network if r.get("t_fin") is None)
+
+    def wait_network_idle(self, quiet: float = 0.6, timeout: float = 60.0):
+        """等网络静默：无未完成请求且 quiet 秒内无新请求。"""
+        deadline = time.time() + timeout
+        last_evt = time.time()
+        seen = len(self.network)
+        while time.time() < deadline:
+            self._drain_pending(0.15)
+            if len(self.network) != seen:
+                seen = len(self.network)
+                last_evt = time.time()
+            if self.pending_net_count() == 0 and time.time() - last_evt >= quiet:
+                return
+            time.sleep(0.1)
+        raise TimeoutError("等待网络静默超时")
 
     def screenshot(self, path: Path):
         data = self.cmd("Page.captureScreenshot", timeout=30.0,
