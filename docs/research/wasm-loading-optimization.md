@@ -191,3 +191,83 @@ curl 为准。
 壳层/SW 改动都走打包链）。预期线上收益 = 上表字节数 × 线路吞吐系数，
 叠加 dfa4401（模型按需）后首访后的 19MB 带宽抢占消失；CF 橙云再叠加
 吞吐 + brotli + 长 Cache-Control（最大单项，待人工执行手册）。
+
+## 五、2026-10-31 线上"卡在加载页"复盘
+
+### 实测（真实 GUI Chrome + CDP，`scripts/wasm_load_profile.py`）
+
+| 场景 | 总耗时 | wasm | 结果 |
+|---|---:|---|---|
+| 线上冷启动（全新 profile） | 5.20s（同日复测 2.24s） | 10.57MB gzip / 32.64MB 解压，2.64s 过线 | canvas 挂载，COI=true |
+| 线上热启动 | 0.79s（复测 0.54s） | 0 字节过线（SW Cache Storage） | 正常 |
+| 本地新 zip 冷/热 | 0.84s / 0.55s | SW 回放 | 正常 |
+
+线上 alpha.23 资产完整（`last-modified` 全部 2026-10-11 15:02:55）、壳层与
+仓库模板逐字节一致、无 JS 错误 → **不是全局故障**；卡死来自壳层等待没有
+边界，任一分支不落定就是永久 spinner。
+
+### 五类卡死路径
+
+1. **`serviceWorker.ready` 永不落定**（`package_web.py` BOOT_GUARD）。按规范
+   `ready` 不 reject 且可能永久 pending：站点存储被禁、扩展/策略拦截、
+   第三方 iframe、**浏览器没有 `crossOriginIsolated` API 时 coi 在
+   `coi-serviceworker.js:168` 直接 return 根本不注册**、纯 HTTP 部署。
+   症状：只有 `Loading…`，`#qtstatus` 为空。
+2. **wasm 预取流停滞**（PREFETCH）。`__gsPrefetchDone` 只在 `chunk.done`
+   或 fetch reject 时 resolve；`reader.read()` 卡住就永远 pending，而
+   `__gsBoot` 与 `window.coi.doReload` 两条 reload 路径都等它。
+   症状：`Loading X MB / Y MB` 数字冻住。
+3. **重试后仍未隔离仍 `init()`**（旧 BOOT_GUARD 第 95 行）。多线程 wasm 没有
+   SharedArrayBuffer 必失败，Qt 的 `catch` 只 `console.error`；更糟的是
+   `gs-coi-retried` 的清除分支实际不可达（`crossOriginIsolated` 是文档级
+   布尔值，同文档内不会变），同一 tab 内永久化。
+4. **SW cache-first 串版/污染**。固定文件名 + Pages `max-age=600` + 版本键
+   仅发版时变；旧 wasm/glue 被 `gs-web-<version>` 命中时
+   `instantiateStreaming` 失败，同样只进 console。判据：DevTools →
+   Cache Storage → `gs-web-*` 的 wasm 应为 32,638,542B（旧 alpha.22 约 34.3MB）。
+   无痕正常 / 清站点数据即恢复 → 这一类。
+5. **纯慢 + 进度分母错误**。Fastly 路径 ~190KB/s 时 gzip 10.57MB ≈ 55s+；
+   进度分子是解压字节、分母是 gzip `content-length`，会显示成
+   `31.1 MB / 10.1 MB`，观感像坏了。CF 橙云仍未执行（待人工 dash）。
+
+### 修复（不变量）
+
+- **所有等待有上限**：`ready` 10s、预取 20s 停滞 / 180s 总限（AbortController；
+  idle 定时器在发请求前就武装，覆盖"连响应头都等不到"）；reload 只等这个
+  自带边界的 `__gsPrefetchDone`，不另设更短超时（30s 会误杀慢链路正常的
+  55-90s 预取）。超时照常走 reload，绝不无限期等待。
+- **未隔离绝不 `init()`**：失败统一进 `gsBootError()`，写 `.gs-status` /
+  `#qtstatus`，给 Retry 与 **Clear cache & retry**（删除 `gs-web-*` /
+  `gs-models-*` + unregister SW + reload，可直接救回被旧 wasm 污染的浏览器）。
+- **打包期资产 URL 版本化**：`graph_studio.js?v=<ver>`、`qtloader.js?v=<ver>`、
+  glue 的 `wasmBinaryFile="graph_studio.wasm?v=<ver>"`、
+  `locateFile("graph_studio.worker.js?v=<ver>")`；每处命中数断言，Qt/Emscripten
+  模板变化时打包直接失败。`coi-serviceworker.js` 自身保持稳定 URL（SW 更新
+  检查依赖）。
+- **SW 只缓存 200 且 content-type 正确的响应**（wasm=`application/wasm`，
+  JS 含 `javascript`；`response.type === "basic"`），避免错误页以 200 落到
+  wasm 键位被永久回放。
+- **工具**：`wasm_load_profile.py` 修 SW 回放时 `wireMB=None` 的
+  `median([None])` 崩溃（此前线上剖析不生成 summary.md）；失败路径输出
+  `.gs-status` / `#qtstatus` / `crossOriginIsolated` / SW controller /
+  `gs-coi-retried` / `__gsShell` + 最近 40 条网络记录。
+
+### 验证
+
+- `python3 scripts/package_web.py --version 0.1.0-test --out-dir /tmp/gs_pkgtest --skip-models`：
+  zip 内 `?v=0.1.0-test` 全部命中、`gs-web-0.1.0-test`、无 `__GS_VERSION__` 残留。
+- `python3 scripts/run_e2e_wasm.py --from-zip <zip> --scenario boot,run` → **2 passed**。
+- SW 永不 ready（CDP init script 替换 `navigator.serviceWorker.ready` 为
+  never-resolving）→ 一次重试后 ~18s 显示 "Unable to start GraphStudio" 与
+  两个恢复入口（`retried=1`, `loaded=false`）。
+- 首块 wasm 断流（服务端发头后 sleep 25s）→ 20s idle abort → reload →
+  ~20s 正常启动（`prefetch:stalled` → `loaded`）。
+- 线上 `wasm_load_profile.py --url ... --modes cold,warm` → summary.md 正常
+  生成，冷 2.24s / 热 0.54s（当日线路）。
+
+### 未做
+
+- Cloudflare 橙云（`dev-docs/cloudflare-orange-runbook.md`，需人工 dash）——
+  它是慢链路首访的唯一数量级杠杆；本次代码只做兜底与可见性。
+- 把首访预取改成"先 reload 再在隔离页显示进度"（可再省 ~0.3-1s，但需要在
+  隔离页重复下载/回放语义，收益小于复杂度）。

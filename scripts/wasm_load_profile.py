@@ -57,6 +57,24 @@ READINESS_EXPR = (
     ".querySelector('canvas'))"
 )
 
+# 失败路径的现场快照：卡在加载页时最关键的是"停在哪一步"，而这些状态
+# 都在页面里（壳层状态/隔离/SW/重试标记），之前超时只留下 consoleTail。
+SHELL_STATE_JS = r"""
+(() => { try {
+  return {
+    gsStatus: (document.querySelector('.gs-status') || {}).textContent || '',
+    qtStatus: (document.querySelector('#qtstatus') || {}).textContent || '',
+    isolated: window.crossOriginIsolated,
+    swAvailable: !!navigator.serviceWorker,
+    swController: !!(navigator.serviceWorker && navigator.serviceWorker.controller),
+    retried: (() => { try { return sessionStorage.getItem('gs-coi-retried'); }
+                      catch (e) { return null; } })(),
+    loaded: !!window.__gsLoaded,
+    shell: window.__gsShell || null
+  };
+} catch (e) { return { error: String(e) }; } })()
+"""
+
 # 页面探针：在任何页面脚本之前注入（add_init_script）。
 # 只记时刻不读 body（消费 body 会破坏调用方；字节数由 CDP Network 域给）。
 #  rejection 分支刻意不 rethrow——我们的旁路链吞掉异常避免 unhandledrejection
@@ -323,6 +341,29 @@ def analyze_load(label: str, t_nav: float, t_ready: float, tab,
     }
 
 
+def _failure_snapshot(tab) -> dict:
+    """失败现场：页面壳层状态 + 最近网络请求（超时也能定位停在哪条请求）。"""
+    try:
+        shell = tab.evaluate(SHELL_STATE_JS, timeout=10)
+    except Exception as e:
+        shell = {"error": f"{type(e).__name__}: {e}"}
+    assets = []
+    try:
+        for r in list(tab.network)[-40:]:
+            assets.append({
+                "name": _asset_name(r.get("url", "")),
+                "url": r.get("url", ""),
+                "status": r.get("status") or r.get("errorText") or "",
+                "type": r.get("rtype", ""),
+                "wireBytes": r.get("encodedDataLength"),
+                "cache": ("disk" if r.get("fromDiskCache")
+                          else "sw" if r.get("fromServiceWorker") else ""),
+            })
+    except Exception:
+        assets = []
+    return {"shell": shell, "assetsTail": assets}
+
+
 def profile_load(browser: CdpBrowser, url: str, throttle=None,
                  timeout: float = 180.0, label: str = "",
                  cache_evict: bool = False) -> dict:
@@ -357,7 +398,8 @@ def profile_load(browser: CdpBrowser, url: str, throttle=None,
         console.fail(f"  [{label}] 加载未就绪/失败: {type(e).__name__}: {e}")
         return {"label": label, "ok": False,
                 "error": f"{type(e).__name__}: {e}",
-                "consoleTail": tab.console_text()[-2000:]}
+                "consoleTail": tab.console_text()[-2000:],
+                **_failure_snapshot(tab)}
     finally:
         browser.close_tab(tab)
 
@@ -457,22 +499,29 @@ def derive_findings(runs: list) -> list:
                        f"{_med(inst)}s")
     if cold and warm:
         warm = [r for r in warm if not r["label"].endswith("_install")]
-        cw = [r.get("wasm", {}).get("wireMB") for r in cold if r.get("wasm")]
-        ww = [r.get("wasm", {}).get("wireMB") for r in warm if r.get("wasm")]
+        # SW 回放时页面级 wireMB 恒为 None（字节发生在 SW 会话）——直接
+        # statistics.median([None]) 会抛 TypeError（线上剖析曾因此没有
+        # summary.md）。先剔除 None，全部走 SW 时单独给结论。
+        cw = [v for v in (r.get("wasm", {}).get("wireMB")
+                          for r in cold if r.get("wasm")) if v is not None]
+        ww = [v for v in (r.get("wasm", {}).get("wireMB")
+                          for r in warm if r.get("wasm")) if v is not None]
         wt = _med([r.get("totalS") for r in warm])
         ct = _med([r.get("totalS") for r in cold])
         ci = [r.get("wasm", {}).get("instDurS") for r in cold if r.get("wasm")]
         wi = [r.get("wasm", {}).get("instDurS") for r in warm if r.get("wasm")]
-        if ww is not None and cw is not None and statistics.median(ww) < 0.1:
+        if ww and cw and statistics.median(ww) < 0.1:
             extra = ""
             if wi and ci:
                 extra = f"（编译 {statistics.median(wi)}s vs 冷载 "
                 f"{statistics.median(ci)}s——V8 wasm code cache）"
             out.append(f"回访 wasm 过线≈0（HTTP 缓存/SW 命中）：总耗时 "
                        f"{wt}s vs 冷载 {ct}s{extra}")
-        elif ww is not None:
+        elif ww:
             out.append(f"回访仍需过线 {statistics.median(ww):.1f}MB"
                        "（缓存未命中/已过期）")
+        elif warm:
+            out.append("回访 wasm 全部由 SW Cache Storage 回放（页面级 0 字节过线）")
     return out
 
 

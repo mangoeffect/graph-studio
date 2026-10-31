@@ -74,7 +74,17 @@ if (typeof window === 'undefined') {
                     .then((cache) => cache.match(r).then((hit) => {
                         if (hit) return gsRewrite(hit);
                         return fetch(r).then((response) => {
-                            if (response.status !== 200) return gsRewrite(response);
+                            if (response.status !== 200 || response.type !== "basic") {
+                                return gsRewrite(response);
+                            }
+                            // GS_: 只缓存类型正确的 200——错误页/登录页/被代理
+                            // 改写的 HTML 一旦以 200 落到 wasm 键位，会永久
+                            // 回放成 "wasm 编译失败 + 无限加载页"。
+                            const type = response.headers.get("content-type") || "";
+                            const okType = /\.wasm$/.test(new URL(r.url).pathname)
+                                ? /application\/wasm/i.test(type)
+                                : /javascript/i.test(type);
+                            if (!okType) return gsRewrite(response);
                             // 先 clone（tee）再取 body 构建 rewrite——
                             // body 被新 Response 接管后 clone 会抛
                             // "disturbed or locked"
