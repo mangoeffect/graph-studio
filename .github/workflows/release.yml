@@ -168,6 +168,13 @@ jobs:
       # face/matting 模型随包：打包脚本 stage_models 在打包期自跑
       # download_face/matting_models.py，其中 .task/.onnx → .mnn 转换依赖
       # mnnconvert（pip mnn 提供；同下方 wasm job 的做法）。
+      # pip mnn 的 wheel 只到 cp314（2026-10-31 核对 3.6.2：cp38..cp314），
+      # 而 runner 默认 Python 已升到 3.15 → "No matching distribution"。
+      # 显式钉 3.12（cp312 wheel 全平台齐全），本 job 后续步骤随之用 3.12。
+      - name: Setup Python 3.12 for mnnconvert
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - name: Setup mnnconvert (pip mnn)
         shell: bash
         run: pip install mnn
@@ -459,6 +466,10 @@ jobs:
             tests/models/face
             tests/models/matting
           key: models-face-matting-${{ hashFiles('scripts/download_face_models.py', 'scripts/download_matting_models.py') }}
+      - name: Setup Python 3.12 for mnnconvert
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - name: Setup mnnconvert (pip mnn)
         run: pip install mnn
       - name: Download face/matting models (on cache miss)
